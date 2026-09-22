@@ -7,6 +7,7 @@
 - 配套契约：[Agent Runtime v1](../contracts/agent-runtime-v1.md)
 - 选型决策：[ADR-001](../adr/0001-sqlite-lightweight.md)
 - 调研与验收：[GitHub 实现调研](../research/agent-orchestration-landscape.md)、[多节点 PoC](../validation/multi-node-poc.md)
+- 下一阶段：[Token 网关与 Map/Reduce 设计](gateway-mapreduce-v0.2.md)、[Job/MCP/网关契约](../contracts/job-gateway-v0.2.md)、[v0.2 实施计划](../implementation/v0.2-plan.md)
 
 ## 1. 目标与结论
 
@@ -21,6 +22,8 @@ GitHub 调研保留为设计参考：借鉴 agent-orchestrator 的执行适配�
 本文中的组件划分、默认值、API 名称和数据模型都是 computecloud 的设计决定。客户端官方事实单独列出来源，不能把设计接口视为 Codex 或 Claude 的原生接口。
 
 v0.1 已交付代码、配置、测试和运行文档。完整设计与实现的差异见 [运行指南](../implementation/v0.1-runbook.md#6-与目标设计的差异)，进度见 [实施计划](../implementation/v0.1-plan.md)。暂不实现 GUI 自动点击、接管任意现有终端、跨引擎内部会话格式转换或自动发布生产变更。
+
+2026-09-22 的下一阶段设计已确定：在现有 Task 层之上增加 Job，提供 Token HTTP/MCP 任务入口，先实现显式 Map→Reduce；可选 Responses 模型网关与任务入口同进程分工。本文描述底层 Runtime 的长期目标，v0.2 的具体范围、默认无自动重试和新增契约以配套新设计为准；v0.1 运行事实不变。
 
 ## 2. 官方接口依据与 Go 接入选择
 
@@ -194,7 +197,7 @@ WatchEvents 的连接中断只停止该订阅；任务继续受 Task deadline �
 
 ## 8. Go 模块划分
 
-以下为拟建目录，当前提交只有文档，不创建空实现或伪装已存在的服务。
+以下为最初设计的职责划分。v0.1 已实现 cmd、server、worker、adapter、store、workspace 等模块，实际持久化目录为 `internal/store`；尚未拆分的子包和交互接口仍为目标，不应据此推断它们已经存在。
 
 | 拟建路径 | 职责 |
 | --- | --- |

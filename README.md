@@ -37,6 +37,10 @@ make smoke
 ## 文档
 
 - [文档索引](docs/README.md)
+- [v0.2 Token 网关与 Map/Reduce 设计](docs/design/gateway-mapreduce-v0.2.md)（设计完成，待实施）
+- [v0.2 Job / MCP / 网关接口契约](docs/contracts/job-gateway-v0.2.md)
+- [v0.2 实施计划、进度与验收](docs/implementation/v0.2-plan.md)
+- [v0.2 请求 Schema 与接入示例](docs/examples/v0.2/README.md)
 - [实施计划与进度](docs/implementation/v0.1-plan.md)
 - [运行、部署和恢复指南](docs/implementation/v0.1-runbook.md)
 - [v0.1 验证记录](docs/validation/v0.1-results.md)
@@ -46,6 +50,7 @@ make smoke
 - [Agent Runtime v1 接口与事件契约](docs/contracts/agent-runtime-v1.md)
 - [GitHub 同类实现调研与借鉴边界](docs/research/agent-orchestration-landscape.md)
 - [ADR-001：SQLite 与轻量部署决策](docs/adr/0001-sqlite-lightweight.md)
+- [ADR-002：双入口网关与显式 Map/Reduce](docs/adr/0002-gateway-mapreduce.md)
 - [多节点 PoC 与故障验收计划](docs/validation/multi-node-poc.md)
 
 ## 已确定的技术方向
@@ -60,3 +65,5 @@ make smoke
 - 持续交互、跨节点会话迁移、通用 DAG 和控制平面高可用延后。
 
 本地验证使用可控协议程序；真实模型账号及两台独立主机验收仍需在目标环境执行。通过项和未执行项分别记录，测试程序结果不代表真实客户端已通过兼容性验收。
+
+下一版设计增加 Token 鉴权的 Job HTTP/MCP 入口、显式 Map→Reduce，以及同进程可选模型网关。MCP 用于本地 Codex 委派远端任务，模型 base_url 用于推理代理；两类请求有独立契约。以上新能力尚未实现，当前运行命令仍以 v0.1 运行指南为准。

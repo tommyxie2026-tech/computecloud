@@ -1,0 +1,19 @@
+{
+  "schema_version": "v0.2",
+  "project_id": "computecloud",
+  "mode": "single",
+  "workspace": {
+    "repository_ref": "computecloud",
+    "base_commit": "576713d25e9a9b34694c5ec6dbbd72ed5df47b4c"
+  },
+  "input": {"text": "审查任务调度和取消流程，给出带文件与行号的报告。"},
+  "execution": {
+    "engine": "codex",
+    "runtime_profile": "codex_exec",
+    "model": "configured-codex-model",
+    "credential_ref": "codex-account",
+    "policy_ref": "inspect-v1",
+    "acceptance_profile": "report-v1"
+  },
+  "limits": {"timeout_seconds": 1800, "max_attempts_per_task": 1}
+}

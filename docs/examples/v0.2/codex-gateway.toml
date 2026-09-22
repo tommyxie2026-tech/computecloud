@@ -1,0 +1,14 @@
+# 仅用于已通过固定 Codex 版本验收的 G1 HTTP Responses 网关。
+# 替换为网关白名单与上游同时支持的真实模型 ID。
+model = "configured-codex-model"
+model_provider = "computecloud"
+
+[model_providers.computecloud]
+name = "computecloud model gateway"
+base_url = "https://computecloud.example.internal:7444/v1"
+env_key = "COMPUTECLOUD_MODEL_TOKEN"
+wire_api = "responses"
+# 把重试策略显式化，避免客户端和代理叠加自动重放。
+request_max_retries = 0
+stream_max_retries = 0
+stream_idle_timeout_ms = 300000

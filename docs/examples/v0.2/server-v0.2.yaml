@@ -1,0 +1,57 @@
+# 设计用增量片段：v0.1 会拒绝这些新键，不能直接启动。
+# 与现有 server.listen/data_dir/tls/credentials/workers 配置合并。
+# HTTP 与 gRPC 使用同一 server.tls 配置，远程必须 TLS。
+server:
+  http:
+    listen: "0.0.0.0:7444"
+    allowed_origins: [] # 不允许带 Origin 的浏览器调用；CLI 可无 Origin
+  jobs:
+    enabled: true
+    max_partitions: 32
+    max_parallelism: 8
+    recommended_parallelism: 2 # capabilities 提示值；请求仍须显式填 parallelism
+    max_request_bytes: 262144
+    max_manifest_bytes: 32768
+    max_reduce_input_bytes: 134217728
+    max_attempts_per_task: 1
+    # 受信模板内容由操作者部署，密钥和机器绝对路径不参与摘要。
+    # 此条仅示意一种组合；实际需要登记所有 single/map/reduce 使用的组合。
+    templates:
+      - runtime_profile: "codex_exec"
+        policy_ref: "inspect-v1"
+        acceptance_profile: "findings-v1"
+        digest: "REPLACE_WITH_DEPLOYED_TEMPLATE_SHA256"
+  mcp:
+    enabled: true
+    path: "/mcp"
+  # G1 实现并验收后才启用；仅设 enabled 不代表兼容已验证。
+  model_gateway:
+    enabled: false
+    max_request_bytes: 16777216
+    max_inflight: 16
+    connect_timeout_seconds: 30
+    header_timeout_seconds: 30
+    stream_idle_timeout_seconds: 300
+    request_timeout_seconds: 1800
+    routes:
+      codex-api:
+        base_url: "https://api.openai.com/v1"
+        api_key_file: "/etc/computecloud/secrets/upstream-api.key"
+        allowed_models: ["configured-codex-model"]
+        max_inflight: 8
+    # 获准 Worker Task 的 credential_ref 映射到固定 API 路由。
+    credential_routes:
+      codex-api-account: "codex-api"
+  users:
+    - owner: "reviewer"
+      token_file: "/etc/computecloud/secrets/task.token"
+      projects: ["computecloud"]
+      credentials: ["codex-account", "claude-account", "codex-api-account"]
+      scopes: ["jobs:submit", "jobs:read", "jobs:cancel"]
+    - owner: "reviewer"
+      token_file: "/etc/computecloud/secrets/model.token"
+      projects: ["computecloud"]
+      credentials: []
+      scopes: ["models:invoke"]
+      model_project: "computecloud"
+      model_route: "codex-api"

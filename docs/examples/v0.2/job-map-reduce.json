@@ -1,0 +1,54 @@
+{
+  "schema_version": "v0.2",
+  "project_id": "computecloud",
+  "mode": "map_reduce",
+  "workspace": {
+    "repository_ref": "computecloud",
+    "base_commit": "576713d25e9a9b34694c5ec6dbbd72ed5df47b4c"
+  },
+  "input": {"text": "审查 computecloud 的任务可靠性，结果给出可核查的代码证据，不修改代码。"},
+  "map": {
+    "parallelism": 2,
+    "partitions": [
+      {
+        "key": "authorization",
+        "scope_paths": ["internal/rpcutil", "internal/server/tasks.go"],
+        "input": {"text": "检查鉴权、提交去重和取消授权，在最终结果中返回 findings.v1 JSON。"},
+        "execution": {
+          "engine": "codex",
+          "runtime_profile": "codex_exec",
+          "model": "configured-codex-model",
+          "credential_ref": "codex-account",
+          "policy_ref": "inspect-v1",
+          "acceptance_profile": "findings-v1"
+        }
+      },
+      {
+        "key": "recovery",
+        "scope_paths": ["internal/worker", "internal/server/server.go"],
+        "input": {"text": "检查租约失效、进程清理和恢复语义，在最终结果中返回 findings.v1 JSON。"},
+        "execution": {
+          "engine": "claude",
+          "runtime_profile": "claude_print",
+          "model": "configured-claude-model",
+          "credential_ref": "claude-account",
+          "policy_ref": "inspect-v1",
+          "acceptance_profile": "findings-v1"
+        }
+      }
+    ]
+  },
+  "reduce": {
+    "strategy": "report_merge_v1",
+    "input": {"text": "汇总并交叉核查 findings，保留原始证据引用，以 merged-report.v1 JSON 输出优先级和建议。"},
+    "execution": {
+      "engine": "codex",
+      "runtime_profile": "codex_exec",
+      "model": "configured-codex-model",
+      "credential_ref": "codex-account",
+      "policy_ref": "inspect-v1",
+      "acceptance_profile": "merged-report-v1"
+    }
+  },
+  "limits": {"timeout_seconds": 3600, "max_attempts_per_task": 1}
+}

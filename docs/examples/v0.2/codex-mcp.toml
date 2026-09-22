@@ -1,0 +1,8 @@
+# 待 computecloud v0.2 MCP 服务实现后使用。
+# Token 由启动环境注入；域名/证书需由操作者配置。
+[mcp_servers.computecloud]
+url = "https://computecloud.example.internal:7444/mcp"
+bearer_token_env_var = "COMPUTECLOUD_TASK_TOKEN"
+enabled_tools = ["submit_job", "get_job", "cancel_job", "get_result"]
+startup_timeout_sec = 10
+tool_timeout_sec = 30
