@@ -2,11 +2,11 @@
 
 轻量的多 Agent、多模型、多节点任务调度服务。使用 Go、gRPC 和本机 SQLite，调度 Codex / Claude Code 非交互 CLI。
 
-## v0.1.0
+## v0.2.0
 
-一个 `computecloud` 二进制提供 server、worker、任务、产物和备份命令。一个活动 server 管理多个主动连接的 Worker；无需 PostgreSQL、Redis、消息队列或工作流服务。
+一个 `computecloud` 二进制提供 server、worker、Job/Task、产物、模板摘要和备份命令。一个活动 server 管理多个主动连接的 Worker；无需 PostgreSQL、Redis、消息队列或工作流服务。
 
-已实现批任务提交/去重、节点与模型匹配、节点和账号并发限制、事件回放、取消、进程组清理、租约失联处理、可信验收命令、结果包及离线备份。每次执行使用固定 Git commit 的独立工作区。
+已实现 Token 鉴权的 Job HTTP/MCP、显式 Map→Reduce、报告/补丁汇总，以及默认关闭的 Responses 模型代理。继续支持批任务提交/去重、节点与模型匹配、节点和账号并发限制、事件回放、取消、进程组清理、租约失联处理、可信验收命令、结果包及离线备份。每次执行使用固定 Git commit 的独立工作区。
 
 首版适用于**受信 Linux 节点与任务**。会话 resume、执行中追加输入、在线审批、自动重试、容器隔离、GUI 和控制平面高可用尚未实现；不支持的 RPC 能力会明确拒绝。
 
@@ -23,7 +23,7 @@ make smoke
 
 `make smoke` 临时启动一个 server、两个 Worker 进程和协议测试程序，验证执行、取消、崩溃恢复、事件与产物、备份；结束后清理临时目录。
 
-实际接入从 [运行指南](docs/implementation/v0.1-runbook.md) 开始，按 [examples](examples) 配置本机已经安装和登录的 Codex / Claude CLI。配置中的版本、模型、仓库和 commit 占位符需要替换。
+Job/MCP 接入从 [v0.2 运行指南](docs/implementation/v0.2-runbook.md) 开始；旧 Task 与基础节点配置见 [v0.1 运行指南](docs/implementation/v0.1-runbook.md)，按 [examples](examples) 配置本机已经安装和登录的 Codex / Claude CLI。配置中的版本、模型、仓库和 commit 占位符需要替换。
 
 ```sh
 ./bin/computecloud server --config examples/server.yaml
@@ -37,9 +37,11 @@ make smoke
 ## 文档
 
 - [文档索引](docs/README.md)
-- [v0.2 Token 网关与 Map/Reduce 设计](docs/design/gateway-mapreduce-v0.2.md)（设计完成，待实施）
+- [v0.2 Token 网关与 Map/Reduce 设计](docs/design/gateway-mapreduce-v0.2.md)（已实现，真实环境验收边界见验证记录）
 - [v0.2 Job / MCP / 网关接口契约](docs/contracts/job-gateway-v0.2.md)
 - [v0.2 实施计划、进度与验收](docs/implementation/v0.2-plan.md)
+- [v0.2 运行与升级指南](docs/implementation/v0.2-runbook.md)
+- [v0.2 验证记录](docs/validation/v0.2-results.md)
 - [v0.2 请求 Schema 与接入示例](docs/examples/v0.2/README.md)
 - [实施计划与进度](docs/implementation/v0.1-plan.md)
 - [运行、部署和恢复指南](docs/implementation/v0.1-runbook.md)
@@ -66,4 +68,4 @@ make smoke
 
 本地验证使用可控协议程序；真实模型账号及两台独立主机验收仍需在目标环境执行。通过项和未执行项分别记录，测试程序结果不代表真实客户端已通过兼容性验收。
 
-下一版设计增加 Token 鉴权的 Job HTTP/MCP 入口、显式 Map→Reduce，以及同进程可选模型网关。MCP 用于本地 Codex 委派远端任务，模型 base_url 用于推理代理；两类请求有独立契约。以上新能力尚未实现，当前运行命令仍以 v0.1 运行指南为准。
+v0.2 中，MCP 用于本地 Codex 委派远端 Job，模型 base_url 用于推理代理。两个入口均在同一 Server 内实现，模型请求不会自动变成远端 Agent 任务。升级会迁移 Server/Worker 数据版本；请先排空执行并按运行指南备份。

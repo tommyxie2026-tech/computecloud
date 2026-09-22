@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -27,16 +28,20 @@ type session struct {
 }
 type Server struct {
 	pb.UnimplementedRuntimeServiceServer
-	cfg    config.Server
-	db     *store.DB
-	auth   *rpcutil.Auth
-	mu     sync.Mutex
-	peers  map[string]*session
-	notify chan struct{}
-	grpc   *grpc.Server
+	cfg          config.Server
+	db           *store.DB
+	auth         *rpcutil.Auth
+	mu           sync.Mutex
+	peers        map[string]*session
+	notify       chan struct{}
+	grpc         *grpc.Server
+	jobCursor    string
+	queueCursor  map[int32]string
+	modelHandler http.Handler
 }
 
 func New(c config.Server) (*Server, error) {
+	c.DefaultV02()
 	if e := c.Validate(); e != nil {
 		return nil, e
 	}
@@ -48,16 +53,50 @@ func New(c config.Server) (*Server, error) {
 	if e != nil {
 		return nil, e
 	}
-	s := &Server{cfg: c, db: d, auth: a, peers: map[string]*session{}, notify: make(chan struct{}, 1)}
+	s := &Server{cfg: c, db: d, auth: a, peers: map[string]*session{}, notify: make(chan struct{}, 1), queueCursor: map[int32]string{}}
+	if c.ModelGateway.Enabled {
+		g, e := newModelGateway(s)
+		if e != nil {
+			d.Close()
+			return nil, e
+		}
+		s.modelHandler = g
+	} else {
+		if _, e = d.SQL.Exec("UPDATE gateway_requests SET state='UNKNOWN',finished=?,error_code='SERVER_RESTARTED',usage_complete=0 WHERE state='STARTED'", store.Now()); e != nil {
+			d.Close()
+			return nil, e
+		}
+	}
 	return s, nil
 }
-func (s *Server) Close() error { return s.db.Close() }
+func (s *Server) Close() error {
+	if g, ok := s.modelHandler.(*modelGateway); ok {
+		g.client.CloseIdleConnections()
+	}
+	return s.db.Close()
+}
 func (s *Server) Serve(ctx context.Context, l net.Listener) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	tls, e := rpcutil.ServerTLS(l.Addr().String(), s.cfg.TLS)
 	if e != nil {
 		return e
+	}
+	var httpDone chan error
+	if s.cfg.HTTP.Listen != "" {
+		hl, e := net.Listen("tcp", s.cfg.HTTP.Listen)
+		if e != nil {
+			return e
+		}
+		defer hl.Close()
+		httpDone = make(chan error, 1)
+		go func() {
+			e := s.serveHTTP(ctx, hl)
+			httpDone <- e
+			if e != nil {
+				cancel()
+			}
+		}()
 	}
 	g := grpc.NewServer(tls, grpc.UnaryInterceptor(s.auth.Unary), grpc.StreamInterceptor(s.auth.Stream), grpc.MaxRecvMsgSize(8<<20), grpc.MaxSendMsgSize(8<<20))
 	s.grpc = g
@@ -69,6 +108,11 @@ func (s *Server) Serve(ctx context.Context, l net.Listener) error {
 	stopping := ctx.Err() != nil
 	cancel()
 	<-done
+	if httpDone != nil {
+		if he := <-httpDone; he != nil {
+			return he
+		}
+	}
 	if errors.Is(e, grpc.ErrServerStopped) || stopping {
 		return nil
 	}
@@ -185,6 +229,9 @@ func (s *Server) ConnectWorker(stream grpc.BidiStreamingServer[pb.WorkerFrame, p
 				return dbErr(re)
 			}
 			for _, c := range cmds {
+				if c.Kind == "start" && c.Assignment.GetGateway() != nil {
+					c.Assignment.Gateway.Token = modelAttemptToken(c.Assignment)
+				}
 				if e = stream.Send(&pb.ServerFrame{Body: &pb.ServerFrame_Command{Command: c}}); e != nil {
 					return e
 				}
@@ -228,6 +275,13 @@ func (s *Server) receive(ctx context.Context, p *session, f *pb.WorkerFrame) err
 				return e
 			}
 			if a.released || a.until <= store.Now() || state == "CANCELING" || state == "RECONCILING" || terminal(state) {
+				return nil
+			}
+			allowed, e := s.jobAllowsExecution(ctx, q, a.task)
+			if e != nil {
+				return e
+			}
+			if !allowed {
 				return nil
 			}
 			_, e = q.ExecContext(ctx, "UPDATE attempts SET lease_until=? WHERE id=?", store.Now()+grant.TtlMs, ref.AttemptId)
@@ -286,6 +340,9 @@ func (s *Server) tick(ctx context.Context) error {
 	if e := s.reconcile(ctx); e != nil {
 		return e
 	}
+	if e := s.advanceJobs(ctx); e != nil {
+		return e
+	}
 	if s.cfg.Maintenance {
 		return nil
 	}
@@ -296,32 +353,7 @@ func (s *Server) tick(ctx context.Context) error {
 	}
 	s.mu.Unlock()
 	sort.Slice(peers, func(i, j int) bool { return peers[i].hello.WorkerId < peers[j].hello.WorkerId })
-	rows, e := s.db.SQL.QueryContext(ctx, "SELECT id FROM tasks WHERE state='QUEUED' ORDER BY priority DESC,created,id")
-	if e != nil {
-		return e
-	}
-	var ids []string
-	for rows.Next() {
-		var id string
-		if e = rows.Scan(&id); e != nil {
-			break
-		}
-		ids = append(ids, id)
-	}
-	re := rows.Err()
-	rows.Close()
-	if e != nil {
-		return e
-	}
-	if re != nil {
-		return re
-	}
-	for _, id := range ids {
-		if e = s.assign(ctx, id, peers); e != nil {
-			return e
-		}
-	}
-	return nil
+	return s.scheduleQueued(ctx, peers)
 }
 func fits(p *session, t *pb.Task) bool {
 	if !config.Contains(p.identity.Projects, t.Spec.ProjectId) {
@@ -350,6 +382,27 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		if t.State != "QUEUED" {
 			return nil
 		}
+		jc, j, e := s.assignmentJob(ctx, q, id)
+		if e != nil {
+			return e
+		}
+		if j != nil {
+			if j.StopReason != "" || terminal(j.State) || j.State == "RECONCILING" || j.Deadline <= store.Now() {
+				return nil
+			}
+			if route := j.frozen.Routes[t.Spec.CredentialRef]; route != "" && (!s.cfg.ModelGateway.Enabled || j.frozen.RouteDigests[route] != config.RouteDigest(s.cfg.ModelGateway.Routes[route])) {
+				_, e = q.ExecContext(ctx, "UPDATE tasks SET blocker='GATEWAY_ROUTE_CHANGED' WHERE id=?", id)
+				return e
+			}
+			var active int
+			if e = q.QueryRowContext(ctx, "SELECT count(*) FROM attempts a JOIN tasks t ON a.task=t.id WHERE t.job_id=? AND a.released=0", j.ID).Scan(&active); e != nil {
+				return e
+			}
+			if active >= j.parallelism {
+				_, e = q.ExecContext(ctx, "UPDATE tasks SET blocker='JOB_CAPACITY_EXHAUSTED' WHERE id=?", id)
+				return e
+			}
+		}
 		var deadline int64
 		if e = q.QueryRowContext(ctx, "SELECT deadline FROM tasks WHERE id=?", id).Scan(&deadline); e != nil {
 			return e
@@ -372,6 +425,10 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		} else {
 			for _, p := range peers {
 				if !fits(p, t) {
+					continue
+				}
+				if jc != nil && !fitsJob(p, t, jc) {
+					blocker = "TEMPLATE_OR_CAPABILITY_MISMATCH"
 					continue
 				}
 				var active int
@@ -399,8 +456,11 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 			_, e = q.ExecContext(ctx, "UPDATE tasks SET blocker=? WHERE id=?", blocker, id)
 			return e
 		}
-		a := &pb.Assignment{TaskId: id, AttemptId: store.ID(), Generation: 1, LeaseToken: store.ID(), LeaseTtlMs: int64(s.cfg.LeaseSeconds) * 1000, DeadlineMs: deadline, Spec: t.Spec}
+		a := &pb.Assignment{TaskId: id, AttemptId: store.ID(), Generation: 1, LeaseToken: store.ID() + store.ID(), LeaseTtlMs: int64(s.cfg.LeaseSeconds) * 1000, DeadlineMs: deadline, Spec: t.Spec, Job: jc}
 		if _, e = q.ExecContext(ctx, "INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until) VALUES(?,?,?,?,?,?,?)", a.AttemptId, id, chosen.hello.WorkerId, chosen.hello.Epoch, 1, a.LeaseToken, store.Now()+a.LeaseTtlMs); e != nil {
+			return e
+		}
+		if e = s.bindGateway(ctx, q, a, j); e != nil {
 			return e
 		}
 		if _, e = q.ExecContext(ctx, "UPDATE tasks SET attempt=?,worker=?,blocker='' WHERE id=?", a.AttemptId, chosen.hello.WorkerId, id); e != nil {
@@ -408,6 +468,15 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		}
 		if e = setState(ctx, q, id, "STARTING", "", ""); e != nil {
 			return e
+		}
+		if j != nil && j.State == "QUEUED" {
+			next := "MAPPING"
+			if j.Mode == "single" {
+				next = "EXECUTING"
+			}
+			if e = jobState(ctx, q, j, next, "", ""); e != nil {
+				return e
+			}
 		}
 		return saveCommand(ctx, q, chosen.hello.WorkerId, "start", a)
 	})

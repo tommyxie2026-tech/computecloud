@@ -1,6 +1,6 @@
-# v0.2 设计示例
+# v0.2 接入示例
 
-这些是待实施接口的示例，不能直接交给 v0.1 的 `task submit` 或配置加载器运行。日期：2026-09-22。
+这些示例对应已实现的 v0.2，使用 `job submit` 或 HTTP/MCP；不能交给旧 `task submit`。日期：2026-09-22。
 
 | 文件 | 用途 |
 | --- | --- |
@@ -9,11 +9,11 @@
 | [job-map-reduce.json](job-map-reduce.json) | Codex + Claude 分片审查、Codex 汇总 |
 | [codex-mcp.toml](codex-mcp.toml) | 本地 Codex 通过 MCP 提交远端任务 |
 | [codex-gateway.toml](codex-gateway.toml) | 本地 Codex 使用 G1 模型代理；不会自动委派任务 |
-| [server-v0.2.yaml](server-v0.2.yaml) | 新增 Server 配置段建议，非完整可运行配置 |
+| [server-v0.2.yaml](server-v0.2.yaml) | Server 增量配置段，非完整可运行配置 |
 
 两个 Job 示例中的基线取项目 v0.1 代码提交。执行前需在各 Worker 配置 repository_ref=computecloud 并准备该 commit；configured-*-model、凭据/策略/验收名称均为需替换的占位引用，不能推定为上游真实模型或已经存在的模板。
 
-实现后，HTTP 提交采用以下形式；命令现在只用于说明接口：
+按[运行指南](../../implementation/v0.2-runbook.md)完成配置后，可用 HTTP 提交：
 
 ```sh
 curl --fail-with-body \

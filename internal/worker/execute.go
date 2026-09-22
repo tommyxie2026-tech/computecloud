@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -122,20 +123,47 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "INVALID_POLICY", ErrorMessage: e.Error()})
 		return
 	}
-	env, secrets, e := runtimeEnv(r, a.Spec.CredentialRef)
+	runtimeConfig := r
+	if a.Gateway != nil {
+		runtimeConfig.CredentialEnv = nil
+	}
+	env, secrets, e := runtimeEnv(runtimeConfig, a.Spec.CredentialRef)
 	if e != nil {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "AUTHENTICATION_REQUIRED", ErrorMessage: "credential file unavailable"})
 		return
+	}
+	if a.Gateway != nil {
+		if a.Spec.RuntimeProfile != "codex_exec" || a.Gateway.Token == "" || a.Gateway.BaseUrl == "" {
+			complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "INVALID_GATEWAY"})
+			return
+		}
+		for i := len(env) - 1; i >= 0; i-- {
+			if strings.HasPrefix(env[i], "COMPUTECLOUD_MODEL_TOKEN=") || strings.HasPrefix(env[i], "OPENAI_API_KEY=") {
+				env = append(env[:i], env[i+1:]...)
+			}
+		}
+		env = append(env, "COMPUTECLOUD_MODEL_TOKEN="+a.Gateway.Token)
+		secrets = append(secrets, a.Gateway.Token)
+		args = args[:len(args)-1]
+		for _, setting := range []string{`model_provider="computecloud"`, `model_providers.computecloud.name="computecloud"`, "model_providers.computecloud.base_url=" + strconv.Quote(a.Gateway.BaseUrl), `model_providers.computecloud.env_key="COMPUTECLOUD_MODEL_TOKEN"`, `model_providers.computecloud.wire_api="responses"`, `model_providers.computecloud.requires_openai_auth=false`, `model_providers.computecloud.request_max_retries=0`, `model_providers.computecloud.stream_max_retries=0`} {
+			args = append(args, "-c", setting)
+		}
+		args = append(args, "-")
 	}
 	cwd, e := workspace.Prepare(ctx, filepath.Join(w.cfg.DataDir, "workspaces"), a.AttemptId, w.cfg.Repositories[a.Spec.Workspace.RepositoryRef], a.Spec.Workspace.BaseCommit)
 	if e != nil {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "WORKSPACE_ERROR", ErrorMessage: e.Error()})
 		return
 	}
+	jobRun, e := w.prepareJob(ctx, a, cwd)
+	if e != nil {
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: jobInputCode(e), ErrorMessage: e.Error()})
+		return
+	}
 	parser := &adapter.Parser{Profile: a.Spec.RuntimeProfile, Emit: func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) }}
 	lines := &adapter.Lines{Limit: 4 << 20, OnLine: parser.Line, OnError: cancel}
 	stderr := &capped{limit: 1 << 20}
-	run := process.Run(ctx, r.Executable, args, env, cwd, strings.NewReader(a.Spec.Input.Text), lines, stderr, time.Duration(w.cfg.StopGraceMS)*time.Millisecond, func(pid int, id string) error {
+	run := process.Run(ctx, r.Executable, args, env, cwd, strings.NewReader(jobRun.prompt), lines, stderr, time.Duration(w.cfg.StopGraceMS)*time.Millisecond, func(pid int, id string) error {
 		if _, e := w.db.SQL.ExecContext(persistCtx, "UPDATE runs SET state='RUNNING',pid=?,start_id=? WHERE id=?", pid, id, a.AttemptId); e != nil {
 			return e
 		}
@@ -204,8 +232,29 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		code = "ARTIFACT_ERROR"
 		msg = diffErr.Error()
 	}
-	report := config.JSON(map[string]any{"task_id": a.TaskId, "attempt_id": a.AttemptId, "base_commit": a.Spec.Workspace.BaseCommit, "model": a.Spec.Model, "native_final": out.Final, "native_success": out.Success, "exit_code": run.ExitCode, "cleanup_confirmed": run.Cleanup, "verification": verification, "result": string(redact([]byte(out.Result), secrets)), "stderr_truncated": stderr.truncated})
-	artifact, e := w.bundle(a, map[string][]byte{"report.json": report, "changes.patch": redact(diff, secrets), "stderr.log": redact(stderr.Bytes(), secrets)})
+	files := map[string][]byte{}
+	if success {
+		extra, je := finishJobOutput(ctx, a, cwd, string(redact([]byte(out.Result), secrets)), diff, jobRun, verification)
+		if je != nil {
+			success = false
+			code = "JOB_OUTPUT_INVALID"
+			msg = je.Error()
+		} else {
+			for name, b := range extra {
+				files[name] = redact(b, secrets)
+			}
+		}
+	}
+	if a.Job != nil && !bytes.Equal(diff, redact(diff, secrets)) {
+		success = false
+		code = "SENSITIVE_PATCH"
+		msg = "patch contained injected credential"
+	}
+	report := config.JSON(map[string]any{"task_id": a.TaskId, "attempt_id": a.AttemptId, "base_commit": a.Spec.Workspace.BaseCommit, "model": a.Spec.Model, "runtime_version": r.Version, "template_digest": a.GetJob().GetTemplateDigest(), "native_final": out.Final, "native_success": out.Success, "exit_code": run.ExitCode, "cleanup_confirmed": run.Cleanup, "verification": verification, "result": string(redact([]byte(out.Result), secrets)), "stderr_truncated": stderr.truncated, "manifest_sha256": a.GetJob().GetInputManifestSha256()})
+	files["report.json"] = report
+	files["changes.patch"] = redact(diff, secrets)
+	files["stderr.log"] = redact(stderr.Bytes(), secrets)
+	artifact, e := w.bundle(a, files)
 	var ids []string
 	if e != nil {
 		success = false

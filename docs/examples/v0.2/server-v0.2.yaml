@@ -1,4 +1,4 @@
-# 设计用增量片段：v0.1 会拒绝这些新键，不能直接启动。
+# v0.2 增量片段；需合并原配置并替换占位值。v0.1 不支持新增键。
 # 与现有 server.listen/data_dir/tls/credentials/workers 配置合并。
 # HTTP 与 gRPC 使用同一 server.tls 配置，远程必须 TLS。
 server:
@@ -24,9 +24,10 @@ server:
   mcp:
     enabled: true
     path: "/mcp"
-  # G1 实现并验收后才启用；仅设 enabled 不代表兼容已验证。
+  # G1 已实现；目标 Codex/上游兼容验收后启用。
   model_gateway:
     enabled: false
+    public_base_url: "https://computecloud.example.internal:7444/v1"
     max_request_bytes: 16777216
     max_inflight: 16
     connect_timeout_seconds: 30

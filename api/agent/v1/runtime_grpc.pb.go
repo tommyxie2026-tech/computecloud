@@ -19,19 +19,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RuntimeService_SubmitTask_FullMethodName       = "/computecloud.agent.v1.RuntimeService/SubmitTask"
-	RuntimeService_GetTask_FullMethodName          = "/computecloud.agent.v1.RuntimeService/GetTask"
-	RuntimeService_CancelTask_FullMethodName       = "/computecloud.agent.v1.RuntimeService/CancelTask"
-	RuntimeService_WatchEvents_FullMethodName      = "/computecloud.agent.v1.RuntimeService/WatchEvents"
-	RuntimeService_ListWorkers_FullMethodName      = "/computecloud.agent.v1.RuntimeService/ListWorkers"
-	RuntimeService_SendInput_FullMethodName        = "/computecloud.agent.v1.RuntimeService/SendInput"
-	RuntimeService_RespondApproval_FullMethodName  = "/computecloud.agent.v1.RuntimeService/RespondApproval"
-	RuntimeService_ListArtifacts_FullMethodName    = "/computecloud.agent.v1.RuntimeService/ListArtifacts"
-	RuntimeService_DownloadArtifact_FullMethodName = "/computecloud.agent.v1.RuntimeService/DownloadArtifact"
-	RuntimeService_ConnectWorker_FullMethodName    = "/computecloud.agent.v1.RuntimeService/ConnectWorker"
-	RuntimeService_ReportEvents_FullMethodName     = "/computecloud.agent.v1.RuntimeService/ReportEvents"
-	RuntimeService_CompleteAttempt_FullMethodName  = "/computecloud.agent.v1.RuntimeService/CompleteAttempt"
-	RuntimeService_UploadArtifact_FullMethodName   = "/computecloud.agent.v1.RuntimeService/UploadArtifact"
+	RuntimeService_SubmitTask_FullMethodName            = "/computecloud.agent.v1.RuntimeService/SubmitTask"
+	RuntimeService_GetTask_FullMethodName               = "/computecloud.agent.v1.RuntimeService/GetTask"
+	RuntimeService_CancelTask_FullMethodName            = "/computecloud.agent.v1.RuntimeService/CancelTask"
+	RuntimeService_WatchEvents_FullMethodName           = "/computecloud.agent.v1.RuntimeService/WatchEvents"
+	RuntimeService_ListWorkers_FullMethodName           = "/computecloud.agent.v1.RuntimeService/ListWorkers"
+	RuntimeService_SendInput_FullMethodName             = "/computecloud.agent.v1.RuntimeService/SendInput"
+	RuntimeService_RespondApproval_FullMethodName       = "/computecloud.agent.v1.RuntimeService/RespondApproval"
+	RuntimeService_ListArtifacts_FullMethodName         = "/computecloud.agent.v1.RuntimeService/ListArtifacts"
+	RuntimeService_DownloadArtifact_FullMethodName      = "/computecloud.agent.v1.RuntimeService/DownloadArtifact"
+	RuntimeService_DownloadInputArtifact_FullMethodName = "/computecloud.agent.v1.RuntimeService/DownloadInputArtifact"
+	RuntimeService_ConnectWorker_FullMethodName         = "/computecloud.agent.v1.RuntimeService/ConnectWorker"
+	RuntimeService_ReportEvents_FullMethodName          = "/computecloud.agent.v1.RuntimeService/ReportEvents"
+	RuntimeService_CompleteAttempt_FullMethodName       = "/computecloud.agent.v1.RuntimeService/CompleteAttempt"
+	RuntimeService_UploadArtifact_FullMethodName        = "/computecloud.agent.v1.RuntimeService/UploadArtifact"
 )
 
 // RuntimeServiceClient is the client API for RuntimeService service.
@@ -47,6 +48,7 @@ type RuntimeServiceClient interface {
 	RespondApproval(ctx context.Context, in *ControlRequest, opts ...grpc.CallOption) (*Ack, error)
 	ListArtifacts(ctx context.Context, in *TaskRef, opts ...grpc.CallOption) (*Artifacts, error)
 	DownloadArtifact(ctx context.Context, in *ArtifactRef, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Chunk], error)
+	DownloadInputArtifact(ctx context.Context, in *InputArtifactRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Chunk], error)
 	ConnectWorker(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[WorkerFrame, ServerFrame], error)
 	ReportEvents(ctx context.Context, in *ReportRequest, opts ...grpc.CallOption) (*Ack, error)
 	CompleteAttempt(ctx context.Context, in *CompleteRequest, opts ...grpc.CallOption) (*Ack, error)
@@ -169,9 +171,28 @@ func (c *runtimeServiceClient) DownloadArtifact(ctx context.Context, in *Artifac
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type RuntimeService_DownloadArtifactClient = grpc.ServerStreamingClient[Chunk]
 
+func (c *runtimeServiceClient) DownloadInputArtifact(ctx context.Context, in *InputArtifactRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Chunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &RuntimeService_ServiceDesc.Streams[2], RuntimeService_DownloadInputArtifact_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[InputArtifactRequest, Chunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type RuntimeService_DownloadInputArtifactClient = grpc.ServerStreamingClient[Chunk]
+
 func (c *runtimeServiceClient) ConnectWorker(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[WorkerFrame, ServerFrame], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &RuntimeService_ServiceDesc.Streams[2], RuntimeService_ConnectWorker_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &RuntimeService_ServiceDesc.Streams[3], RuntimeService_ConnectWorker_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +225,7 @@ func (c *runtimeServiceClient) CompleteAttempt(ctx context.Context, in *Complete
 
 func (c *runtimeServiceClient) UploadArtifact(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ArtifactChunk, Artifact], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &RuntimeService_ServiceDesc.Streams[3], RuntimeService_UploadArtifact_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &RuntimeService_ServiceDesc.Streams[4], RuntimeService_UploadArtifact_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -228,6 +249,7 @@ type RuntimeServiceServer interface {
 	RespondApproval(context.Context, *ControlRequest) (*Ack, error)
 	ListArtifacts(context.Context, *TaskRef) (*Artifacts, error)
 	DownloadArtifact(*ArtifactRef, grpc.ServerStreamingServer[Chunk]) error
+	DownloadInputArtifact(*InputArtifactRequest, grpc.ServerStreamingServer[Chunk]) error
 	ConnectWorker(grpc.BidiStreamingServer[WorkerFrame, ServerFrame]) error
 	ReportEvents(context.Context, *ReportRequest) (*Ack, error)
 	CompleteAttempt(context.Context, *CompleteRequest) (*Ack, error)
@@ -268,6 +290,9 @@ func (UnimplementedRuntimeServiceServer) ListArtifacts(context.Context, *TaskRef
 }
 func (UnimplementedRuntimeServiceServer) DownloadArtifact(*ArtifactRef, grpc.ServerStreamingServer[Chunk]) error {
 	return status.Error(codes.Unimplemented, "method DownloadArtifact not implemented")
+}
+func (UnimplementedRuntimeServiceServer) DownloadInputArtifact(*InputArtifactRequest, grpc.ServerStreamingServer[Chunk]) error {
+	return status.Error(codes.Unimplemented, "method DownloadInputArtifact not implemented")
 }
 func (UnimplementedRuntimeServiceServer) ConnectWorker(grpc.BidiStreamingServer[WorkerFrame, ServerFrame]) error {
 	return status.Error(codes.Unimplemented, "method ConnectWorker not implemented")
@@ -450,6 +475,17 @@ func _RuntimeService_DownloadArtifact_Handler(srv interface{}, stream grpc.Serve
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type RuntimeService_DownloadArtifactServer = grpc.ServerStreamingServer[Chunk]
 
+func _RuntimeService_DownloadInputArtifact_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(InputArtifactRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(RuntimeServiceServer).DownloadInputArtifact(m, &grpc.GenericServerStream[InputArtifactRequest, Chunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type RuntimeService_DownloadInputArtifactServer = grpc.ServerStreamingServer[Chunk]
+
 func _RuntimeService_ConnectWorker_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(RuntimeServiceServer).ConnectWorker(&grpc.GenericServerStream[WorkerFrame, ServerFrame]{ServerStream: stream})
 }
@@ -553,6 +589,11 @@ var RuntimeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "DownloadArtifact",
 			Handler:       _RuntimeService_DownloadArtifact_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "DownloadInputArtifact",
+			Handler:       _RuntimeService_DownloadInputArtifact_Handler,
 			ServerStreams: true,
 		},
 		{

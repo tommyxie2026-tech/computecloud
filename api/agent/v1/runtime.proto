@@ -44,6 +44,7 @@ message Runtime {
   string profile = 1; string version = 2; repeated string models = 3;
   repeated string credentials = 4; repeated string capabilities = 5;
   repeated string repositories = 6; repeated string policies = 7; repeated string verifiers = 8;
+  map<string, string> template_digests = 9;
 }
 message WorkerHello { string worker_id = 1; string epoch = 2; int32 slots = 3; repeated Runtime runtimes = 4; }
 message WorkerStatus { string worker_id = 1; bool online = 2; int32 slots = 3; int32 active = 4; int64 last_seen_ms = 5; repeated Runtime runtimes = 6; }
@@ -56,7 +57,17 @@ message Assignment {
   string task_id = 1; string attempt_id = 2; int64 generation = 3;
   string lease_token = 4; int64 lease_ttl_ms = 5; int64 deadline_ms = 6;
   TaskSpec spec = 7;
+  JobExecution job = 8;
+  GatewayAccess gateway = 9;
 }
+message JobExecution {
+  string job_id = 1; string stage = 2; string partition_key = 3;
+  repeated string scope_paths = 4; string strategy = 5; string template_digest = 6;
+  bytes input_manifest_json = 7; string input_manifest_sha256 = 8;
+  int64 input_limit_bytes = 9;
+}
+message GatewayAccess { string base_url = 1; string token = 2; string route = 3; }
+message InputArtifactRequest { AttemptRef attempt = 1; string artifact_id = 2; }
 message Command { string command_id = 1; string kind = 2; Assignment assignment = 3; }
 message LeaseGrant { string attempt_id = 1; int64 ttl_ms = 2; bool valid = 3; }
 message ServerFrame { oneof body { Command command = 1; LeaseGrant lease = 2; } }
@@ -82,6 +93,7 @@ service RuntimeService {
   rpc RespondApproval(ControlRequest) returns (Ack);
   rpc ListArtifacts(TaskRef) returns (Artifacts);
   rpc DownloadArtifact(ArtifactRef) returns (stream Chunk);
+  rpc DownloadInputArtifact(InputArtifactRequest) returns (stream Chunk);
   rpc ConnectWorker(stream WorkerFrame) returns (stream ServerFrame);
   rpc ReportEvents(ReportRequest) returns (Ack);
   rpc CompleteAttempt(CompleteRequest) returns (Ack);

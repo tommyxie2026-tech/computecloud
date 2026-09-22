@@ -31,7 +31,7 @@ func Backup(ctx context.Context, dir, out string) error {
 	if _, e = os.Stat(filepath.Join(dir, "state.db")); e != nil {
 		return e
 	}
-	d, e := store.Open(dir, store.ServerSchema)
+	d, e := store.OpenForBackup(dir)
 	if e != nil {
 		return e
 	}

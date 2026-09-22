@@ -1,7 +1,7 @@
 # ADR-002：双入口网关与显式 Map/Reduce
 
 - 日期：2026-09-22
-- 状态：已确定设计，待实现
+- 状态：已实施于 v0.2；真实模型与双机验收待完成
 - 约束：Go、SQLite、单活动 Server，整体轻量简单
 - 关联：[主设计](../design/gateway-mapreduce-v0.2.md)、[契约](../contracts/job-gateway-v0.2.md)、[实施计划](../implementation/v0.2-plan.md)
 

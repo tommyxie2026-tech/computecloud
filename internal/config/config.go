@@ -18,11 +18,14 @@ type TLS struct {
 	InsecureLoopback bool   `yaml:"insecure_loopback"`
 }
 type Identity struct {
-	TokenFile   string   `yaml:"token_file"`
-	Owner       string   `yaml:"owner"`
-	Projects    []string `yaml:"projects"`
-	Credentials []string `yaml:"credentials"`
-	WorkerID    string   `yaml:"worker_id"`
+	TokenFile    string   `yaml:"token_file"`
+	Owner        string   `yaml:"owner"`
+	Projects     []string `yaml:"projects"`
+	Credentials  []string `yaml:"credentials"`
+	WorkerID     string   `yaml:"worker_id"`
+	Scopes       []string `yaml:"scopes"`
+	ModelProject string   `yaml:"model_project"`
+	ModelRoute   string   `yaml:"model_route"`
 }
 type Server struct {
 	Listen           string            `yaml:"listen"`
@@ -37,6 +40,10 @@ type Server struct {
 	MaxArtifactBytes int64             `yaml:"max_artifact_bytes"`
 	MaxProjectTasks  int               `yaml:"max_project_tasks"`
 	Maintenance      bool              `yaml:"maintenance"`
+	HTTP             HTTP              `yaml:"http"`
+	Jobs             Jobs              `yaml:"jobs"`
+	MCP              MCP               `yaml:"mcp"`
+	ModelGateway     ModelGateway      `yaml:"model_gateway"`
 }
 type Runtime struct {
 	Executable    string                       `yaml:"executable"`
@@ -68,6 +75,7 @@ type Client struct {
 	Address   string `yaml:"address"`
 	TokenFile string `yaml:"token_file"`
 	TLS       TLS    `yaml:"tls"`
+	HTTPURL   string `yaml:"http_url"`
 }
 type Config struct {
 	Server Server `yaml:"server"`
@@ -110,6 +118,10 @@ func Load(path string) (Config, error) {
 	for i := range c.Server.Workers {
 		c.Server.Workers[i].TokenFile = abs(c.Server.Workers[i].TokenFile)
 	}
+	for key, route := range c.Server.ModelGateway.Routes {
+		route.APIKeyFile = abs(route.APIKeyFile)
+		c.Server.ModelGateway.Routes[key] = route
+	}
 	for k, v := range c.Worker.Repositories {
 		c.Worker.Repositories[k] = abs(v)
 	}
@@ -146,6 +158,7 @@ func Load(path string) (Config, error) {
 	if c.Worker.StopGraceMS == 0 {
 		c.Worker.StopGraceMS = 3000
 	}
+	c.Server.DefaultV02()
 	return c, nil
 }
 func Token(path string) (string, error) {
@@ -176,7 +189,7 @@ func (c Server) Validate() error {
 			return fmt.Errorf("invalid credential limit %q", k)
 		}
 	}
-	return nil
+	return c.ValidateV02()
 }
 func (c Worker) Validate() error {
 	if c.ID == "" || c.DataDir == "" || c.Address == "" || c.Slots < 1 || len(c.Runtimes) == 0 {

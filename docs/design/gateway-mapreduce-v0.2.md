@@ -1,7 +1,7 @@
 # Token 网关与 Map/Reduce 作业设计
 
-- 项目：computecloud；设计版本：1；日期：2026-09-22。
-- 状态：设计完成，待实施。本文和配套示例均不表示 v0.1 已具备这些功能。
+- 项目：computecloud；设计版本：2；日期：2026-09-22。
+- 状态：v0.2 已实现并通过本地 fixture 验证；真实客户端、上游和双机验收见[验证记录](../validation/v0.2-results.md)。
 - 基线：代码提交 `576713d`、交付文档提交 `2869aea`；单 Go 二进制、单活动 Server、本机 SQLite、多节点 Worker。
 - 配套：[接口与数据契约](../contracts/job-gateway-v0.2.md)、[实施计划与验收](../implementation/v0.2-plan.md)、[ADR-002](../adr/0002-gateway-mapreduce.md)。
 
@@ -196,9 +196,9 @@ R1 是后续独立迁移和验收，默认仍为一次 Attempt。只有服务端
 - Worker 的 Codex 配置默认不装载本平台的 `submit_job` MCP 工具，且只获得执行/模型权限，不能递归创建作业。
 - 整个传输层使用 TLS。内网 Token 网关沿用受信节点前提，不增加 SSO/OAuth 服务；未来面向第三方开放时另立身份设计。
 
-G1 中，若需要把 Worker 推理量归属到 Attempt，分配时生成独立的随机模型 Token，在 Attempt 行保存哈希，通过受保护的 Assignment 交付。它只允许该 Attempt 的模型路由，不能用于任务提交或 Worker 控制。网关逐次检查当前代次、租约、Job 停止状态和绝对 deadline；租约失效/取消/释放后拒绝新推理并尽力取消已在途请求。
+G1 中，若需要把 Worker 推理量归属到 Attempt，分配时从该 Attempt 的 256 位随机租约材料、ID、代次和专用域标签派生模型 Token，在 Attempt 行保存哈希，通过受保护的 Assignment 交付。它只允许该 Attempt 的模型路由，不能用于任务提交或 Worker 控制。网关逐次检查当前代次、租约、Job 停止状态和绝对 deadline；租约失效/取消/释放后拒绝新推理并尽力取消已在途请求。
 
-原始模型 Token 只存在于受保护的命令/Worker 执行数据中，权限与现有租约秘密一致；不在 GetTask、事件、产物中返回。Worker 通过运行时配置和子进程环境注入，不把密钥拼进 shell 命令。服务端上游 API Key 不下发给调用方。
+原始模型 Token 只通过受保护的命令传输，并存在于 Worker 私有执行数据中；Server 持久 start 命令不含原文，重放时重新派生，权限与现有租约秘密一致；不在 GetTask、事件、产物中返回。Worker 通过运行时配置和子进程环境注入，不把密钥拼进 shell 命令。服务端上游 API Key 不下发给调用方。
 
 ## 7. G1 模型网关
 
@@ -226,7 +226,7 @@ OpenAI 用量中的 cached/reasoning 等子项作为明细保留，不再次加�
 
 核心 schema v2 新增 `jobs`、`job_events` 两张表，在 `tasks` 增加归属/阶段/分片字段；继续复用 attempts、commands、controls、events、artifacts。Job 事件只记阶段、计数、停止和产物摘要，详细输出仍在 Task 事件中，避免重复存储。
 
-G1 schema v3 再新增请求用量表及 Attempt 模型 Token 哈希字段。R1 后续才重建当前带 `task UNIQUE` 的 attempts 表。三个阶段有独立迁移，不用打开新网关来换取旧任务继续运行。
+G1 schema v3 再新增请求用量表及 Attempt 模型 Token 哈希字段。R1 后续才重建当前带 `task UNIQUE` 的 attempts 表。v2/v3 是顺序事务迁移，当前 Server 不论 G1 开关均升级到 schema v3；Worker 数据版本升为 2 以阻止旧程序误读新 Assignment。R1 未实施。
 
 升级前暂停接收、排空执行并停止服务，备份完整数据目录，再在独占锁内事务迁移，执行完整性/外键检查后更新 `user_version`。新 Server 保留旧 Task 查询和恢复能力；旧 Worker 可执行独立旧 Task，Job 子任务必须匹配新能力标识。旧二进制拒绝打开新 schema；回退用升级前备份，不直接把版本号改回去。
 
@@ -234,12 +234,14 @@ G1 schema v3 再新增请求用量表及 Attempt 模型 Token 哈希字段。R1 
 
 ## 9. 实施落点与验收
 
-| 路径/模块 | 拟修改内容 |
+为保持实现简单，HTTP/MCP/网关适配集中在现有 server 包，Job 数据契约放在 internal/job；没有再增加内部 RPC 或独立服务。见[运行指南](../implementation/v0.2-runbook.md)。
+
+| 路径/模块 | 实现内容 |
 | --- | --- |
 | `internal/server` | 提取公用授权/提交函数，Job 推进、停止扇出、屏障事务、调度公平性 |
 | `internal/store` | 显式版本迁移、Job 唯一约束、事件和摘要查询 |
-| `internal/httpapi`、`internal/mcpapi`（新增） | HTTP/JSON 和 MCP 适配，调用同一应用服务 |
-| `internal/modelgateway`（G1 新增） | 固定路由、流转发、请求用量、Attempt 绑定凭据 |
+| `internal/server/http.go`、`mcp.go` | HTTP/JSON 和 MCP 适配，调用同一应用服务 |
+| `internal/server/gateway*.go` | 固定路由、流转发、请求用量、Attempt 绑定凭据 |
 | `internal/worker`、`internal/workspace` | 输入产物获取、模板摘要核验、报告/补丁策略 |
 | `api/agent/v1/runtime.proto` | 可选 Job 执行上下文、输入下载 RPC、能力声明 |
 | `internal/config`、`cmd/computecloud` | HTTP 监听、权限、模板和 CLI Job 命令 |

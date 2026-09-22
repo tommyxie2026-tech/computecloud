@@ -25,7 +25,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var version = "0.1.0"
+var version = "0.2.0"
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -60,7 +60,7 @@ func printEvent(ev *pb.Event) error {
 }
 func run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: computecloud server|worker|task|workers|artifact|backup|version")
+		return fmt.Errorf("usage: computecloud server|worker|job|task|workers|artifact|templates|backup|version")
 	}
 	if args[0] == "version" || args[0] == "--version" {
 		fmt.Printf("computecloud %s (%s, %s/%s)\n", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
@@ -69,7 +69,7 @@ func run(ctx context.Context, args []string) error {
 	group := args[0]
 	op := ""
 	args = args[1:]
-	if group == "task" || group == "artifact" {
+	if group == "task" || group == "artifact" || group == "job" {
 		if len(args) == 0 {
 			return fmt.Errorf("subcommand required")
 		}
@@ -85,6 +85,9 @@ func run(ctx context.Context, args []string) error {
 	artifact := fs.String("artifact", "", "artifact ID")
 	out := fs.String("out", "", "output file (must not exist)")
 	dataDir := fs.String("data-dir", "", "offline server data directory")
+	key := fs.String("key", "", "Job submission idempotency key")
+	cursor := fs.String("cursor", "", "Job task/artifact page cursor")
+	limit := fs.Int("limit", 50, "Job page size")
 	if e := fs.Parse(args); e != nil {
 		return e
 	}
@@ -100,6 +103,15 @@ func run(ctx context.Context, args []string) error {
 	c, e := config.Load(*cfgFile)
 	if e != nil {
 		return e
+	}
+	if group == "templates" {
+		if e = c.Worker.Validate(); e != nil {
+			return e
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{"templates": config.Templates(c.Worker)})
+	}
+	if group == "job" {
+		return runJob(ctx, c.Client, jobOptions{op: op, file: *file, id: *id, key: *key, control: *control, artifact: *artifact, out: *out, cursor: *cursor, after: *after, limit: *limit})
 	}
 	switch group {
 	case "server":

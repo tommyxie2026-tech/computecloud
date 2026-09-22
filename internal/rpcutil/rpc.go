@@ -55,15 +55,38 @@ func (a *Auth) Context(ctx context.Context) (context.Context, error) {
 	if len(v) != 1 || !strings.HasPrefix(v[0], "Bearer ") {
 		return ctx, status.Error(codes.Unauthenticated, "authentication required")
 	}
-	p, ok := a.identities[sha256.Sum256([]byte(strings.TrimPrefix(v[0], "Bearer ")))]
+	return a.Bearer(ctx, v[0])
+}
+func (a *Auth) Bearer(ctx context.Context, header string) (context.Context, error) {
+	if !strings.HasPrefix(header, "Bearer ") {
+		return ctx, status.Error(codes.Unauthenticated, "authentication required")
+	}
+	p, ok := a.identities[sha256.Sum256([]byte(strings.TrimPrefix(header, "Bearer ")))]
 	if !ok {
 		return ctx, status.Error(codes.Unauthenticated, "authentication required")
 	}
 	return context.WithValue(ctx, contextKey{}, p), nil
 }
+func WithPrincipal(ctx context.Context, p Principal) context.Context {
+	return context.WithValue(ctx, contextKey{}, p)
+}
+func PrincipalFrom(ctx context.Context) (Principal, bool) {
+	p, ok := ctx.Value(contextKey{}).(Principal)
+	return p, ok
+}
+func Require(ctx context.Context, scope string, legacy bool) (Principal, error) {
+	p, e := User(ctx)
+	if e != nil {
+		return p, e
+	}
+	if (legacy && len(p.Identity.Scopes) == 0) || config.Contains(p.Identity.Scopes, scope) {
+		return p, nil
+	}
+	return p, status.Error(codes.PermissionDenied, "scope not granted")
+}
 func User(ctx context.Context) (Principal, error) {
 	p, ok := ctx.Value(contextKey{}).(Principal)
-	if !ok || p.Worker {
+	if !ok || p.Worker || (len(p.Identity.Scopes) == 1 && p.Identity.Scopes[0] == "models:invoke") {
 		return p, status.Error(codes.PermissionDenied, "user identity required")
 	}
 	return p, nil

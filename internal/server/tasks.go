@@ -52,6 +52,16 @@ func readTask(ctx context.Context, q store.Query, id string) (*pb.Task, string, 
 	return t, owner, e
 }
 func (s *Server) authorized(ctx context.Context, id string) (*pb.Task, error) {
+	t, e := s.authorizedOwner(ctx, id)
+	if e != nil {
+		return nil, e
+	}
+	if e = taskJobReadScope(ctx, s.db.SQL, id); e != nil {
+		return nil, e
+	}
+	return t, nil
+}
+func (s *Server) authorizedOwner(ctx context.Context, id string) (*pb.Task, error) {
 	p, e := rpcutil.User(ctx)
 	if e != nil {
 		return nil, e
@@ -69,7 +79,7 @@ func (s *Server) authorized(ctx context.Context, id string) (*pb.Task, error) {
 var commitRE = regexp.MustCompile(`^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$`)
 
 func (s *Server) SubmitTask(ctx context.Context, in *pb.TaskSpec) (*pb.Task, error) {
-	p, e := rpcutil.User(ctx)
+	p, e := rpcutil.Require(ctx, "tasks:submit", true)
 	if e != nil {
 		return nil, e
 	}
@@ -77,6 +87,9 @@ func (s *Server) SubmitTask(ctx context.Context, in *pb.TaskSpec) (*pb.Task, err
 		return nil, status.Error(codes.Unavailable, "maintenance mode")
 	}
 	spec := proto.Clone(in).(*pb.TaskSpec)
+	if strings.HasPrefix(spec.IdempotencyKey, "__job/") {
+		return nil, status.Error(codes.InvalidArgument, "reserved idempotency prefix")
+	}
 	if !config.Contains(p.Identity.Projects, spec.ProjectId) || !config.Contains(p.Identity.Credentials, spec.CredentialRef) {
 		return nil, status.Error(codes.PermissionDenied, "project or credential not allowed")
 	}
@@ -176,11 +189,21 @@ func (s *Server) GetTask(ctx context.Context, r *pb.TaskRef) (*pb.Task, error) {
 	return s.authorized(ctx, r.TaskId)
 }
 func (s *Server) CancelTask(ctx context.Context, r *pb.CancelRequest) (*pb.Task, error) {
+	if _, e := rpcutil.Require(ctx, "tasks:cancel", true); e != nil {
+		return nil, e
+	}
 	if r.ControlId == "" || len(r.Reason) > 1000 {
 		return nil, status.Error(codes.InvalidArgument, "control_id required and reason must be bounded")
 	}
-	if _, e := s.authorized(ctx, r.TaskId); e != nil {
+	if _, e := s.authorizedOwner(ctx, r.TaskId); e != nil {
 		return nil, e
+	}
+	var managed int
+	if e := s.db.SQL.QueryRowContext(ctx, "SELECT count(*) FROM tasks WHERE id=? AND job_id IS NOT NULL", r.TaskId).Scan(&managed); e != nil {
+		return nil, dbErr(e)
+	}
+	if managed != 0 {
+		return nil, status.Error(codes.FailedPrecondition, "MANAGED_JOB_TASK")
 	}
 	e := s.db.Tx(ctx, func(q store.Query) error {
 		hash := store.Hash(encode(r))
@@ -217,7 +240,7 @@ func (s *Server) CancelTask(ctx context.Context, r *pb.CancelRequest) (*pb.Task,
 	if e != nil {
 		return nil, dbErr(e)
 	}
-	return s.authorized(ctx, r.TaskId)
+	return s.authorizedOwner(ctx, r.TaskId)
 }
 func setState(ctx context.Context, q store.Query, id, state, code, msg string) error {
 	var old string
@@ -237,7 +260,17 @@ func setState(ctx context.Context, q store.Query, id, state, code, msg string) e
 	if terminal(state) {
 		typ = "task.completed"
 	}
-	return appendEvent(ctx, q, &pb.Event{TaskId: id, Type: typ, PayloadJson: config.JSON(map[string]string{"from": old, "to": state, "code": code, "message": msg})}, nil)
+	if e := appendEvent(ctx, q, &pb.Event{TaskId: id, Type: typ, PayloadJson: config.JSON(map[string]string{"from": old, "to": state, "code": code, "message": msg})}, nil); e != nil {
+		return e
+	}
+	var jid sql.NullString
+	if e := q.QueryRowContext(ctx, "SELECT job_id FROM tasks WHERE id=?", id).Scan(&jid); e != nil {
+		return e
+	}
+	if jid.Valid {
+		return appendJobEvent(ctx, q, jid.String, "job.task_state", map[string]string{"task_id": id, "from": old, "to": state, "code": code}, "", "")
+	}
+	return nil
 }
 func (s *Server) WatchEvents(r *pb.WatchRequest, stream grpc.ServerStreamingServer[pb.Event]) error {
 	t, e := s.authorized(stream.Context(), r.TaskId)

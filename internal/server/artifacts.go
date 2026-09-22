@@ -12,6 +12,7 @@ import (
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
+	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -112,17 +113,30 @@ func (s *Server) UploadArtifact(stream grpc.ClientStreamingServer[pb.ArtifactChu
 	if e != nil {
 		return e
 	}
-	_, e = s.db.SQL.ExecContext(stream.Context(), "INSERT INTO artifacts(id,task,attempt,kind,hash,size,path) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", m.ArtifactId, m.TaskId, m.AttemptId, m.Kind, m.Sha256, m.Size, m.ArtifactId)
+	e = s.db.Tx(stream.Context(), func(q store.Query) error {
+		current, e := s.checkAttempt(stream.Context(), q, p.Identity.WorkerID, first.Attempt)
+		if e != nil {
+			return e
+		}
+		if current.released {
+			return status.Error(codes.FailedPrecondition, "attempt already completed")
+		}
+		_, e = q.ExecContext(stream.Context(), "INSERT INTO artifacts(id,task,attempt,kind,hash,size,path) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", m.ArtifactId, m.TaskId, m.AttemptId, m.Kind, m.Sha256, m.Size, m.ArtifactId)
+		if e != nil {
+			return e
+		}
+		var task, attempt, kind, hash string
+		var n int64
+		if e = q.QueryRowContext(stream.Context(), "SELECT task,attempt,kind,hash,size FROM artifacts WHERE id=?", m.ArtifactId).Scan(&task, &attempt, &kind, &hash, &n); e != nil {
+			return e
+		}
+		if task != m.TaskId || attempt != m.AttemptId || kind != m.Kind || hash != m.Sha256 || n != m.Size {
+			return status.Error(codes.AlreadyExists, "artifact metadata conflict")
+		}
+		return nil
+	})
 	if e != nil {
 		return dbErr(e)
-	}
-	var task, attempt, kind, hash string
-	var n int64
-	if e = s.db.SQL.QueryRowContext(stream.Context(), "SELECT task,attempt,kind,hash,size FROM artifacts WHERE id=?", m.ArtifactId).Scan(&task, &attempt, &kind, &hash, &n); e != nil {
-		return dbErr(e)
-	}
-	if task != m.TaskId || attempt != m.AttemptId || kind != m.Kind || hash != m.Sha256 || n != m.Size {
-		return status.Error(codes.AlreadyExists, "artifact metadata conflict")
 	}
 	return stream.SendAndClose(m)
 }

@@ -1,10 +1,15 @@
 # 版本记录
 
-## 未发布设计 — 2026-09-22
+## 0.2.0 — 2026-09-22
 
-- 完成 Token Job 网关、Codex MCP 接入、显式 Map/Reduce 和可选 Responses 代理的设计。
-- 增加 HTTP/MCP/Worker/SQLite 契约、请求 Schema、配置示例、ADR 和分阶段实施/验收计划。
-- 本项为文档交付，v0.2 服务功能尚未实现；当前可运行版本仍为 0.1.0。
+- 实现 Job HTTP API、官方 Go SDK MCP 四工具、Job CLI 和受信模板摘要导出。
+- 实现 single、显式 Map/Reduce、按 Job 轮转、并发与共同期限、持久取消及清理屏障。
+- 实现冻结产物清单、Reduce 专用授权下载、哈希/tar 检查、报告证据/来源校验和受信补丁合并验收。
+- 增加默认关闭的 Responses JSON/SSE/compact 网关、固定路由、Attempt 模型 Token、在途撤销、并发准入与可观察未知用量。
+- 增加 Server schema v2/v3 与 Worker schema v2 的迁移门槛、旧库兼容、备份不升级源库。
+- 增加 HTTP/MCP/网关、跨执行器、恢复/存储故障测试及 Job CLI 二进制烟测；更新运行指南、设计契约与进度。
+
+本地 fixture、模拟 HTTPS 上游、race 与二进制故障测试通过。真实模型、独立主机与容量压测仍待目标环境验收。自动重试 R1 继续延后；不增加 PostgreSQL、Redis、外部队列或控制面 HA。
 
 ## 0.1.0 — 2026-09-22
 

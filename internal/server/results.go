@@ -60,7 +60,11 @@ func (s *Server) ReportEvents(ctx context.Context, r *pb.ReportRequest) (*pb.Ack
 				if e != nil {
 					return e
 				}
-				if t.State == "STARTING" && a.until > store.Now() {
+				allowed, e := s.jobAllowsExecution(ctx, q, a.task)
+				if e != nil {
+					return e
+				}
+				if t.State == "STARTING" && a.until > store.Now() && allowed {
 					if e = setState(ctx, q, a.task, "RUNNING", "", ""); e != nil {
 						return e
 					}
@@ -118,6 +122,10 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 			}
 		}
 		state, code, msg := "FAILED", r.ErrorCode, r.ErrorMessage
+		allowed, e := s.jobAllowsExecution(ctx, q, a.task)
+		if e != nil {
+			return e
+		}
 		if t.State == "CANCELING" {
 			if t.ErrorCode == "DEADLINE_EXCEEDED" {
 				code = t.ErrorCode
@@ -130,9 +138,27 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 		} else if t.State == "RECONCILING" || a.until <= store.Now() {
 			code = "WORKER_LOST"
 			msg = "lease lost; execution stopped"
+		} else if !allowed {
+			code = "JOB_STOPPING"
+			msg = "job no longer accepts success"
 		} else if r.Success {
 			if len(r.ArtifactIds) == 0 {
 				return status.Error(codes.FailedPrecondition, "successful task needs verification artifact")
+			}
+			var managed int
+			if e = q.QueryRowContext(ctx, "SELECT count(*) FROM tasks WHERE id=? AND job_id IS NOT NULL", a.task).Scan(&managed); e != nil {
+				return e
+			}
+			if managed != 0 {
+				var bundles int
+				if len(r.ArtifactIds) == 1 {
+					if e = q.QueryRowContext(ctx, "SELECT count(*) FROM artifacts WHERE id=? AND kind='result-bundle'", r.ArtifactIds[0]).Scan(&bundles); e != nil {
+						return e
+					}
+				}
+				if bundles != 1 {
+					return status.Error(codes.FailedPrecondition, "Job success requires exactly one result-bundle")
+				}
 			}
 			state = "SUCCEEDED"
 			code = ""

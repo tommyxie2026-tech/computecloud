@@ -94,7 +94,17 @@ func (w *Worker) probe(ctx context.Context) error {
 		if strings.TrimSpace(string(b)) != r.Version {
 			return fmt.Errorf("runtime %s version mismatch: configured %q, observed %q", profile, r.Version, strings.TrimSpace(string(b)))
 		}
-		h.Runtimes = append(h.Runtimes, &pb.Runtime{Profile: profile, Version: r.Version, Models: r.Models, Credentials: r.Credentials, Capabilities: []string{"event_stream", "cancel"}, Repositories: keys(w.cfg.Repositories), Policies: keys(w.cfg.Policies), Verifiers: keys(w.cfg.Verifiers)})
+		digests := map[string]string{}
+		for _, tmpl := range config.Templates(w.cfg) {
+			if tmpl.RuntimeProfile == profile {
+				digests[tmpl.Key()] = tmpl.Digest
+			}
+		}
+		caps := []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1"}
+		if profile == "codex_exec" {
+			caps = append(caps, "gateway_inference_v1")
+		}
+		h.Runtimes = append(h.Runtimes, &pb.Runtime{Profile: profile, Version: r.Version, Models: r.Models, Credentials: r.Credentials, Capabilities: caps, Repositories: keys(w.cfg.Repositories), Policies: keys(w.cfg.Policies), Verifiers: keys(w.cfg.Verifiers), TemplateDigests: digests})
 	}
 	w.hello = h
 	return nil

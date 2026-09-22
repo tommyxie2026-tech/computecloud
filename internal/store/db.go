@@ -27,7 +27,12 @@ type Query interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-func Open(dir, schema string) (*DB, error) {
+func Open(dir, schema string) (*DB, error) { return open(dir, schema, true) }
+
+// OpenForBackup preserves the on-disk schema and never upgrades a backup source.
+func OpenForBackup(dir string) (*DB, error) { return open(dir, ServerSchema, false) }
+
+func open(dir, schema string, migrate bool) (*DB, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
@@ -46,28 +51,22 @@ func Open(dir, schema string) (*DB, error) {
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
+	target := 1
+	if schema == ServerSchema {
+		target = 3
+	}
+	if schema == WorkerSchema {
+		target = 2
+	}
 	var version int
-	if e = db.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version > 1 {
+	if e = db.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version > target {
 		db.Close()
 		if e == nil {
 			e = errors.New("database schema is newer than this binary")
 		}
 		return fail(e)
 	}
-	tx, e := db.Begin()
-	if e != nil {
-		db.Close()
-		return fail(e)
-	}
-	if _, e = tx.Exec(schema); e == nil {
-		_, e = tx.Exec("PRAGMA user_version=1")
-	}
-	if e != nil {
-		tx.Rollback()
-		db.Close()
-		return fail(e)
-	}
-	if e = tx.Commit(); e != nil {
+	if e = migrateSchema(db, schema, version, target, migrate); e != nil {
 		db.Close()
 		return fail(e)
 	}
