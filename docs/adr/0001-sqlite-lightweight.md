@@ -1,7 +1,7 @@
 # ADR-001：SQLite 与轻量部署决策
 
 - 日期：2026-09-22
-- 状态：按用户明确要求接受；尚未编码或进行运行验证
+- 状态：已接受并在 v0.1 落地；本地存储、恢复与备份验证通过，真实双机环境待验收
 - 最新约束：使用 SQLite；整个服务尽量轻量、简单
 - 关联：[主设计](../design/agent-orchestration-go.md)、[运行契约](../contracts/agent-runtime-v1.md)、[同类调研](../research/agent-orchestration-landscape.md)、[验收计划](../validation/multi-node-poc.md)
 
@@ -28,14 +28,14 @@
 
 “单二进制”指平台交付物，Codex / Claude CLI、Git 及任务需要的编译工具仍是执行节点依赖。首版目标为受信用户和受控节点；不可信任务的执行配置必须提供相应隔离，进程组不能当作安全沙箱。
 
-拟定的操作形态如下，子命令与配置尚未实现，不是当前可运行的安装指南：
+v0.1 命令如下；完整配置与恢复步骤见 [运行指南](../implementation/v0.1-runbook.md)。本文的 server.db/worker.db 为角色名称，实际文件均为各自 data_dir 下的 state.db：
 
 ```sh
 computecloud server --config server.yaml
 computecloud worker --config worker.yaml
-computecloud task submit --file task.json
-computecloud task watch TASK_ID
-computecloud task cancel TASK_ID
+computecloud task submit --config client.yaml --file task.json
+computecloud task watch --config client.yaml --id TASK_ID
+computecloud task cancel --config client.yaml --id TASK_ID
 ```
 
 ## 3. SQLite 访问规则

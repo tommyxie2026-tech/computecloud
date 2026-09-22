@@ -1,0 +1,11 @@
+/bin/
+/dist/
+/data/
+*.db
+*.db-wal
+*.db-shm
+*.lock
+*.test
+coverage.out
+secrets/
+.env

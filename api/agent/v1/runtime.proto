@@ -1,0 +1,89 @@
+syntax = "proto3";
+package computecloud.agent.v1;
+option go_package = "github.com/tommyxie2026-tech/computecloud/api/agent/v1;agentv1";
+
+message Empty {}
+message Workspace { string repository_ref = 1; string base_commit = 2; string isolation_profile = 3; }
+message Input { string text = 1; }
+message TaskSpec {
+  string project_id = 1;
+  string idempotency_key = 2;
+  string engine = 3;
+  string runtime_profile = 4;
+  string model = 5;
+  string credential_ref = 6;
+  Workspace workspace = 7;
+  Input input = 8;
+  string policy_ref = 9;
+  repeated string required_capabilities = 10;
+  string session_ref = 11;
+  string parent_task_id = 12;
+  int64 timeout_seconds = 13;
+  string acceptance_profile = 14;
+  int32 priority = 15;
+  string provider_ref = 16;
+}
+message TaskRef { string task_id = 1; }
+message Task {
+  string task_id = 1; string state = 2; string attempt_id = 3; TaskSpec spec = 4;
+  int64 last_seq = 5; string error_code = 6; string error_message = 7;
+  string result = 8; string session_ref = 9; string worker_id = 10;
+  int64 created_at_ms = 11; int64 updated_at_ms = 12; string scheduling_blocker = 13;
+  bool existing = 14;
+}
+message WatchRequest { string task_id = 1; int64 after_seq = 2; }
+message CancelRequest { string task_id = 1; string control_id = 2; string reason = 3; }
+message ControlRequest { string task_id = 1; string control_id = 2; string mode = 3; Input input = 4; }
+message Event {
+  string task_id = 1; string attempt_id = 2; int64 generation = 3;
+  string event_id = 4; int64 worker_seq = 5; int64 seq = 6;
+  string type = 7; bytes payload_json = 8; int64 recorded_at_ms = 9;
+}
+message Ack { int64 through_seq = 1; string state = 2; string message = 3; }
+message Runtime {
+  string profile = 1; string version = 2; repeated string models = 3;
+  repeated string credentials = 4; repeated string capabilities = 5;
+  repeated string repositories = 6; repeated string policies = 7; repeated string verifiers = 8;
+}
+message WorkerHello { string worker_id = 1; string epoch = 2; int32 slots = 3; repeated Runtime runtimes = 4; }
+message WorkerStatus { string worker_id = 1; bool online = 2; int32 slots = 3; int32 active = 4; int64 last_seen_ms = 5; repeated Runtime runtimes = 6; }
+message Workers { repeated WorkerStatus workers = 1; }
+message AttemptRef { string attempt_id = 1; int64 generation = 2; string lease_token = 3; }
+message Renew { repeated AttemptRef attempts = 1; }
+message CommandAck { string command_id = 1; string state = 2; }
+message WorkerFrame { oneof body { WorkerHello hello = 1; Renew renew = 2; CommandAck ack = 3; } }
+message Assignment {
+  string task_id = 1; string attempt_id = 2; int64 generation = 3;
+  string lease_token = 4; int64 lease_ttl_ms = 5; int64 deadline_ms = 6;
+  TaskSpec spec = 7;
+}
+message Command { string command_id = 1; string kind = 2; Assignment assignment = 3; }
+message LeaseGrant { string attempt_id = 1; int64 ttl_ms = 2; bool valid = 3; }
+message ServerFrame { oneof body { Command command = 1; LeaseGrant lease = 2; } }
+message ReportRequest { AttemptRef attempt = 1; repeated Event events = 2; }
+message CompleteRequest {
+  AttemptRef attempt = 1; int64 final_worker_seq = 2; bool success = 3;
+  bool cleanup_confirmed = 4; string error_code = 5; string error_message = 6;
+  string result = 7; string native_session_id = 8; repeated string artifact_ids = 9;
+}
+message Artifact { string artifact_id = 1; string task_id = 2; string attempt_id = 3; string kind = 4; string sha256 = 5; int64 size = 6; }
+message Artifacts { repeated Artifact artifacts = 1; }
+message ArtifactRef { string task_id = 1; string artifact_id = 2; }
+message ArtifactChunk { Artifact metadata = 1; AttemptRef attempt = 2; bytes data = 3; }
+message Chunk { bytes data = 1; }
+
+service RuntimeService {
+  rpc SubmitTask(TaskSpec) returns (Task);
+  rpc GetTask(TaskRef) returns (Task);
+  rpc CancelTask(CancelRequest) returns (Task);
+  rpc WatchEvents(WatchRequest) returns (stream Event);
+  rpc ListWorkers(Empty) returns (Workers);
+  rpc SendInput(ControlRequest) returns (Ack);
+  rpc RespondApproval(ControlRequest) returns (Ack);
+  rpc ListArtifacts(TaskRef) returns (Artifacts);
+  rpc DownloadArtifact(ArtifactRef) returns (stream Chunk);
+  rpc ConnectWorker(stream WorkerFrame) returns (stream ServerFrame);
+  rpc ReportEvents(ReportRequest) returns (Ack);
+  rpc CompleteAttempt(CompleteRequest) returns (Ack);
+  rpc UploadArtifact(stream ArtifactChunk) returns (Artifact);
+}

@@ -2,12 +2,16 @@
 
 - 项目：computecloud
 - 日期：2026-09-22
-- 状态：契约草案；没有生成 Protobuf / Go 实现
+- 状态：目标契约；v0.1 已有生成的 Protobuf / Go 实现，尚未开放的扩展保留为设计
 - 适用范围：Go 调度器、Go Worker、Codex / Claude Code 适配器
 - 上层设计：[Go 多客户端 Agent RPC 调度实施方案](../design/agent-orchestration-go.md)
 - 调度集成：[ADR-001](../adr/0001-sqlite-lightweight.md)；验收：[多节点 PoC](../validation/multi-node-poc.md)
 
 本文的方法名和字段均为 computecloud 自定义协议。客户端原生字段由适配器转换，不向调用方承诺不同客户端拥有完全相同的能力。
+
+## v0.1 实现说明
+
+当前可调用方法和字段以 [runtime.proto](../../api/agent/v1/runtime.proto) 为准。注册、续租和命令 ACK 合并到 ConnectWorker 帧；序号采用非负 int64；SendInput/RespondApproval 返回 Unimplemented；session_ref/provider_ref 非空明确拒绝。未加入 Proto 的预算、附件、placement 等字段不在本版范围。完整差异和操作示例见 [运行指南](../implementation/v0.1-runbook.md)。以下章节保留完整目标语义，不应推定全部已经实现。
 
 ## 1. 基本约束
 

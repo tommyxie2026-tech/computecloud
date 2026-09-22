@@ -1,0 +1,28 @@
+# Local development. For remote workers, configure TLS as shown in the runbook.
+server:
+  listen: 127.0.0.1:7443
+  data_dir: ../data/server
+  tls:
+    insecure_loopback: true
+  users:
+    - token_file: ../secrets/user.token
+      owner: operator
+      projects: [demo]
+      credentials: [codex-account, claude-account]
+  workers:
+    - token_file: ../secrets/worker-a.token
+      worker_id: worker-a
+      projects: [demo]
+      credentials: [codex-account, claude-account]
+  # Replace with model identifiers supported by your actual CLI/account.
+  models:
+    codex_exec: REPLACE_WITH_CODEX_MODEL
+    claude_print: REPLACE_WITH_CLAUDE_MODEL
+  credentials:
+    codex-account: 2
+    claude-account: 2
+  max_project_tasks: 4
+  lease_seconds: 60
+  tick_ms: 500
+  max_artifact_bytes: 33554432
+  maintenance: false

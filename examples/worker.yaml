@@ -1,0 +1,45 @@
+worker:
+  id: worker-a
+  server_address: 127.0.0.1:7443
+  data_dir: ../data/worker-a
+  token_file: ../secrets/worker-a.token
+  tls:
+    insecure_loopback: true
+  slots: 2
+  stop_grace_ms: 3000
+  repositories:
+    demo-repo: /absolute/path/to/local/git/repository
+  runtimes:
+    codex_exec:
+      executable: codex
+      version: REPLACE_WITH_EXACT_CODEX_VERSION_OUTPUT
+      models: [REPLACE_WITH_CODEX_MODEL]
+      credentials: [codex-account]
+      # Uses the worker user's existing CLI login by default.
+      # For API key auth, confirm your CLI's supported variable and uncomment:
+      # credential_env:
+      #   codex-account:
+      #     CODEX_API_KEY: ../secrets/codex-api-key
+    claude_print:
+      executable: claude
+      version: REPLACE_WITH_EXACT_CLAUDE_VERSION_OUTPUT
+      models: [REPLACE_WITH_CLAUDE_MODEL]
+      credentials: [claude-account]
+      # credential_env:
+      #   claude-account:
+      #     ANTHROPIC_API_KEY: ../secrets/claude-api-key
+  policies:
+    inspect:
+      codex_sandbox: read-only
+      claude_permission_mode: dontAsk
+      claude_allowed_tools: [Read, Glob, Grep]
+    edit:
+      codex_sandbox: workspace-write
+      claude_permission_mode: dontAsk
+      claude_allowed_tools: [Read, Glob, Grep, Edit, Write]
+  verifiers:
+    # Suitable for a first read-only task; does not test generated code.
+    basic: []
+    # Only enable for a repository containing trusted Go tests and a Go toolchain.
+    go-tests:
+      - [go, test, ./...]
