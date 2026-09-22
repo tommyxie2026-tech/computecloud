@@ -5,12 +5,18 @@
 - 状态：实施设计；尚未实现调度服务或进行真实客户端集成验证
 - 实现语言：Go
 - 配套契约：[Agent Runtime v1](../contracts/agent-runtime-v1.md)
+- 选型决策：[ADR-001](../adr/0001-sqlite-lightweight.md)
+- 调研与验收：[GitHub 实现调研](../research/agent-orchestration-landscape.md)、[多节点 PoC](../validation/multi-node-poc.md)
 
 ## 1. 目标与结论
 
 在受控执行节点上启动多个 Codex / Claude Code 客户端，通过 RPC 分配任务、提供输入、接收结构化输出、取消执行和收集产物。调度器统一管理任务、账号配额和资源，客户端保留自身的 Agent 循环、上下文管理与工具执行能力。
 
-采用 **Go 调度器 + Go Worker + Go 客户端适配器 + gRPC + PostgreSQL**。首版直接接入已文档化的非交互 CLI，后续按能力增加双向交互模式；Python / TypeScript SDK sidecar 不作为首版依赖。
+采用 **单一 Go 二进制 + SQLite + 内置调度循环 + gRPC + 多节点 Worker**。同一二进制提供 `server`、`worker` 和任务操作子命令；首版直接接入非交互 CLI，后续按能力增加双向交互。
+
+按用户最新约束，SQLite 是正式首版存储，不是临时过渡。首版仅运行一个活动 server，支持多台 Worker；不部署 PostgreSQL、Redis、消息队列、Hatchet、Temporal 或 Kubernetes，也不开发通用工作流引擎。SQLite 由 server 本地打开，所有远端 Worker 通过 RPC 访问服务。
+
+GitHub 调研保留为设计参考：借鉴 agent-orchestrator 的执行适配和会话管理、dsh-alpha 的远端 Worker 和仓库亲和。外部工作流引擎仅列作未来复杂流程需求下的备选，不建立首版插件系统或后端适配层。具体依据见调研与 ADR-001。
 
 本文中的组件划分、默认值、API 名称和数据模型都是 computecloud 的设计决定。客户端官方事实单独列出来源，不能把设计接口视为 Codex 或 Claude 的原生接口。
 
@@ -50,26 +56,35 @@ P0 也不能仅因日志看起来像问题而进入 WAITING_INPUT。只有适配
 
 ```mermaid
 flowchart TD
-    U["API / CLI / 工作流"] --> S["Go 调度器"]
-    S <--> D[("PostgreSQL")]
-    S <-->|"gRPC + mTLS"| W["Go Worker"]
-    W <--> C["Codex 适配器"]
-    W <--> A["Claude 适配器"]
-    C --> X["独立任务执行环境 A"]
-    A --> Y["独立任务执行环境 B"]
-    W --> F[("日志、检查点与产物")]
+    U["RPC 调用方 / 命令行"] --> S["computecloud server：API 与内置调度"]
+    S <--> D[("本机 server.db")]
+    S --> F["本机产物目录"]
+    W1["节点 A：computecloud worker"] <-->|"主动 gRPC 控制流"| S
+    W2["节点 B：computecloud worker"] <-->|"主动 gRPC 控制流"| S
+    W1 <--> L1[("本机 worker.db")]
+    W2 <--> L2[("本机 worker.db")]
+    W1 --> A1["Codex / Claude 独立工作区与进程"]
+    W2 --> A2["Codex / Claude 独立工作区与进程"]
 ```
 
-| 组件 | 责任 | 不承担的责任 |
-| --- | --- | --- |
-| API / Task Service | 身份校验、参数校验、幂等提交、状态查询、事件订阅和控制请求落库 | 不在 RPC handler 生命周期内运行 Agent |
-| Scheduler | 队列、优先级、能力匹配、并发与预算、租约、重试决策 | 不解析供应商事件细节 |
-| Worker | 工作区准备、进程管理、事件落盘、租约续期、取消和清理 | 不自行扩权或切换账号绕过限制 |
-| Adapter | 客户端启动参数、原生事件解析、会话标识、受支持的控制映射 | 不决定全局重试和任务成功 |
-| Verifier | 执行可信验收命令，检查产物并产生验收结果 | 不以 Agent 自我声明替代验证 |
-| Persistence | 任务状态、控制收件箱、事件、审计和产物引用 | 不保存明文凭据到任务参数或普通日志 |
+图中模块均在 server 或 worker 进程内；SQLite 是嵌入式库。最小开发部署为同机一个 server 和一个 worker；多节点部署为一个 server 和每节点一个 worker。原生 CLI、Git 以及任务本身的编译工具仍需安装，不计作平台中间件。
 
-首版使用一个调度器和固定 Worker 注册配置，先验证多执行槽位。PostgreSQL 同时承担队列和状态存储，暂不引入 Redis / Kafka / 工作流引擎。浏览器接入需要时另加 HTTP + SSE 网关。
+| 进程内模块 | 责任 |
+| --- | --- |
+| API | 授权、幂等提交、查询、事件订阅和取消 |
+| Scheduler | 扫描持久任务队列、匹配节点、预留槽位与 Session、租约核查 |
+| Store | SQLite 事务、命令待发记录、事件和迁移 |
+| Worker | 工作区、进程、事件暂存、续租、控制处理及清理 |
+| Adapter | CLI 参数、原生协议与规范事件的转换 |
+| Verifier | 按受信模板验证结果；作为 Worker 内部步骤，无独立服务 |
+
+### 4.1 保留必要的可靠性机制
+
+`tasks` 中的 QUEUED 行就是任务队列；Go channel 仅用作唤醒提示，server 重启后重新查库。单个调度循环串行执行资源准入；网络 I/O、模型执行和构建测试在事务外运行。server 不与其他 server 共享同一数据库，不需要选主或分布式锁服务。
+
+业务状态和待发命令在同一 SQLite 事务中提交。`worker_commands` 表兼任持久发件箱，不另建消息中间件；worker.db 保存收件去重及事件暂存。持久化后才 ACK，断线重发同一命令不重新启动 CLI。详细 SQL 边界、备份和扩展限制见 ADR-001。
+
+首版按受信用户、受控执行节点部署，使用独立 checkout/worktree 与进程监督。容器作为有隔离需求时的可选执行方式；不可信代码或多租户场景启用相应隔离配置后才能接入。浏览器 UI、独立鉴权平台、通用 DAG 和插件体系均延后。
 
 ## 5. 核心对象
 
@@ -88,6 +103,8 @@ flowchart TD
 恢复应固定 `session_id`，禁止使用 `--last` 或不带目标的 `--continue`。Session 与身份绑定，不在不同用户或账号之间共享。
 
 Task 进入终态后保持不可变。用户继续工作创建新 Task 并设置 `parent_task_id`；自动故障重试则在原 Task 下创建新的 Attempt。这两个行为必须区分。
+
+调度扫描和控制命令可能重复，但相同 Attempt 身份只能启动一个执行。Task 的请求规格和解析后的 engine、provider、model、credential、策略及基线快照被冻结；重试不暗中更换模型或账号。
 
 ## 6. 任务状态机
 
@@ -137,11 +154,13 @@ stateDiagram-v2
 
 | 平面 | 方法 | 用途 |
 | --- | --- | --- |
-| 调用方 → 调度器 | SubmitTask、GetTask、WatchEvents、SendInput、RespondApproval、CancelTask、ListArtifacts | 用户任务与交互 |
+| 调用方 → 调度器 | SubmitTask、GetTask、WatchEvents、SendInput、RespondApproval、CancelTask、ListArtifacts、DownloadArtifact | 用户任务与交互 |
 | 调度器 → Worker | StartAttempt、InspectAttempt、ApplyControl、StopAttempt | 分配和监督执行 |
-| Worker → 调度器 | RegisterWorker、RenewLease、ReportEvents、CompleteAttempt | 能力注册、租约和可靠事件回传 |
+| Worker → 调度器 | RegisterWorker、ConnectWorker、HeartbeatWorker、RenewLease、ReportEvents、CompleteAttempt、UploadArtifact | 能力注册、主动连接、节点心跳、租约和可靠事件回传 |
 
 SubmitTask 在任务和幂等记录提交到数据库后返回，不等待 Agent 完成。StartAttempt 在 Worker 持久记录执行身份后返回 STARTING / 已存在状态；不能把返回 ACK 当作进程已启动。
+
+“调度器 → Worker”表示逻辑方向：控制命令通过 Worker 主动建立的双向 gRPC 流下发，不要求执行节点开放入站端口。每条命令包含稳定 command_id、目标 worker_epoch、Attempt 代次、不可变参数摘要和期限。流的重连只重发未确认命令，Worker 持久去重；不因连接恢复而重新创建进程。节点心跳、Attempt 续租、事件持久化 ACK 相互独立。P0 同机运行也使用这条通路，避免维护第二套直连协议；P1 扩展到多台真实节点。
 
 ```mermaid
 sequenceDiagram
@@ -151,9 +170,10 @@ sequenceDiagram
     participant W as Worker
     participant A as Agent
     U->>S: SubmitTask + 幂等键
-    S->>D: 事务写入任务与提交记录
+    S->>D: 事务写入任务与提交幂等信息
     S-->>U: task_id
-    S->>D: 分配 Attempt 与租约
+    Note over S,D: 内置调度循环查持久队列并准入
+    S->>D: 事务写 Attempt、资源预留与待发命令
     S->>W: StartAttempt
     W->>W: 写入启动日志与执行身份
     W->>A: 启动客户端并提供输入
@@ -178,21 +198,16 @@ WatchEvents 的连接中断只停止该订阅；任务继续受 Task deadline �
 
 | 拟建路径 | 职责 |
 | --- | --- |
-| `cmd/computecloud-server` | API、调度循环和存储初始化 |
-| `cmd/computecloud-worker` | Worker 生命周期与运行环境 |
-| `cmd/computecloudctl` | 提交、查询、订阅和取消 |
+| `cmd/computecloud` | 唯一二进制入口：server、worker、task、backup 等子命令 |
 | `api/agent/v1` | Protobuf 定义与生成配置 |
-| `internal/task` | 状态机、参数与领域规则 |
-| `internal/scheduler` | 能力匹配、槽位、租约和重试 |
-| `internal/worker` | Attempt 管理与恢复核查 |
-| `internal/adapter/codex` | exec 与后续 app-server 模式 |
-| `internal/adapter/claude` | print 与后续 stream 模式 |
-| `internal/process` | OS 专属进程组/容器监督和清理 |
-| `internal/workspace` | checkout、检查点和产物 |
-| `internal/event` | 解析、WAL、去重、序号与回放 |
-| `internal/policy` | 策略快照与权限映射 |
-| `internal/store/postgres` | 事务、迁移和一致性约束 |
-| `internal/verify` | 验收执行与证据记录 |
+| `internal/server` | API、调度循环、准入、租约与核查 |
+| `internal/worker` | 命令流、进程监督、恢复核查与验收 |
+| `internal/adapter` | 共用接口及 codex / claude 子包 |
+| `internal/store/sqlite` | server / worker 的嵌入式数据库、短事务和迁移 |
+| `internal/workspace` | checkout、检查点与本地产物 |
+| `internal/domain` | 任务、事件、策略和状态机；保持小接口 |
+
+首版不生成多层仓储框架、通用插件装载器或外部工作流适配包。Go 标准库优先，SQLite 驱动拟用 `modernc.org/sqlite` 的无 CGO 实现；精确驱动与内嵌 SQLite 版本在编码时固定，并通过目标 OS/arch 验证。[R14]
 
 Go 使用仍在维护的稳定工具链，并在开始编码时固定 `go.mod` / toolchain；客户端版本另行固定。内部 RPC 使用 Protobuf 和 grpc-go；结构化日志使用标准库 slog，生命周期使用 context，子进程使用 os/exec。[R8][R9]
 
@@ -261,7 +276,7 @@ Codex 的 `workspace-write` 不是容器安全边界，网络和进程限制仍�
 
 事件读取器采用有明确大小边界的分帧逻辑；如果使用 bufio.Scanner，必须显式设置上限并处理错误。终态事件不能与大量文本增量一起被丢弃。
 
-`CommandContext` 默认取消不会替项目完成整个进程树监督。Linux Worker 优先使用每 Attempt 容器或专属 cgroup；直接进程模式使用进程组并记录启动身份，不能仅凭可复用 PID 杀进程。支持其他 OS 时单独实现相应监督机制。
+`CommandContext` 默认取消不会替项目完成整个进程树监督。受信 Linux Worker 首版使用独立进程组并记录启动身份；支持时使用专属 cgroup 收拢进程。不能仅凭可复用 PID 杀进程。容器是可选执行配置；进程组不能约束主动逃逸的子进程，无法证实清理完整时不能报告已清理或自动重跑。支持其他 OS 时单独实现相应监督机制。
 
 如果使用 StdoutPipe / StderrPipe，必须安排持续读取并遵守 Wait 的关闭时序；如果用自定义 Writer，写入要有界且及时返回。对子孙进程持有管道导致的退出等待设置独立期限。`WaitDelay` 只用于限定部分等待，不作为完成进程树清理的证明。[R8]
 
@@ -269,7 +284,7 @@ Worker 崩溃恢复时检查容器/cgroup、启动日志与进程身份；“数
 
 ## 10. 事件持久化与重连
 
-事件包含 `task_id`、`attempt_id`、`generation`、`event_id`、`worker_seq`、类型与内容。Worker 为每 Attempt 顺序写本地事件日志；控制平面去重后分配 Task 范围内的 `seq`。[契约](../contracts/agent-runtime-v1.md#5-事件契约)
+事件包含 `task_id`、`attempt_id`、`generation`、`event_id`、`worker_seq`、类型与内容。Worker 为每 Attempt 顺序提交到 worker.db 的 events 暂存表（以下称应用事件日志，与 SQLite 的 -wal 文件不同）；控制平面去重后分配 Task 范围内的 `seq`。[契约](../contracts/agent-runtime-v1.md#5-事件契约)
 
 保证方式：
 
@@ -283,32 +298,51 @@ Worker 崩溃恢复时检查容器/cgroup、启动日志与进程身份；“数
 
 CompleteAttempt 携带 `final_worker_seq`。控制平面必须确认该水位之前的事件和产物登记完成，才接受终态。对过期代次的回报只保存审计信息，不能覆盖当前 Task。
 
-## 11. 存储模型与一致性
+## 11. SQLite 存储模型与一致性
 
-| 表/实体 | 关键字段与约束 |
+### 11.1 最小持久数据
+
+| server.db 表 | 关键字段与约束 |
 | --- | --- |
-| `tasks` | task_id、owner_id、project_id、state、active_attempt_id、version、next_seq、spec、deadline |
-| `task_submissions` | owner_id + project_id + idempotency_key 唯一；保存规范化 request_hash 与 task_id |
-| `attempts` | attempt_id、task_id、generation、worker_id、lease_token_hash、lease_expires_at、state；同 Task 的 generation 唯一 |
-| `sessions` | engine、native_session_id、owner_id、credential_ref、worker_id、state_ref、workspace_ref、runtime_version |
-| `session_leases` | session_ref 唯一的活动写租约，含持有 Attempt 与到期时间 |
-| `events` | task_id + seq 唯一；attempt_id + event_id 唯一；attempt_id + worker_seq 唯一 |
-| `controls` | task_id + control_id 唯一；request_hash、目标 Attempt/Turn、状态、响应 |
-| `artifacts` | artifact_id、task_id、attempt_id、内容哈希、字节数、URI、类型 |
-| `workers` | worker_id、identity、engine_versions、capabilities、slots、health |
-| `audit_records` | 策略版本、授权决策、状态核查、控制动作与终态证据 |
+| `tasks` | task_id、owner_id、project_id、idempotency_key、request_hash、state、active_attempt_id、version、next_seq、spec、deadline、next_eligible_at；身份+项目+幂等键唯一 |
+| `attempts` | attempt_id、task_id、generation、worker_id、worker_epoch、lease_token_hash、lease_expires_at、state、resources_released_at；task_id+generation 唯一 |
+| `sessions` | session_ref、原生 ID、engine、身份与凭据引用、worker_id、state_ref、workspace_ref、版本、active_attempt_id |
+| `workers` | worker_id、认证引用、worker_epoch、connection_epoch、slots、能力快照、heartbeat、draining |
+| `worker_commands` | command_id、可选 control_id、task_id、target_kind、目标执行、request_hash、载荷、期限、确认与处理状态；task_id+control_id 唯一（提供时） |
+| `events` | task_id+seq 唯一，attempt_id+event_id 及 attempt_id+worker_seq 唯一；包括状态、控制与必要审计事件 |
+| `artifacts` | artifact_id、来源 Attempt、SHA-256、大小、相对存储路径与类型 |
 
-数据库事务只用于短操作，不能在事务内等待 LLM、RPC 或构建命令。分配队列时可以使用 `FOR UPDATE SKIP LOCKED` 获取可用任务并在同一短事务中创建 Attempt 和租约；这一机制适合队列竞争，不代替执行幂等。[R10]
+首版提交去重并入 tasks，资源预留由未释放的 attempts 与 sessions.active_attempt_id 表达，连接信息并入 workers，控制记录复用 worker_commands。target_kind=server 可保存执行前取消等本地控制结果，不参与网络投递；target_kind=worker 才作为待发命令。任务较少时直接查询这些记录计算并发额度，避免预先维护分布式计数器。P2 有实际需要时再拆原生审批/输入表。
 
-推荐用数据库中的额度/槽位记录参与同一分配事务。多调度器阶段再增加领导者选举或一致的分配协调；不能仅靠各进程内 semaphore 控制集群配额。
+每个 worker.db 只需 `attempts`、`commands` 和 `events` 三类本地表，分别记录启动与停止身份、命令去重、待确认事件；和 server.db 相互独立，只经 RPC 对账。所有库均有简短的 schema 版本记录。
 
-同幂等键但 request_hash 不同必须报错。Worker 的 StartAttempt 也须按 attempt_id + generation 去重，不能只依赖 API 提交去重。副作用操作不能因 gRPC 重试成功而被视为恰好一次执行。[R9]
+### 11.2 事务与调度
+
+SQLite WAL 仍然只有一个写事务；本方案用一个活动 server 和短事务匹配该特点，不通过共享文件实现多机写入。[R10][R12] 首版每进程数据库句柄最多一个连接，统一写入口；每个数据目录使用独占进程锁防止重复实例；需要并发读时再依据压测增加只读连接，不提前引入连接池调优复杂度。
+
+调度以明确的 `BEGIN IMMEDIATE` 边界执行：重读待调度 Task 与当前状态版本，核对 worker/账号/项目额度和 Session 持有者，创建 Attempt、设置活动引用、写 StartAttempt 命令，随后 COMMIT。查询与写入必须使用同一专用连接；不能调用不固定连接的 BEGIN/COMMIT，也不能在已有 sql.Tx 中再嵌套 BEGIN。[R12]
+
+SQLite 不使用 PostgreSQL 的行级锁或 `SKIP LOCKED`。对关键 UPDATE 校验受影响行数，配合唯一索引和 Task.version 比较；事务外再发送 RPC。提交去重、分配与取消竞态、CompleteAttempt 的状态/事件更新均采用相同原则。数据库错误不返回持久化成功。
+
+启动配置、busy 重试和备份规则统一见 ADR-001。无论数据库多轻量，gRPC 重试都不能保证 CLI 副作用恰好一次。[R9]
+
+### 11.3 小数据库、大产物分离
+
+SQLite 保存规范事件和元数据；原始长日志、diff、附件和检查点保存到受控目录，数据库仅存引用与校验值。文本增量在形成规范事件前短时间合并，小批量写入；命令 ACK、状态和终态不因批处理而提前确认。
+
+server 通过带授权的分块 RPC 接收 Worker 产物，校验后以临时文件、fsync、原子改名再登记元数据；数据库记录前文件必须已持久可用。崩溃留下的未登记文件可在宽限期后回收，不将其当作任务成功。RPC 不接收任意宿主路径。原始日志保留周期可短于任务摘要，事件清理保留明确的最小回放水位。
+
+SQLite 文件必须位于所在机器的本地磁盘；不放 NFS/SMB、不让远端 Worker 直接打开 server.db。首版不要求对象存储服务；以后确有容量需求才增加产物存储接口实现。
 
 ## 12. 调度、租约与故障恢复
 
 ### 12.1 选择 Worker
 
 先过滤身份、权限、运行时版本、capabilities、OS、工作区可达性和恢复位置，再按可用槽位、账号配额、排队时间选择 Worker。引擎、模型、账号和执行载体是独立维度。
+
+身份、可用凭据、版本、Session 位置、模型配置和隔离能力是硬约束；仓库缓存命中、当前负载、队列年龄是软偏好。没有合格节点时保持 QUEUED 并提供阻塞原因；不得为利用空闲槽位而忽略硬约束。仓库缓存按平台 repository_ref 和固定 commit 识别，不信任任意 URL 或宿主路径。候选负载可能过时，最终预留必须重新做事务校验。
+
+多模型通过受信的 provider / model 配置版本解析，不把同名模型视为可互换，也不假定任意 CLI 支持任意 API endpoint。首版 engine 显式指定 codex / claude；自动跨引擎路由留给后续策略。只有恢复资产、凭据和原生能力都具备时才能取消 Session 的原节点绑定。
 
 并发限制同时考虑 Worker CPU/内存/磁盘、项目、账号、模型和预算。多开 CLI 不增加账号额度；构建与测试消耗的资源也应计入。没有实测前不承诺固定机器可支撑多少并发。
 
@@ -317,6 +351,10 @@ CompleteAttempt 携带 `final_worker_seq`。控制平面必须确认该水位之
 起始配置：租约 60 s、每 15 s 续期，均可调。Worker 根据最近一次成功续期的 TTL 使用本地单调计时，在到期前停止接受新控制并发起停机；执行环境应有独立监督，降低 Worker 卡死时孤儿进程继续运行的风险。
 
 租约代次只能拒绝旧执行结果，不能撤销旧进程已经发出的命令或外部 API 请求。租约过期后 Task 进入 RECONCILING；调度器确认旧环境停止并核查副作用后才允许重新分配。
+
+RECONCILING / CANCELING 的 Session 和执行额度预留保持隔离，不能仅因 TTL 过期释放后再分配。独立监督器提供按执行环境身份核查的停止证据；节点无法联系又无隔离证据时阻止重复写执行，记录需要人工核查。仅隔离本地文件写入不足以证明外部 push / 发布等副作用安全。
+
+默认进程模式在 Worker 本身崩溃时不保证孤儿进程自动停止；恢复后必须核查和清理。若要求在 Worker 宕机期间也按租约强制终止，需要启用可独立执行该策略的监督机制并验收，不能把它当作进程组自带能力。
 
 ### 12.3 错误处理
 
@@ -331,7 +369,17 @@ CompleteAttempt 携带 `final_worker_seq`。控制平面必须确认该水位之
 | 已发生 push、发布或外部写操作 | 按业务幂等键和外部结果核对，不能仅凭失败码自动重跑 |
 | 事件落盘失败、磁盘满 | 停止新任务并受控停止受影响执行，报告存储错误 |
 
-首版建议关闭自动跨节点恢复；错误分类和核查流程完成后，再按任务类型逐项启用自动重试。
+首版关闭自动跨节点恢复；错误分类和核查流程完成后，再按任务类型逐项启用自动重试。调度扫描和网络重试复用原命令与执行身份；只有业务状态机授权新 Attempt 才会重新执行 Agent。
+
+### 12.4 三种恢复边界
+
+| 恢复对象 | 可以恢复什么 | 必要条件 |
+| --- | --- | --- |
+| 控制连接与事件订阅 | 未确认命令、已持久化事件 | 持久命令收件箱、事件序号、当前连接与执行代次 |
+| server 调度循环 | 排队、待发命令、任务与租约核查 | server.db 已提交状态、幂等准入、与 Worker 对账 |
+| 原生 Agent / 工作区 | 对话上下文与代码状态 | 经过验证的 resume、相同身份、兼容版本、完整历史与工作区检查点 |
+
+前两项恢复成功不能推定第三项成功。默认只支持满足条件的同节点新进程恢复；跨节点恢复按 portable_session 能力另行验收。节点失联时不将网络重连描述为“无缝续跑”。
 
 ## 13. 工作区、验收与产物
 
@@ -351,23 +399,35 @@ CompleteAttempt 携带 `final_worker_seq`。控制平面必须确认该水位之
 
 ## 14. 权限、凭据与运行配置
 
-平台 API 校验用户对 project_id、workspace_ref、credential_ref 的使用权限。Worker 使用独立机器身份和 mTLS，不能凭提交参数指定任意可执行路径、任意宿主目录或额外 shell 参数。
+平台 API 校验用户对 project_id、workspace_ref、credential_ref 的使用权限。Worker 使用独立机器身份，远程连接默认 TLS + 每节点独立令牌（绑定 worker_id）；mTLS 可选，不能凭提交参数指定任意可执行路径、任意宿主目录或额外 shell 参数。
 
 策略采用不可变版本和摘要，映射到客户端原生权限机制与操作系统执行边界。不能仅依靠提示词限制目录或网络。未识别的原生审批类型必须失败关闭或进入经过支持的等待状态。
 
-密钥不写入 Task、事件和示例配置。凭据只在执行节点按身份注入，并限制构建/测试子进程读取；日志脱敏不是凭据隔离。不同租户不得共享可写的 CLI 配置和认证目录。
+密钥不写入 Task、事件和示例配置。凭据只在执行节点按身份注入；默认进程模式面向受信任务，不承诺同一 OS 身份内的凭据隔离。需要隔离构建/测试对凭据的读取时启用适当执行配置，日志脱敏不能替代隔离。不同租户不得共享可写的 CLI 配置和认证目录。
 
 Claude SDK 文档限制未经批准的第三方产品使用 claude.ai 登录和额度。[R11] 本设计使用 CLI 并不构成绕过认证限制的依据；个人自用、内部服务和对外产品应分别核对支持的鉴权方式。
 
 示例配置仅定义 computecloud 的设计字段，并非 Codex / Claude 的原生配置：
 
 ```yaml
+server:
+  listen: 127.0.0.1:7443
+  data_dir: ./data/server
+  database: server.db
+  scheduler_tick: 1s
+  auth_tokens_file: ./secrets/server-tokens.yaml
+  tls:
+    cert_file: ./tls/server.crt
+    key_file: ./tls/server.key
 worker:
   id: worker-linux-01
+  server_address: server.internal:7443
+  data_dir: ./data/worker
+  database: worker.db
+  token_file: ./secrets/worker-token
+  ca_file: ./tls/ca.crt
   slots: 2
-  workspace_root: /var/lib/computecloud/workspaces
-  event_log_root: /var/lib/computecloud/events
-  isolation: container
+  isolation: process
   lease_ttl: 60s
   renew_interval: 15s
   graceful_stop_timeout: 10s
@@ -384,13 +444,11 @@ worker:
       enabled: false
     claude_stream:
       enabled: false
-  credentials:
-    source: worker_secret_store
-  transport:
-    require_mtls: true
 ```
 
-配置中的路径是执行镜像内约定路径，不是本次对话环境或任何生产节点的真实地址。编码阶段必须补齐证书加载、运行镜像摘要、允许策略和凭据引用的具体实现。
+server 和 worker 分别读取各自配置段。远程部署需将监听地址改为受控可达接口并配置匹配的证书；示例使用回环监听作为默认。令牌从受限文件读取，不出现在命令行和日志；API 用户令牌与 Worker 令牌权限分离，服务端比较存储的令牌摘要。
+
+配置路径与域名仅为设计示例，功能和子命令尚未实现。编码时固定 CLI 版本/校验值、证书、允许策略和凭据引用；若启用容器，再固定镜像摘要。
 
 ## 15. 持续交互扩展
 
@@ -406,10 +464,11 @@ Claude stream 模式先验证公开的 JSON 输入帧、输出帧和正常关闭
 
 | 阶段 | 实施内容 | 进入下一阶段的条件 |
 | --- | --- | --- |
-| P0-A：基础模型 | Protobuf、Task/Attempt、PostgreSQL 迁移、提交与查询、Fake Adapter | 幂等冲突、状态转换、取消竞态能够通过真实行为测试 |
+| P0-A：基础模型 | Protobuf、Task/Attempt、SQLite 迁移、提交与查询、Fake Adapter | 幂等冲突、状态转换、取消竞态能够通过真实行为测试 |
 | P0-B：真实执行 | Go Worker、codex_exec、claude_print、I/O 与进程清理 | 两类客户端各完成成功、失败、超时、取消与明确会话恢复 |
 | P0-C：可靠闭环 | 事件日志、重连补读、工作区、产物、验收 | 断线不丢已确认事件，进程不遗留，并发代码互不覆盖 |
-| P1：多节点恢复 | Worker 注册、槽位/账号配额、租约、核查与有界重试 | 重复投递和节点故障不会同时运行重复写任务 |
+| P0-D：轻量运维 | 单二进制打包、SQLite 崩溃恢复、备份恢复、日志清理 | 无平台中间件可运行；备份可恢复，DB/WAL 增长受控 |
+| P1：多节点恢复 | 两节点反向控制流、动态注册、槽位/账号配额、租约、核查与有界重试 | 多节点 PoC 必需用例通过；重复投递和节点故障不会同时运行重复写任务 |
 | P2：双向交互 | capability 协商、持续会话、输入和审批路由 | 各能力在固定版本下通过取消、重复输入和过期请求验收 |
 | P3：工作流 | DAG、跨引擎评审、配额优化与可观测性 | 依赖和交接产物可审计，失败可定位到具体 Attempt |
 
@@ -428,11 +487,15 @@ Claude stream 模式先验证公开的 JSON 输入帧、输出帧和正常关闭
 
 本次文档提交不执行上述真实客户端测试，也不创建或运行生产 Agent。开始编码时使用 Fake Adapter 完成状态与故障测试，再用受限测试仓库和预算进行真实集成。
 
+两节点部署布局、故障注入、量化记录及证据模板见[多节点 PoC 与故障验收计划](../validation/multi-node-poc.md)。验收分为必需正确性门槛、能力可选门槛和性能观测；本文没有给出实测吞吐或生产容量结论。
+
 ## 17. 待编码时固定的参数
 
 下列项目不影响当前设计，但必须在对应能力上线前落实：Go / grpc-go / Protobuf 的精确版本、Codex / Claude CLI 版本及校验值、支持的认证方式、Worker OS、容器运行方式、凭据隔离方式、数据库与产物存储位置、事件保留周期、配额、任务 deadline 和允许执行策略。
 
-现阶段按 Linux Worker、容器隔离、单调度器、PostgreSQL、每节点 2 个槽位作为保守起始配置；这些是配置建议，不是已测容量或既有项目事实。
+现阶段按 Linux Worker、受信进程执行、单活动 server、SQLite、每节点 2 个槽位作为起始配置。容器按隔离需求启用；这些是配置建议，不是已测容量或既有项目事实。
+
+P0-D 需固定 SQLite 驱动与内嵌数据库版本、迁移/备份/恢复流程和事件保留策略。首版接受控制平面单点，server 停机期间不能提交和分配新任务；多节点指执行节点扩展，不代表控制平面高可用。
 
 ## 18. 官方参考资料
 
@@ -447,5 +510,10 @@ Claude stream 模式先验证公开的 JSON 输入帧、输出帧和正常关闭
 - [R7 — Claude Agent SDK sessions](https://code.claude.com/docs/en/agent-sdk/sessions)
 - [R8 — Go os/exec](https://pkg.go.dev/os/exec)
 - [R9 — gRPC retry](https://grpc.io/docs/guides/retry/)
-- [R10 — PostgreSQL SELECT / locking](https://www.postgresql.org/docs/current/sql-select.html)
+- [R10 — SQLite WAL](https://www.sqlite.org/wal.html)
 - [R11 — Claude Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)
+
+- [R12 — SQLite transactions](https://www.sqlite.org/lang_transaction.html)
+- [R13 — SQLite PRAGMA](https://www.sqlite.org/pragma.html)
+- [R14 — modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite)
+- [R15 — SQLite backup](https://www.sqlite.org/backup.html)
