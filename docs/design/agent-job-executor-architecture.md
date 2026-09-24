@@ -1,91 +1,137 @@
-# Agent Job Executor 总体架构
+# Agent-aware Distributed Job Execution Platform 总体架构
 
 - 项目：computecloud
 - 日期：2026-09-24
-- 定位：**轻量、可靠、可扩展的分布式 Agent Job Executor**
+- 产品类别：**Agent Job Executor**
+- 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 当前实现基线：v0.2.0
 - 长期路线：[长期演进路线图](../implementation/long-term-roadmap.md)
-- 决策依据：[ADR-003：Agent Job Executor 产品边界](../adr/0003-agent-job-executor-product-scope.md)
+- 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
+- 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 
 ## 1. 产品定位
 
-computecloud 的核心不是模型推理平台、GPU 云或通用 AI Execution OS，而是：
+computecloud 专注一个问题：
 
-> **把 Codex、Claude 以及后续其他 Agent / Tool Runtime 作为远程执行器，统一完成 Job 提交、拆分、调度、执行、取消、恢复、产物交接和治理。**
+> **可靠地把 Agent Job 分配到远程 Worker 执行，并原生理解 Agent Runtime、Tool、Credential、Workspace、Repository、Approval、Artifact provenance 等执行语义。**
 
-核心问题是：一个 Agent Job 进入系统后，如何可靠地把它分配给合适的 Worker / Runtime，并在跨节点、失败、重启、取消和长时间执行场景下保持状态一致、结果可追溯、产物可交接。
+它不是通用模型推理平台、GPU 云、通用 Workflow Engine 或 AI Execution OS。
 
-典型场景包括远程 Codex / Claude 任务、代码分析与修改、多 Agent 分片协作、显式 Map/Reduce、CI 自动化、长时间 Agent Job，以及 Shell / Browser / MCP 等受控工具任务。
+“Agent-aware”是长期差异化：普通 Job Scheduler 只知道进程和资源，computecloud 还要知道这个 Job 使用什么 Agent、什么 Tool、什么账号、什么 Workspace、什么仓库和什么安全边界。
+
+典型场景包括：
+
+- 远程 Codex / Claude 任务；
+- 代码分析、修改、测试和 Review；
+- 多 Agent 分片协作；
+- Map/Reduce 与有限 fan-out/fan-in；
+- CI / 自动化任务；
+- 长时间 Agent Job；
+- Shell / Git / Browser / MCP / HTTP 等受控 Tool；
+- 企业内部批处理 Agent。
 
 ## 2. 明确非目标
 
-当前路线不以以下能力为目标：
+当前长期路线不承担：
 
-- 通用大模型 Serving / 推理平台；
-- 模型 Deployment / Model Registry 平台；
-- KV Cache / Prefix Cache / Memory Fabric；
-- 训练调度平台；
-- 通用 GPU 云；
+- Model Serving / Deployment 平台；
+- KV Cache / Memory Fabric；
+- Training Scheduler；
+- General GPU Cloud；
 - Kubernetes 替代品；
 - Temporal / Airflow 类通用 Workflow 平台；
-- 通用分布式存储系统；
-- 所有 AI Workload 统一调度的 AI Execution OS。
+- 通用 LLM Gateway；
+- 通用分布式存储；
+- 所有 AI Workload 的统一控制面。
 
-如果未来出现独立业务需求，应作为独立产品或独立架构评估，而不是强行塞入 Agent Job Executor。
+如果未来确实存在这些需求，应建立独立系统，通过 Agent Job API 复用 computecloud，而不是改变本系统的领域模型。
 
 ## 3. 核心领域模型
 
+长期稳定模型：
+
 ~~~text
 Job
-├── Task
-│   └── Attempt
-├── Task
-│   └── Attempt
-└── Artifact
+├── Stage
+│   ├── Task
+│   │   └── Attempt
+│   └── Task
+│       └── Attempt
+└── Stage
+    └── Task
+        └── Attempt
+
+Artifact / Workspace
+    ↕
+Attempt generation
 ~~~
 
-其中：
+语义：
 
-- Job：调用方提交的一次完整业务任务；
-- Task：Job 内一个独立可调度工作单元；
-- Attempt：Task 的一次真实执行尝试；
-- Artifact：Attempt / Job 产生的可交付结果；
-- Workspace：执行任务使用的可写工作目录；
-- Runtime：Codex、Claude、Shell、Browser 等真实执行器；
-- Worker：承载 Runtime 的远程执行节点。
+- **Job**：调用方提交的一次完整 Agent 业务任务；
+- **Stage**：Job 内有限执行阶段和同步边界；
+- **Task**：可独立调度的逻辑工作单元；
+- **Attempt**：Task 的一次真实执行尝试；
+- **Artifact**：Attempt 产生且经过接受流程的结果；
+- **Workspace**：Attempt 使用的可写执行环境；
+- **Runtime**：Codex、Claude、自研 Agent 等 Agent 执行载体；
+- **Tool**：Shell、Git、Browser、MCP、HTTP、Verifier 等 Agent 可调用能力；
+- **Worker**：承载 Runtime / Tool 的远程执行节点。
 
-核心原则：**Task != Attempt**。业务任务与执行尝试必须分离，重试只创建新的 Attempt，不创建新的业务 Task。
+核心不变量：
+
+> **Stage != Task，Task != Attempt。**
+
+Map/Reduce 自然映射为 Map Stage + Reduce Stage；fan-out / barrier / fan-in 仍是有限 Stage 组合，而不是通用 DAG DSL。
 
 ## 4. 总体架构
 
 ~~~mermaid
 flowchart TB
-    C["调用方<br/>CLI / API / Codex / CI / MCP"] --> G
+    C["调用方<br/>CLI / HTTP API / MCP / CI / Agent"] --> G
 
     subgraph S["computecloud Server"]
-        G["Job Gateway<br/>HTTP / MCP / Token / Auth"]
-        JC["Job Controller<br/>single / Map-Reduce / bounded stages"]
-        SCH["Scheduler<br/>filter / fair queue / capability / quota"]
-        ST["Store<br/>SQLite by default"]
-        AM["Artifact & Workspace Manager"]
-        RR["Runtime / Worker Capability Registry"]
+        G["Job Gateway<br/>Auth / Project / Token / Idempotency"]
+        JC["Job Controller<br/>Job / Stage / Task"]
+        SCH["Agent-aware Scheduler<br/>Capability / Credential / Affinity / Queue"]
+        ST["State Store<br/>SQLite by default"]
+        RR["Worker & Runtime Registry"]
+        AM["Artifact / Workspace Metadata"]
+        Q["Quota / Policy / Audit"]
+
         G --> JC
         JC --> SCH
         JC <--> ST
         SCH <--> ST
         SCH <--> RR
         JC <--> AM
+        G --> Q
+        SCH --> Q
     end
 
-    SCH <-->|"主动 gRPC 控制流"| W1["Worker A<br/>Runtime Adapters<br/>Workspace"]
-    SCH <-->|"主动 gRPC 控制流"| W2["Worker B<br/>Runtime Adapters<br/>Workspace"]
-    SCH <-->|"主动 gRPC 控制流"| WN["Worker N<br/>Runtime Adapters<br/>Workspace"]
+    SCH <-->|"主动 gRPC 控制流"| W1["Worker A"]
+    SCH <-->|"主动 gRPC 控制流"| W2["Worker B"]
+    SCH <-->|"主动 gRPC 控制流"| WN["Worker N"]
 
-    AM --> AS["Artifact Storage<br/>Local / Shared / Object Provider"]
-    OBS["Observability & Governance<br/>Events / Metrics / Audit / Quota"]
+    subgraph WX["Worker Execution Plane"]
+        R["Agent Runtime<br/>Codex / Claude / Custom Agent"]
+        T["Tools<br/>Shell / Git / Browser / MCP / HTTP / Verifier"]
+        WS["Workspace"]
+        R --> T
+        R --> WS
+        T --> WS
+    end
+
+    W1 --> R
+    W2 --> R
+    WN --> R
+
+    AM --> AS["Artifact Storage Provider<br/>Local / Shared File / Object"]
+    OBS["Events / Metrics / Trace / Audit"]
     OBS -.-> G
     OBS -.-> JC
     OBS -.-> SCH
+    OBS -.-> WX
 ~~~
 
 ## 5. 主执行流程
@@ -93,130 +139,278 @@ flowchart TB
 ~~~text
 Submit Job
    ↓
-Auth / Project / Quota / Idempotency
+Auth / Project / Idempotency / Quota
    ↓
 Job Controller
    ↓
-Task Expansion
+Create Stage / Tasks
    ↓
-Scheduler
+Agent-aware Scheduler
    ↓
-Worker Capability Match
+Runtime + Tool + Credential + Affinity Match
    ↓
-Attempt Lease
+Create Attempt generation
    ↓
-Runtime Adapter
+Worker lease / fencing
    ↓
-Codex / Claude / Tool
+Agent Runtime
    ↓
-Artifact / Result / Events
+Tool Calls / Workspace
    ↓
-Verify
+Artifact STAGED
    ↓
-Job Result
+Verifier / Completion CAS
+   ↓
+Artifact ACCEPTED / PUBLISHED
+   ↓
+Next Stage or Job Result
 ~~~
 
-## 6. Server 职责
+## 6. Runtime 与 Tool 必须分层
 
-Server 负责控制面，不执行 Agent 本身。主要模块包括 API/MCP、Job Controller、Scheduler、Store、Worker Registry、Runtime Capability Registry、Artifact Metadata、Quota、Audit 和 Recovery。
+### 6.1 Runtime
 
-Server 不应该演变成模型推理代理大杂烩、文件字节流代理、Shell 执行节点或通用 Workflow Engine。
-
-## 7. Worker 职责
-
-Worker 是执行面，负责主动连接 Server、注册版本与 Capability、接收 Start/Stop/Inspect、管理 Workspace、启动 Runtime、进程组监督、事件暂存与补传、lease/heartbeat、Artifact 打包上传和故障后的本地恢复。
-
-Worker 不负责全局调度。
-
-## 8. Runtime Adapter
-
-Runtime 是最重要的扩展点之一。长期围绕 Agent Job 执行抽象：
+Runtime 是 Agent 执行载体：
 
 ~~~text
-Prepare
-Start
-Inspect
-Stop
-Capabilities
-Version
+Runtime
+├── Codex
+├── Claude
+└── Custom Agent
 ~~~
 
-可选能力通过 capability 声明，例如 structured_output、stream_output、session_resume、interactive_input、approval、workspace_checkpoint、container、browser、network。
+Runtime 主要能力：
 
-Scheduler 按 capability 匹配，不按 Runtime 名称写大量特殊逻辑。
+- prepare；
+- start；
+- inspect；
+- stop；
+- structured / streamed output；
+- session resume（可选）；
+- interactive input / approval（可选）；
+- workspace checkpoint（可选）。
 
-## 9. Scheduler 演进边界
+### 6.2 Tool
 
-Scheduler 的目标是 Agent Job 调度，而不是 AI 全栈资源编排。
+Tool 是 Runtime / Agent 调用的外部能力：
 
 ~~~text
-Filter
-  runtime capability
-  worker labels
-  project permission
-  account quota
-  resource availability
-
-Queue / Fairness
-  priority
-  project fairness
-  account concurrency
-  job concurrency
-
-Score
-  worker load
-  workspace affinity
-  repository affinity
-  runtime warm state
-  historical latency
-
-Bind
-  task -> attempt -> worker
+Tool
+├── Shell
+├── Git
+├── Browser
+├── MCP
+├── HTTP/API
+└── Verifier
 ~~~
 
-CPU、Memory、可选 GPU 可以成为 Worker capability 和资源约束，但仅服务 Agent Job，不因此扩展为模型 Serving 调度平台。
+分别维护 RuntimeCapability 和 ToolCapability。
 
-## 10. Job 编排边界
+某些特殊 Task 可以直接调用 Tool Executor，但不能因此把所有 Tool 都建模成 Runtime。
 
-v0.2 已有 single 和 map_reduce。长期可以增加 fan-out、barrier、fan-in、bounded stage、conditional verifier 等**有限编排**，但不发展无限制 Workflow DSL。
+## 7. Agent-aware Scheduler
 
-判断原则：编排能力必须直接解决 Agent Job 执行与交付问题，而不是为了成为通用工作流系统。
+Scheduler 不以 CPU/GPU Bin Packing 为中心，而以 Agent Job 可执行性为中心。
 
-## 11. Workspace 与 Artifact
+建议 Filter / Score 的优先顺序：
 
-重点不是构建 Storage Fabric，而是保证 Job 输入与结果可交接。
+~~~text
+1. Runtime / Agent Capability
+2. Security / Permission
+3. Credential / Account Availability
+4. Workspace / Repository Affinity
+5. Network / Tool Reachability
+6. Queue / Concurrency
+7. CPU / Memory / Disk
+8. Optional Accelerator
+~~~
 
-长期对象包括 Workspace、Input Package、Artifact、Report、Patch、Log、Test Result，以及 Runtime 支持时的 Checkpoint。
+### 7.1 Filter
 
-存储通过 Local、Shared File、Object 等 Provider 抽象。公共协议只引用 Artifact ID / URI / checksum，不暴露具体私有存储实现。
+硬条件：
 
-## 12. 可靠性模型
+- Runtime/version；
+- Tool Capability；
+- project permission；
+- credential/account；
+- repository access；
+- network reachability；
+- isolation level；
+- Worker labels；
+- resource floor。
 
-必须持续保持：
+### 7.2 Queue / Fairness
 
-- 幂等 Submit；
+- priority；
+- project fair share；
+- account concurrency；
+- job concurrency；
+- aging；
+- backpressure。
+
+### 7.3 Score
+
+- Worker load；
+- Workspace affinity；
+- Repository affinity；
+- warm Runtime；
+- credential/account availability；
+- historical latency；
+- failure rate；
+- optional resource headroom。
+
+### 7.4 Bind
+
+最终形成：
+
+~~~text
+Task
+  ↓
+Attempt generation
+  ↓
+Worker
+  ↓
+Runtime
+  ↓
+Credential / Tool context
+~~~
+
+调度结果应可解释：至少能够给出候选 Worker、拒绝原因和主要选中因素。
+
+## 8. Stage：有限编排而不是 Workflow 平台
+
+支持方向：
+
+~~~text
+single
+map_reduce
+fan_out
+barrier
+fan_in
+bounded_stages
+conditional_verifier
+~~~
+
+明确不做：
+
+- 任意循环语言；
+- 通用 Workflow DSL；
+- 复杂动态子流程；
+- 为替代 Temporal / Airflow 而设计的调度语义。
+
+Stage 只解决 Agent Job 内“阶段、并行、屏障、汇总和验证”。
+
+## 9. Artifact / Workspace 是可靠性内核
+
+Artifact 不只是文件存储对象，而是 Attempt 提交正确性的一部分。
+
+至少绑定：
+
+~~~text
+job_id
+stage_id
+task_id
+attempt_id
+generation
+artifact_id
+checksum
+state
+~~~
+
+建议生命周期：
+
+~~~text
+UPLOADING
+   ↓
+STAGED
+   ↓
+ACCEPTED
+   ↓
+PUBLISHED
+
+STAGED -> REJECTED / ORPHANED
+~~~
+
+只有当前有效 generation 的 ACCEPTED Artifact 才能被下一 Stage 或 Job Result 使用。
+
+Workspace 至少记录：
+
+- owner Attempt / generation；
+- repository baseline；
+- writable state；
+- cleanup state；
+- retention / TTL；
+- disk quota；
+- checkpoint（Runtime 支持时）。
+
+旧 Attempt 和新 Attempt 不得无约束共享同一个可写 Workspace。
+
+## 10. 可靠性模型
+
+长期最重要的系统能力仍然是：
+
+- idempotent submit；
 - command_id 去重；
 - Attempt generation；
-- lease；
-- heartbeat；
-- fencing；
+- lease / heartbeat；
+- generation fencing；
 - cancel tombstone；
 - completion CAS；
-- Artifact checksum；
+- Artifact checksum / acceptance；
 - Server restart recovery；
 - Worker restart recovery；
 - unknown execution reconciliation；
-- 不确定副作用任务不自动重放。
+- side-effect-aware retry。
 
 核心原则：
 
-> **宁可明确进入 RECONCILING，也不能制造双执行。**
+> **宁可进入 RECONCILING，也不能因为网络、重启或重试制造两个有效执行结果。**
 
-## 13. 安全边界
+## 11. G1 的长期定位
 
-安全能力围绕 Agent Job：User / Project Token、Worker identity、RBAC、CredentialRef、Runtime permission、repository allowlist、Tool permission、network policy、Workspace isolation、Audit 和 Artifact ownership。
+v0.2 已有 Responses / SSE / compact 网关能力，可以保留，但长期定位为：
 
-执行不可信代码时应使用 Container / VM / Sandbox，而不是依赖普通进程隔离。
+> **Agent Runtime Support Adapter**
+
+它用于满足某些 Agent Runtime 的模型访问需求，不扩展成独立的 LLM Gateway、Model Router 或 Provider Gateway 产品线。
+
+## 12. Worker
+
+Worker 负责：
+
+- 主动连接；
+- identity / version；
+- RuntimeCapability；
+- ToolCapability；
+- labels / isolation；
+- resource snapshot；
+- Start / Stop / Inspect；
+- Workspace；
+- process supervision；
+- heartbeat / lease；
+- event buffering；
+- Artifact upload；
+- crash recovery。
+
+Worker 不做全局调度。
+
+## 13. 安全与治理
+
+需要围绕 Agent Job 建立：
+
+- Project / Tenant identity；
+- User / Service Account；
+- Worker identity；
+- CredentialRef / SecretRef；
+- Runtime permission；
+- Tool permission；
+- repository allowlist；
+- network policy；
+- isolation capability；
+- Artifact ownership；
+- Audit。
+
+执行不可信代码时使用 Container / VM / Sandbox，不把普通进程当成安全边界。
 
 ## 14. 可观测性
 
@@ -225,19 +419,45 @@ v0.2 已有 single 和 map_reduce。长期可以增加 fan-out、barrier、fan-i
 ~~~text
 request_id
 job_id
+stage_id
 task_id
 attempt_id
+generation
 worker_id
 runtime
+credential_ref
 artifact_id
 ~~~
 
-至少观测 submit latency、queue latency、scheduling latency、task start latency、runtime duration、cancellation latency、retry/reconcile、Worker availability、Artifact bytes、SQLite write/busy、Server/Worker CPU/RSS，以及 Job success/failure/cancel rate。
+至少观测：
 
-## 15. 产品边界总结
+- submit / queue / scheduling / start latency；
+- stage duration；
+- runtime duration；
+- retry / reconcile；
+- cancellation latency；
+- Worker availability；
+- account/credential blocker；
+- Artifact lifecycle；
+- Workspace cleanup；
+- SQLite write / busy；
+- Server / Worker CPU/RSS；
+- Job success / failure / cancel。
 
-computecloud 的长期定义：
+## 15. 长期定位总结
 
-> **Agent Job Executor：一个面向 Codex、Claude 和其他 Agent / Tool Runtime 的轻量分布式作业执行系统。**
+computecloud 的长期产品定义：
 
-能力增长方向是可靠性、调度能力、Runtime 生态、Tool 生态、资源感知、多租户治理和规模化可用性，而不是不断扩大领域模型，把自己强行演变成另一套 AI 基础设施。
+> **Agent-aware Distributed Job Execution Platform：一个理解 Agent 执行语义、面向多 Worker 的轻量可靠作业执行平台。**
+
+它持续增强：
+
+~~~text
+可靠性
+→ Agent Runtime / Tool 生态
+→ Agent-aware Scheduling
+→ 企业治理
+→ 大规模运行与按需 HA
+~~~
+
+而不是通过扩大领域模型变成通用 AI 基础设施。
