@@ -56,7 +56,7 @@ func (s *Server) inputArtifact(ctx context.Context, worker string, r *pb.InputAr
 		}
 		var hash string
 		var size int64
-		e = q.QueryRowContext(ctx, `SELECT a.path,a.hash,a.size FROM artifacts a JOIN tasks t ON a.task=t.id JOIN attempts x ON a.attempt=x.id WHERE a.id=? AND a.task=? AND a.attempt=? AND t.job_id=? AND t.owner=? AND t.project=? AND t.state='SUCCEEDED' AND t.attempt=x.id AND x.released=1`, r.ArtifactId, found.TaskID, found.AttemptID, j.ID, j.owner, j.project).Scan(&path, &hash, &size)
+		e = q.QueryRowContext(ctx, `SELECT a.path,a.hash,a.size FROM artifacts a JOIN tasks t ON a.task=t.id JOIN attempts x ON a.attempt=x.id WHERE a.id=? AND a.task=? AND a.attempt=? AND t.job_id=? AND t.owner=? AND t.project=? AND t.state='SUCCEEDED' AND t.attempt=x.id AND t.current_generation=x.generation AND a.generation=x.generation AND a.state='ACCEPTED' AND x.released=1`, r.ArtifactId, found.TaskID, found.AttemptID, j.ID, j.owner, j.project).Scan(&path, &hash, &size)
 		if e != nil {
 			return e
 		}
