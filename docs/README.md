@@ -2,6 +2,7 @@
 
 | 文档 | 内容 | 状态 |
 | --- | --- | --- |
+| [AI Execution OS 总体架构](design/ai-execution-os-architecture.md) | Execution Kernel、Compute/Memory/Storage/Tool Fabric、UPFS 与 Locality 演进边界 | 目标架构；基于 v0.2 逐步演进 |
 | [v0.2 网关与 Map/Reduce 设计](design/gateway-mapreduce-v0.2.md) | 双入口、分片/汇总、投递、取消、恢复、计量与升级 | 已实现，fixture 验证通过 |
 | [v0.2 接口与数据契约](contracts/job-gateway-v0.2.md) | HTTP/MCP、Worker 扩展、SQLite、Responses 边界 | v0.2 已实现，固定子集 |
 | [v0.2 实施计划与验收](implementation/v0.2-plan.md) | M1–M6、G1、R1 依赖与 V01–V22 验收 | 代码与本地验证完成；真实环境待验收 |
@@ -21,7 +22,7 @@
 | [ADR-001：SQLite 与轻量部署决策](adr/0001-sqlite-lightweight.md) | 单二进制、内置队列、SQLite 与备份 | 核心路线已落地，本地存储/备份验证通过 |
 | [多节点 PoC 与故障验收计划](validation/multi-node-poc.md) | 两台独立主机、两执行器、完整故障矩阵 | 完整计划未执行；局部映射见验证记录 |
 
-运行第一版先阅读实施进度和运行指南；设计、ADR 与调研用于追溯目标及选型。核查日期为 2026-09-22，客户端升级必须重新执行兼容性验收。
+运行第一版先阅读实施进度和运行指南；设计、ADR 与调研用于追溯目标及选型。核查日期为 2026-09-24，客户端升级必须重新执行兼容性验收。
 
 实现事实以代码、[Proto](../api/agent/v1/runtime.proto) 和对应版本验证记录为准。第三方测试不算本项目测试，fixture 测试不算真实模型或独立双机验收。
 
