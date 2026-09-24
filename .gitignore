@@ -9,3 +9,4 @@
 coverage.out
 secrets/
 .env
+__pycache__/

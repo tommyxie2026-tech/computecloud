@@ -1,5 +1,11 @@
 # 版本记录
 
+## 未发布 — 验收工具
+
+- 增加零额外依赖的本机容量矩阵：混合 single/MapReduce、Codex/Claude fixture、多 Worker/槽位、JSON 指标、事件及产物校验。
+- 增加 `make capacity` / `capacity-check`、工具单测及 CI 报告保存；不修改服务依赖或数据库版本。
+- 补充指标口径、真实模型/双机部署验收门槛；SQLite 事务写延迟无埋点，仍待测量。
+
 ## 0.2.0 — 2026-09-22
 
 - 实现 Job HTTP API、官方 Go SDK MCP 四工具、Job CLI 和受信模板摘要导出。

@@ -7,6 +7,7 @@
 | [v0.2 实施计划与验收](implementation/v0.2-plan.md) | M1–M6、G1、R1 依赖与 V01–V22 验收 | 代码与本地验证完成；真实环境待验收 |
 | [v0.2 运行与升级](implementation/v0.2-runbook.md) | 开关、模板、CLI/MCP、网关、迁移与回退 | 当前操作依据 |
 | [v0.2 验证记录](validation/v0.2-results.md) | 自动测试、故障烟测与未覆盖项 | 本地通过，真实环境待验收 |
+| [容量与部署验收](validation/capacity.md) | fixture 容量工具、指标口径、完整矩阵与真实双机门槛 | 本机矩阵通过，真实环境待验收 |
 | [v0.2 接入示例](examples/v0.2/README.md) | Job JSON Schema、请求及 Codex/Server 配置 | v0.2 示例；需要替换部署引用 |
 | [ADR-002：网关与 Map/Reduce](adr/0002-gateway-mapreduce.md) | 双入口和固定两阶段作业的决策依据 | 已实施 |
 | [v0.1 实施计划与进度](implementation/v0.1-plan.md) | 交付阶段、完成状态与后续工作 | 第一版已实现，本地验证完成 |

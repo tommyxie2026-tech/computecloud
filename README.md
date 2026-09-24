@@ -23,6 +23,8 @@ make smoke
 
 `make smoke` 临时启动一个 server、两个 Worker 进程和协议测试程序，验证执行、取消、崩溃恢复、事件与产物、备份；结束后清理临时目录。
 
+`make capacity-check` 运行轻量容量工具自测与小矩阵；`make capacity` 运行完整 Worker/槽位矩阵并输出 JSON。无额外 Python 依赖，指标口径与真实部署清单见[容量与部署验收](docs/validation/capacity.md)。
+
 Job/MCP 接入从 [v0.2 运行指南](docs/implementation/v0.2-runbook.md) 开始；旧 Task 与基础节点配置见 [v0.1 运行指南](docs/implementation/v0.1-runbook.md)，按 [examples](examples) 配置本机已经安装和登录的 Codex / Claude CLI。配置中的版本、模型、仓库和 commit 占位符需要替换。
 
 ```sh
