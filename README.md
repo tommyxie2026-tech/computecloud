@@ -25,6 +25,8 @@ make smoke
 
 `make capacity-check` 运行轻量容量工具自测与小矩阵；`make capacity` 运行完整 Worker/槽位矩阵并输出 JSON。无额外 Python 依赖，指标口径与真实部署清单见[容量与部署验收](docs/validation/capacity.md)。
 
+`make ci-flow` 启动真实 Server 和两个 Worker 进程，使用 Codex/Claude 协议 fixture 模拟 single、Map/Reduce、取消和 Worker 故障，并生成可归档 JSON 报告；流程见 [CI 任务执行流程模拟](docs/validation/ci-task-flow.md)。
+
 主分支 CI 通过后会生成 Linux amd64/arm64 压缩包和 `SHA256SUMS`，可在对应 Actions run 的 Artifacts 下载。正式版本可由主分支中的版本化 release request 或与 `Makefile` 版本一致的语义版本标签触发，同一组已验证产物会自动发布到 GitHub Releases；操作步骤见 [v0.2 运行指南](docs/implementation/v0.2-runbook.md#7-构建产物与发布)。
 
 Job/MCP 接入从 [v0.2 运行指南](docs/implementation/v0.2-runbook.md) 开始；旧 Task 与基础节点配置见 [v0.1 运行指南](docs/implementation/v0.1-runbook.md)，按 [examples](examples) 配置本机已经安装和登录的 Codex / Claude CLI。配置中的版本、模型、仓库和 commit 占位符需要替换。
@@ -47,6 +49,7 @@ Job/MCP 接入从 [v0.2 运行指南](docs/implementation/v0.2-runbook.md) 开�
 - [v0.2 运行与升级指南](docs/implementation/v0.2-runbook.md)
 - [v0.2 正式部署指南](docs/deployment/production-v0.2.md)
 - [v0.2 验证记录](docs/validation/v0.2-results.md)
+- [CI 任务执行流程模拟](docs/validation/ci-task-flow.md)
 - [v0.2 请求 Schema 与接入示例](docs/examples/v0.2/README.md)
 - [实施计划与进度](docs/implementation/v0.1-plan.md)
 - [运行、部署和恢复指南](docs/implementation/v0.1-runbook.md)

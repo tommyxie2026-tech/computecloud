@@ -1,5 +1,10 @@
 # 版本记录
 
+## 未发布 — CI 端到端任务流
+
+- 增加独立 GitHub Actions `task-flow`：使用真实 Server/Worker 进程和 Codex/Claude 协议 fixture 模拟 single、Map/Reduce、取消与 Worker 故障。
+- 输出包含 Job/Attempt、事件、Worker 分配、产物 SHA-256 和 SQLite 完整性的 `ci-task-flow.v1` 报告；发布打包依赖该流程通过。
+
 ## 0.2.0 — 2026-09-24
 
 - 实现 Job HTTP API、官方 Go SDK MCP 四工具、Job CLI 和受信模板摘要导出。
