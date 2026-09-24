@@ -6,6 +6,7 @@
 | [v0.2 接口与数据契约](contracts/job-gateway-v0.2.md) | HTTP/MCP、Worker 扩展、SQLite、Responses 边界 | v0.2 已实现，固定子集 |
 | [v0.2 实施计划与验收](implementation/v0.2-plan.md) | M1–M6、G1、R1 依赖与 V01–V22 验收 | 代码与本地验证完成；真实环境待验收 |
 | [v0.2 运行与升级](implementation/v0.2-runbook.md) | 开关、模板、CLI/MCP、网关、迁移与回退 | 当前操作依据 |
+| [v0.2 正式部署指南](deployment/production-v0.2.md) | 产物核验、TLS、配置、systemd、验收、升级与回退 | v0.2.0 部署依据 |
 | [v0.2 验证记录](validation/v0.2-results.md) | 自动测试、故障烟测与未覆盖项 | 本地通过，真实环境待验收 |
 | [容量与部署验收](validation/capacity.md) | fixture 容量工具、指标口径、完整矩阵与真实双机门槛 | 本机矩阵通过，真实环境待验收 |
 | [v0.2 接入示例](examples/v0.2/README.md) | Job JSON Schema、请求及 Codex/Server 配置 | v0.2 示例；需要替换部署引用 |

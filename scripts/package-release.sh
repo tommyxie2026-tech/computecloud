@@ -44,6 +44,7 @@ for arch in amd64 arm64; do
     esac
   fi
   cp README.md CHANGELOG.md "$root/"
+  cp docs/deployment/production-v0.2.md "$root/DEPLOYMENT.md"
   cp -R examples "$root/"
   cp -R docs/examples/v0.2 "$root/examples/v0.2"
   tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \

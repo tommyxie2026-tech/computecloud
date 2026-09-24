@@ -1,13 +1,6 @@
 # 版本记录
 
-## 未发布 — 验收工具
-
-- 增加零额外依赖的本机容量矩阵：混合 single/MapReduce、Codex/Claude fixture、多 Worker/槽位、JSON 指标、事件及产物校验。
-- 增加 `make capacity` / `capacity-check`、工具单测及 CI 报告保存；不修改服务依赖或数据库版本。
-- 补充指标口径、真实模型/双机部署验收门槛；SQLite 事务写延迟无埋点，仍待测量。
-- 增加 Linux amd64/arm64 发布包、SHA-256 清单、主分支 CI artifact，以及语义版本标签触发的 GitHub Release 发布任务。
-
-## 0.2.0 — 2026-09-22
+## 0.2.0 — 2026-09-24
 
 - 实现 Job HTTP API、官方 Go SDK MCP 四工具、Job CLI 和受信模板摘要导出。
 - 实现 single、显式 Map/Reduce、按 Job 轮转、并发与共同期限、持久取消及清理屏障。
@@ -15,8 +8,10 @@
 - 增加默认关闭的 Responses JSON/SSE/compact 网关、固定路由、Attempt 模型 Token、在途撤销、并发准入与可观察未知用量。
 - 增加 Server schema v2/v3 与 Worker schema v2 的迁移门槛、旧库兼容、备份不升级源库。
 - 增加 HTTP/MCP/网关、跨执行器、恢复/存储故障测试及 Job CLI 二进制烟测；更新运行指南、设计契约与进度。
+- 增加零额外依赖的本机容量矩阵、CI 小矩阵和完整指标口径；不修改服务依赖或数据库版本。
+- 增加 Linux amd64/arm64 发布包、SHA-256 清单、主分支 CI artifact、标签 Release 和正式部署指南。
 
-本地 fixture、模拟 HTTPS 上游、race 与二进制故障测试通过。真实模型、独立主机与容量压测仍待目标环境验收。自动重试 R1 继续延后；不增加 PostgreSQL、Redis、外部队列或控制面 HA。
+本地 fixture、模拟 HTTPS 上游、race、二进制故障测试和 fixture 容量矩阵通过。真实模型、独立主机及真实模型容量/账单对照仍待目标环境验收。自动重试 R1 继续延后；不增加 PostgreSQL、Redis、外部队列或控制面 HA。
 
 ## 0.1.0 — 2026-09-22
 
