@@ -61,6 +61,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 3
 	}
+	if schema == ServerSchema && version < 4 {
+		if _, err = tx.Exec(serverV4); err != nil {
+			return err
+		}
+		version = 4
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -156,3 +162,112 @@ CREATE TABLE gateway_requests (
   error_code TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX gateway_requests_job ON gateway_requests(job_id, started);`
+
+
+const serverV4 = `PRAGMA defer_foreign_keys=ON;
+
+CREATE TABLE stages (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES jobs(id),
+  kind TEXT NOT NULL CHECK (kind IN ('single','map','reduce','verify')),
+  ordinal INTEGER NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('PENDING','READY','RUNNING','SUCCEEDED','FAILED','CANCELED')),
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  UNIQUE(job_id, kind),
+  UNIQUE(job_id, ordinal)
+);
+CREATE INDEX stages_job_state ON stages(job_id, state, ordinal);
+
+INSERT INTO stages(id,job_id,kind,ordinal,state,created,updated)
+SELECT id || ':single', id, 'single', 0,
+       CASE
+         WHEN state='SUCCEEDED' THEN 'SUCCEEDED'
+         WHEN state='FAILED' THEN 'FAILED'
+         WHEN state='CANCELED' THEN 'CANCELED'
+         WHEN state='QUEUED' THEN 'READY'
+         ELSE 'RUNNING'
+       END,
+       created, updated
+FROM jobs WHERE mode='single';
+
+INSERT INTO stages(id,job_id,kind,ordinal,state,created,updated)
+SELECT id || ':map', id, 'map', 0,
+       CASE
+         WHEN state IN ('REDUCING','SUCCEEDED') THEN 'SUCCEEDED'
+         WHEN state='FAILED' THEN 'FAILED'
+         WHEN state='CANCELED' THEN 'CANCELED'
+         WHEN state='QUEUED' THEN 'READY'
+         ELSE 'RUNNING'
+       END,
+       created, updated
+FROM jobs WHERE mode='map_reduce';
+
+INSERT INTO stages(id,job_id,kind,ordinal,state,created,updated)
+SELECT id || ':reduce', id, 'reduce', 1,
+       CASE
+         WHEN state='SUCCEEDED' THEN 'SUCCEEDED'
+         WHEN state='FAILED' THEN 'FAILED'
+         WHEN state='CANCELED' THEN 'CANCELED'
+         WHEN state='REDUCING' THEN 'RUNNING'
+         ELSE 'PENDING'
+       END,
+       created, updated
+FROM jobs WHERE mode='map_reduce';
+
+ALTER TABLE tasks ADD COLUMN stage_id TEXT REFERENCES stages(id);
+ALTER TABLE tasks ADD COLUMN current_generation INTEGER NOT NULL DEFAULT 0;
+
+UPDATE tasks
+SET stage_id = job_id || ':' || stage
+WHERE job_id IS NOT NULL AND stage IN ('single','map','reduce');
+
+UPDATE tasks
+SET current_generation = coalesce(
+  (SELECT generation FROM attempts WHERE attempts.id=tasks.attempt),
+  0
+);
+
+CREATE TABLE attempts_v4 (
+  id TEXT PRIMARY KEY,
+  task TEXT NOT NULL REFERENCES tasks(id),
+  worker TEXT NOT NULL,
+  epoch TEXT NOT NULL,
+  generation INTEGER NOT NULL,
+  token TEXT NOT NULL,
+  lease_until INTEGER NOT NULL,
+  released INTEGER NOT NULL DEFAULT 0,
+  final_hash TEXT NOT NULL DEFAULT '',
+  worker_seq INTEGER NOT NULL DEFAULT 0,
+  model_token_hash TEXT,
+  UNIQUE(task, generation)
+);
+INSERT INTO attempts_v4(id,task,worker,epoch,generation,token,lease_until,released,final_hash,worker_seq,model_token_hash)
+SELECT id,task,worker,epoch,generation,token,lease_until,released,final_hash,worker_seq,model_token_hash
+FROM attempts;
+DROP TABLE attempts;
+ALTER TABLE attempts_v4 RENAME TO attempts;
+CREATE UNIQUE INDEX attempts_one_active ON attempts(task) WHERE released=0;
+CREATE UNIQUE INDEX attempts_model_token ON attempts(model_token_hash) WHERE model_token_hash IS NOT NULL;
+CREATE INDEX attempts_worker_active ON attempts(worker,released);
+
+ALTER TABLE artifacts ADD COLUMN generation INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE artifacts ADD COLUMN state TEXT NOT NULL DEFAULT 'STAGED'
+  CHECK (state IN ('STAGED','ACCEPTED','ORPHANED'));
+
+UPDATE artifacts
+SET generation = coalesce((SELECT generation FROM attempts WHERE attempts.id=artifacts.attempt),0);
+
+UPDATE artifacts
+SET state = 'ACCEPTED'
+WHERE attempt IN (
+  SELECT a.id
+  FROM attempts a
+  JOIN tasks t ON t.id=a.task
+  WHERE a.released=1 AND t.state='SUCCEEDED' AND t.attempt=a.id
+);
+
+UPDATE artifacts
+SET state = 'ORPHANED'
+WHERE state='STAGED' AND attempt IN (SELECT id FROM attempts WHERE released=1);
+`
