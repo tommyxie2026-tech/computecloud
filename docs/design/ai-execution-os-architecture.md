@@ -85,7 +85,7 @@ flowchart TB
         MF["KV / Context / Prefix Cache"]
         HBM["L0 GPU HBM"]
         DRAM["L1 Node DRAM"]
-        MC["L2 Cluster Cache<br/>UPFS / NVMe / NIXL / P2P"]
+        MC["L2 Cluster Cache<br/>Shared Storage / NVMe / NIXL / P2P"]
         MF --> HBM
         MF --> DRAM
         MF --> MC
@@ -93,11 +93,11 @@ flowchart TB
 
     subgraph ST["Storage Fabric"]
         SF["Model / Dataset / Artifact / Workspace / Checkpoint"]
-        UPFS["UPFS<br/>High Performance Shared File Provider"]
+        SHAREDFS["High Performance Shared File Storage"]
         S3["S3 / OSS"]
         CFS["CephFS / NFS"]
         NVME["Local NVMe"]
-        SF --> UPFS
+        SF --> SHAREDFS
         SF --> S3
         SF --> CFS
         SF --> NVME
@@ -127,7 +127,7 @@ Client / Agent
 
 ## 3. 核心抽象
 
-平台优先固定抽象，不把 vLLM、LMCache、UPFS、Kubernetes 等具体实现泄漏到上层协议。
+平台优先固定抽象，不把 vLLM、LMCache、具体共享存储实现、Kubernetes 等具体实现泄漏到上层协议。
 
 ### 3.1 Execution
 
@@ -199,7 +199,7 @@ checkpoint://training/T88/step-10000
 cache://kv/<namespace>/<prefix-hash>
 ```
 
-底层由 Resolver 映射到 UPFS、S3、CephFS、Local NVMe 等 Provider。
+底层由 Resolver 映射到 Shared File Storage、Object Storage、CephFS/NFS、Local NVMe 等 Provider。
 
 ## 4. API Fabric：Token Gateway
 
@@ -214,7 +214,7 @@ Token Gateway 保持轻量，负责：
 - Audit；
 - Billing attribution。
 
-Gateway 不直接管理 GPU、UPFS、KV 目录或 Worker 选择。
+Gateway 不直接管理 GPU、具体存储后端、KV 目录或 Worker 选择。
 
 外部请求进入后转为内部稳定的 Execution Request，再交给 Router / Control Plane。
 
@@ -378,7 +378,7 @@ Demote
 Replicate
 ```
 
-LMCache、NIXL、GPU P2P、UPFS 等都属于 Provider / Backend，而不是控制面协议本身。
+LMCache、NIXL、GPU P2P、共享存储等都属于 Provider / Backend，而不是控制面协议本身。
 
 ### 9.1 KV Cache Namespace
 
@@ -406,7 +406,7 @@ cache corrupt  -> discard + recompute
 cache backend unavailable -> bypass
 ```
 
-Memory Fabric 不应让 UPFS 或远端 Cache 故障直接导致推理服务不可用。
+Memory Fabric 不应让远端共享存储或 Cache 后端故障直接导致推理服务不可用。
 
 ## 10. Storage Fabric：高级文件存储抽象
 
@@ -418,21 +418,20 @@ Storage Fabric 面向 **持久化数据语义**：
 - Workspace Store；
 - Checkpoint Store。
 
-上层使用资源 URI，而不是硬编码 `/upfs/...` 路径。
+上层使用资源 URI，而不是硬编码具体存储挂载路径。
 
 Storage Provider 可包括：
 
 ```text
-UPFS
-CephFS
-NFS
+High Performance Shared File Storage
+CephFS / NFS
 S3 / OSS
 Local NVMe
 ```
 
-### 10.1 UPFS 的平台定位
+### 10.1 高性能共享文件存储的平台定位
 
-UPFS 定位为：
+高性能共享文件存储定位为：
 
 > **Storage Fabric 的高性能共享文件存储 Provider，同时可作为 Memory Fabric 的容量型 / 持久化 Backend。**
 
@@ -448,10 +447,10 @@ UPFS 定位为：
                |                           |
                +-------------+-------------+
                              |
-                            UPFS
+                  Shared File Storage
 ```
 
-两层共享同一底层 UPFS，但语义保持分离：
+两层可以共享同一底层高性能文件存储，但语义保持分离：
 
 | 维度 | Memory Fabric | Storage Fabric |
 | --- | --- | --- |
@@ -471,12 +470,12 @@ GPU/HBM
    ↑
 Local NVMe
    ↑
-UPFS
+Shared File Storage
    ↑
 Object Storage
 ```
 
-UPFS 作为集群级共享 Source of Truth / 高速源，Local NVMe 作为节点级模型缓存，以降低重复拉取和冷启动。
+共享文件存储作为集群级共享 Source of Truth / 高速源，Local NVMe 作为节点级模型缓存，以降低重复拉取和冷启动。
 
 ## 11. Locality Engine
 
@@ -495,15 +494,15 @@ Locality Engine 建议成为独立控制面模块，维护：
 Qwen Model
 ├── Node01 NVMe
 ├── Node02 NVMe
-└── UPFS
+└── Shared File Storage
 
 Prefix ABC
 ├── Node02 GPU
 ├── Node01 DRAM
-└── UPFS
+└── Shared File Storage
 
 Dataset X
-└── UPFS
+└── Shared File Storage
 ```
 
 Scheduler 通过 Locality Directory 查询数据位置，而不是自己解析各 Provider。
@@ -606,7 +605,7 @@ Gateway
 - KV L0/L1/L2 hit ratio；
 - token cache hit ratio；
 - cache load/write latency；
-- UPFS read/write throughput / metadata latency；
+- shared storage read/write throughput / metadata latency；
 - network/RDMA utilization；
 - task retry / reconcile / failure；
 - tenant usage / billing attribution。
@@ -688,7 +687,7 @@ computecloud/
 
 - storage URI / resolver；
 - Local Provider；
-- UPFS Provider；
+- Shared File Storage Provider；
 - Model / Artifact / Workspace Store；
 - Local NVMe model cache。
 
@@ -698,7 +697,7 @@ computecloud/
 
 - KV Directory；
 - LMCache 或兼容 KV Provider；
-- DRAM / UPFS tier；
+- DRAM / Shared Storage tier；
 - Token Cache Hit 指标；
 - Locality Directory；
 - cache/model-aware routing。
@@ -736,7 +735,7 @@ CacheLocation
 ```text
 vLLM / SGLang -> Runtime Provider
 Codex / Claude -> Agent Runtime Provider
-UPFS -> Storage Provider / Memory Backend
+Shared File Storage -> Storage Provider / Memory Backend
 LMCache -> Memory Provider
 Kubernetes / VM / Bare Metal -> Compute Provider
 ```
@@ -772,4 +771,4 @@ Daemon                 -> Node Agent
 Syscall/API            -> Execution API
 ```
 
-该抽象为后续多模型、多 Agent、多节点、KubeVirt/裸金属、KV Cache、UPFS、高速网络以及 Token Gateway 提供统一演进边界。
+该抽象为后续多模型、多 Agent、多节点、KubeVirt/裸金属、KV Cache、共享存储、高速网络以及 Token Gateway 提供统一演进边界。
