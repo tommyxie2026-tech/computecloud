@@ -229,6 +229,24 @@ func (s *Server) ConnectWorker(stream grpc.BidiStreamingServer[pb.WorkerFrame, p
 				return dbErr(re)
 			}
 			for _, c := range cmds {
+				deliver := false
+				e = s.db.Tx(ctx, func(q store.Query) error {
+					var e error
+					deliver, e = commandDeliverable(ctx, q, c, h.WorkerId, h.Epoch)
+					if e != nil {
+						return e
+					}
+					if !deliver {
+						_, e = q.ExecContext(ctx, "UPDATE commands SET acked=1 WHERE id=? AND worker=? AND acked=0", c.CommandId, h.WorkerId)
+					}
+					return e
+				})
+				if e != nil {
+					return dbErr(e)
+				}
+				if !deliver {
+					continue
+				}
 				if c.Kind == "start" && c.Assignment.GetGateway() != nil {
 					c.Assignment.Gateway.Token = modelAttemptToken(c.Assignment)
 				}
@@ -239,6 +257,23 @@ func (s *Server) ConnectWorker(stream grpc.BidiStreamingServer[pb.WorkerFrame, p
 		}
 	}
 }
+func commandDeliverable(ctx context.Context, q store.Query, c *pb.Command, worker, epoch string) (bool, error) {
+	if c == nil || c.Assignment == nil || (c.Kind != "start" && c.Kind != "stop") {
+		return false, nil
+	}
+	a := c.Assignment
+	var n int
+	e := q.QueryRowContext(ctx, `SELECT count(*)
+		FROM attempts x
+		JOIN tasks t ON t.id=x.task
+		WHERE x.id=? AND x.task=? AND x.worker=? AND x.epoch=?
+		  AND x.generation=? AND x.token=? AND x.released=0
+		  AND t.attempt=x.id AND t.current_generation=x.generation`,
+		a.AttemptId, a.TaskId, worker, epoch, a.Generation, a.LeaseToken,
+	).Scan(&n)
+	return n == 1, e
+}
+
 func (s *Server) receive(ctx context.Context, p *session, f *pb.WorkerFrame) error {
 	s.mu.Lock()
 	current := s.peers[p.hello.WorkerId] == p
