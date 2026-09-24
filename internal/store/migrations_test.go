@@ -127,3 +127,79 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 		t.Fatal("second active attempt accepted")
 	}
 }
+
+
+func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
+	dir := t.TempDir()
+	raw, e := sql.Open("sqlite", filepath.Join(dir, "state.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(ServerSchema); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(serverV2); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(serverV3); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("PRAGMA user_version=3"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism,result_json) VALUES('j','o','p','i','rh','sh','{}','single','SUCCEEDED',1,2,9999999999999,1,'{}')"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("INSERT INTO tasks(id,owner,project,idem,hash,spec,state,attempt,worker,created,updated,deadline,job_id,stage,partition_key) VALUES('t','o','p','ti','h','{}','SUCCEEDED','a','w',1,2,9999999999999,'j','single','_single')"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until,released,final_hash) VALUES('a','t','w','e',1,'tok',9999999999999,1,'done')"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("INSERT INTO artifacts(id,task,attempt,kind,hash,size,path) VALUES('ar','t','a','result-bundle','hash',1,'ar')"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("INSERT INTO gateway_requests(id,owner,project,job_id,attempt_id,route,model,endpoint,state,usage_complete,started) VALUES('g','o','p','j','a','r','m','/v1/responses','COMPLETE',0,1)"); e != nil {
+		t.Fatal(e)
+	}
+	if e = raw.Close(); e != nil {
+		t.Fatal(e)
+	}
+
+	db, e := Open(dir, ServerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+
+	var version int
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 4 {
+		t.Fatalf("version=%d err=%v", version, e)
+	}
+	var stageID, stageState string
+	if e = db.SQL.QueryRow("SELECT id,state FROM stages WHERE job_id='j' AND kind='single'").Scan(&stageID, &stageState); e != nil || stageState != "SUCCEEDED" {
+		t.Fatalf("stage=%s state=%s err=%v", stageID, stageState, e)
+	}
+	var taskStage string
+	var generation int64
+	if e = db.SQL.QueryRow("SELECT stage_id,current_generation FROM tasks WHERE id='t'").Scan(&taskStage, &generation); e != nil || taskStage != stageID || generation != 1 {
+		t.Fatalf("task stage=%s gen=%d err=%v", taskStage, generation, e)
+	}
+	var artifactGeneration int64
+	var artifactState string
+	if e = db.SQL.QueryRow("SELECT generation,state FROM artifacts WHERE id='ar'").Scan(&artifactGeneration, &artifactState); e != nil || artifactGeneration != 1 || artifactState != "ACCEPTED" {
+		t.Fatalf("artifact gen=%d state=%s err=%v", artifactGeneration, artifactState, e)
+	}
+	var attemptID string
+	if e = db.SQL.QueryRow("SELECT attempt_id FROM gateway_requests WHERE id='g'").Scan(&attemptID); e != nil || attemptID != "a" {
+		t.Fatalf("gateway attempt=%s err=%v", attemptID, e)
+	}
+	rows, e := db.SQL.Query("PRAGMA foreign_key_check")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer rows.Close()
+	if rows.Next() {
+		t.Fatal("foreign key violation after v3->v4 migration")
+	}
+}
