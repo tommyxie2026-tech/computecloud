@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 import secrets
-import shutil
 import signal
 import socket
 import sqlite3
@@ -75,6 +74,7 @@ def main():
     output = Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     logs_output = output.parent / "logs"
+    logs_output.mkdir(parents=True, exist_ok=True)
     report = {
         "schema_version": "ci-task-flow.v1",
         "started_at": utc_now(),
@@ -112,7 +112,8 @@ def main():
         return run_command(binary, *command, "--config", str(root / "client.json"), timeout=timeout)
 
     def start(name, role, config):
-        log = open(root / f"{name}.log", "a")
+        mode = "a" if name in processes else "w"
+        log = open(logs_output / f"{name}.log", mode)
         log_handles.append(log)
         processes[name] = subprocess.Popen([binary, role, "--config", str(config)], stdout=log, stderr=log)
 
@@ -393,13 +394,9 @@ def main():
                 report.setdefault("cleanup_errors", []).append(f"{name}: {error}")
         for handle in log_handles:
             handle.close()
-        if root and root.exists():
-            logs_output.mkdir(parents=True, exist_ok=True)
-            for source in root.glob("*.log"):
-                shutil.copy2(source, logs_output / source.name)
-            if failure:
-                report["log_tails"] = {source.name: source.read_text(errors="replace")[-4000:]
-                                       for source in root.glob("*.log")}
+        if failure:
+            report["log_tails"] = {source.name: source.read_text(errors="replace")[-4000:]
+                                   for source in logs_output.glob("*.log")}
         report["finished_at"] = utc_now()
         output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
         print(json.dumps(report["summary"], sort_keys=True), flush=True)
