@@ -2,7 +2,7 @@
 
 | 文档 | 内容 | 状态 |
 | --- | --- | --- |
-| [AI Execution OS 总体架构](design/ai-execution-os-architecture.md) | Execution Kernel、Compute/Memory/Storage/Tool Fabric、UPFS 与 Locality 演进边界 | 目标架构；基于 v0.2 逐步演进 |
+| [AI Execution OS 总体架构](design/ai-execution-os-architecture.md) | Execution Kernel、Compute/Memory/Storage/Tool Fabric 与 Locality 演进边界 | 目标架构；基于 v0.2 逐步演进 |
 | [v0.2 网关与 Map/Reduce 设计](design/gateway-mapreduce-v0.2.md) | 双入口、分片/汇总、投递、取消、恢复、计量与升级 | 已实现，fixture 验证通过 |
 | [v0.2 接口与数据契约](contracts/job-gateway-v0.2.md) | HTTP/MCP、Worker 扩展、SQLite、Responses 边界 | v0.2 已实现，固定子集 |
 | [v0.2 实施计划与验收](implementation/v0.2-plan.md) | M1–M6、G1、R1 依赖与 V01–V22 验收 | 代码与本地验证完成；真实环境待验收 |
