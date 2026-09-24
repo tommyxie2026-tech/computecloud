@@ -89,9 +89,19 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 	}
 	hash := store.Hash(encode(r))
 	e = s.db.Tx(ctx, func(q store.Query) error {
-		a, e := s.checkAttempt(ctx, q, p.Identity.WorkerID, r.Attempt)
+		a, e := s.readAttemptIdentity(ctx, q, p.Identity.WorkerID, r.Attempt)
 		if e != nil {
 			return e
+		}
+		epochChanged := a.currentEpoch != "" && a.epoch != a.currentEpoch
+		if a.currentEpoch == "" {
+			return status.Error(codes.FailedPrecondition, "STALE_ATTEMPT")
+		}
+		// A restarted Worker gets a new epoch. It may prove that the old
+		// process was cleaned up, but it may never turn old-epoch work into
+		// success or publish artifacts.
+		if epochChanged && (!r.CleanupConfirmed || r.Success || r.ErrorCode != "WORKER_RESTARTED" || len(r.ArtifactIds) != 0) {
+			return status.Error(codes.FailedPrecondition, "STALE_ATTEMPT")
 		}
 		if a.finalHash != "" {
 			if a.finalHash != hash {
@@ -99,7 +109,7 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 			}
 			return nil
 		}
-		if a.seq != r.FinalWorkerSeq {
+		if !epochChanged && a.seq != r.FinalWorkerSeq {
 			return status.Error(codes.FailedPrecondition, "final event watermark not committed")
 		}
 		t, _, e := readTask(ctx, q, a.task)
@@ -135,6 +145,9 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 				code = ""
 				msg = ""
 			}
+		} else if epochChanged {
+			code = "WORKER_RESTARTED"
+			msg = "execution interrupted by worker restart"
 		} else if t.State == "RECONCILING" || a.until <= store.Now() {
 			code = "WORKER_LOST"
 			msg = "lease lost; execution stopped"
