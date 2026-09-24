@@ -5,6 +5,8 @@
 | [Agent-aware Distributed Job Execution Platform 总体架构](design/agent-job-executor-architecture.md) | Job/Stage/Task/Attempt、Runtime/Tool 分层、Artifact/Workspace 生命周期与 Agent-aware Scheduler | 当前目标架构 |
 | [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性内核、Agent Runtime/Tool、Agent-aware Scheduler、治理与规模化 | 当前长期主路线 |
 | [v0.2.1 → v0.3.0 实施计划与跟踪](implementation/v0.2.1-v0.3.0-plan.md) | Production Baseline、Stage、multi-Attempt、Generation Fencing、Artifact gating 与 Release Gate；GitHub Issues #1–#9 跟踪 | 当前实施中 |
+| [v0.3.0 Reliability Kernel 运行与升级](implementation/v0.3-runbook.md) | schema v4、Stage、multi-Attempt、fencing、Artifact gating、升级与回退 | 当前 v0.3 操作依据 |
+| [v0.3.0 验证记录](validation/v0.3.0-results.md) | Stage/multi-Attempt/fencing 自动化证据与真实环境未覆盖项 | 自动化通过；Production Gate 待 #1 |
 | [AI Execution OS 总体架构](design/ai-execution-os-architecture.md) | 早期大平台方向探索 | 历史探索；已被 ADR-003 替代 |
 | [v0.2 网关与 Map/Reduce 设计](design/gateway-mapreduce-v0.2.md) | 双入口、分片/汇总、投递、取消、恢复、计量与升级 | 已实现，fixture 验证通过 |
 | [v0.2 接口与数据契约](contracts/job-gateway-v0.2.md) | HTTP/MCP、Worker 扩展、SQLite、Responses 边界 | v0.2 已实现，固定子集 |
@@ -18,6 +20,7 @@
 | [ADR-002：网关与 Map/Reduce](adr/0002-gateway-mapreduce.md) | 双入口和固定两阶段作业的决策依据 | 已实施 |
 | [ADR-003：Agent Job Executor 产品边界](adr/0003-agent-job-executor-product-scope.md) | 推翻 AI Execution OS 线性演进，固定 Agent Job Executor 产品边界 | Accepted |
 | [ADR-004：Agent-aware 执行语义](adr/0004-agent-aware-execution-semantics.md) | Stage、Artifact/Workspace、Runtime/Tool 分层、Agent-aware Scheduler 与 G1 边界 | Accepted |
+| [ADR-005：Stage、Multi-Attempt 与 Fencing](adr/0005-stage-multi-attempt-fencing.md) | 一等 Stage、历史 Attempt、current generation、Worker restart cleanup proof | Accepted |
 | [v0.1 实施计划与进度](implementation/v0.1-plan.md) | 交付阶段、完成状态与后续工作 | 第一版已实现，本地验证完成 |
 | [v0.1 运行指南](implementation/v0.1-runbook.md) | 构建、CLI 接入、TLS、多机、恢复、设计差异 | 旧 Task 与基础部署依据 |
 | [v0.1 验证记录](validation/v0.1-results.md) | 自动测试、二进制故障烟测与覆盖边界 | 本机双 Worker 已验证；真实 CLI/独立双机未执行 |
