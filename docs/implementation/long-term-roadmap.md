@@ -1,4 +1,4 @@
-# computecloud 长期演进路线图
+# computecloud 长期演进路线图（专家评审修订版）
 
 - 项目：computecloud
 - 日期：2026-09-24
@@ -8,6 +8,25 @@
 - 当前实现依据：[v0.2 实施计划](v0.2-plan.md)、[v0.2 验证记录](../validation/v0.2-results.md)、[v0.2 运行指南](v0.2-runbook.md)
 
 > 本文是长期技术演进顺序，不是固定发布日期承诺。每个阶段都必须先满足可验证的退出门槛，再进入下一阶段。
+
+## 0. 专家评审后的架构修订
+
+本次评审保留“轻量、渐进、按真实瓶颈引入复杂度”的总方向，但做五项关键修正：
+
+1. **Workload 不再等同于 Execution**：长期分为 `Execution`、`Deployment`、`Session` 三种生命周期。Execution 面向有限任务；Deployment 面向长驻模型服务；Session 面向跨 Turn 的交互上下文。
+2. **Admission Control 前移**：明确 `Admission = 是否允许执行`、`Router = 偏好去哪里`、`Scheduler = 当前实际放哪里`、`Runtime = 如何执行`。
+3. **Runtime 改为 Capability Interface**：避免单一巨型 Runtime 接口；按 Execution、Serving、Streaming、Session、Checkpoint、Tool 等能力组合。
+4. **Locality Metadata 前移**：v0.5 Storage 阶段开始建设 Location Directory，v0.6 增加 CacheLocation，v0.7 再用于调度决策。
+5. **Observability / Security 前移**：v0.9 仍负责完整生产治理，但 request/workload/execution/task/attempt/placement/node/runtime ID、credential_ref、policy_ref 等基础对象从 P0/P1 开始贯穿。
+
+目标生命周期模型：
+
+    Workload
+    ├── Execution  -> Stage -> Task -> Attempt
+    ├── Deployment -> Replica -> Instance
+    └── Session    -> Turn -> Execution
+
+这三类对象共享 Admission、Scheduler、Placement、Node/Runtime、Memory、Storage 和 Tool 基础设施，但不共享同一种生命周期状态机。
 
 ## 1. 当前实现基线
 
@@ -69,22 +88,22 @@ api/job              Job Schema
 - 控制面 HA；
 - 多集群全局调度。
 
-因此推荐的演进顺序是：
+因此推荐的演进顺序修订为：
 
 ```text
-v0.2 做实
+v0.2 做实 + Observability baseline
    ↓
-Execution Kernel
+Execution Kernel + Admission + Spec/Status
    ↓
-Runtime + Compute Fabric
+Workload Model + Runtime Capability + Compute Fabric
    ↓
-Storage Fabric
+Storage Fabric + Locality Directory v1
    ↓
-Memory / Cache Fabric
+Memory / Cache Fabric + CacheLocation
    ↓
-Locality-aware Scheduler
+AI-native Locality-aware Scheduler
    ↓
-Agent / Tool Execution
+Agent Session + Tool Execution
    ↓
 Production Control Plane
    ↓
@@ -126,12 +145,12 @@ Multi-cluster / HA
 | 阶段 | 建议版本 | 核心目标 | 主要交付 |
 | --- | --- | --- | --- |
 | P0 | v0.2.x | 真实环境做实 | 双机、真实 CLI、真实 MCP、真实上游、容量与故障基线 |
-| P1 | v0.3 | Execution Kernel | Execution、Stage、ResourceClaim、Placement、多代 Attempt |
-| P2 | v0.4 | Runtime & Compute Fabric | Runtime Interface、Node Capability、推理 Runtime、GPU 资源模型 |
-| P3 | v0.5 | Storage Fabric | Storage URI、Provider、Model/Artifact/Workspace Store、本地缓存 |
-| P4 | v0.6 | Memory Fabric | KV/Context Directory、多级 Cache、Cache Provider、fail-open |
-| P5 | v0.7 | Locality-aware Scheduling | Model/KV/Data Locality、Intelligent Router、动态 Score |
-| P6 | v0.8 | Agent Execution Fabric | Session、交互、审批、Tool Fabric、受控 DAG |
+| P1 | v0.3 | Execution Kernel + Admission | Execution/Stage、Spec/Status、Admission、ResourceClaim、Placement、多代 Attempt |
+| P2 | v0.4 | Workload + Runtime + Compute Fabric | Execution/Deployment/Session 模型、Runtime Capability、Node Capability、推理 Runtime、GPU 资源模型 |
+| P3 | v0.5 | Storage Fabric + Locality v1 | Storage URI、Provider、Model/Artifact/Workspace Store、本地缓存、Location metadata |
+| P4 | v0.6 | Memory Fabric + CacheLocation | KV/Context Directory、多级 Cache、Cache Provider、CacheLocation、fail-open |
+| P5 | v0.7 | AI-native Locality-aware Scheduling | Model/KV/Data/Workspace Locality、Intelligent Router、动态 Score、Placement explainability |
+| P6 | v0.8 | Agent Execution Fabric | Session/Turn 落地、交互、审批、Tool Fabric、受控 DAG |
 | P7 | v0.9 | Production Control Plane | 多租户、Quota/Billing、GC、SLO、隔离、治理 |
 | P8 | v1.0 | 稳定 AI Execution Platform | 稳定 API、兼容策略、生产发布边界 |
 | P9 | v1.x | Multi-cluster / HA | HA、Global Scheduler、跨地域、多 Provider |
@@ -198,9 +217,15 @@ Multi-cluster / HA
 
 只有这一阶段完成后，才开始扩大执行模型。
 
-## 5. P1：v0.3 — Execution Kernel
+## 5. P1：v0.3 — Execution Kernel + Admission
 
-这是整个架构最重要的抽象阶段。
+这是整个架构最重要的协议定型阶段。P1 不只是新增 Execution 对象，还要把 Admission、Spec/Status、Placement 和重试 fencing 一起固定下来。
+
+### 5.0 Spec / Status 与 Admission
+
+从 P1 开始明确：`Spec` 表示用户/控制面希望系统做什么，接受后尽量保持不可变；`Status` 表示系统当前实际状态，由 Controller 更新。不要把用户意图、调度结果和 Runtime 状态混在同一结构中。
+
+Admission 在 Scheduler 之前执行，负责身份、项目、Quota、Budget、并发、Runtime/Model 权限、CredentialRef 和 PolicyRef。Admission 只回答“能不能执行”，不选择节点。
 
 ### 5.1 从 Job 演进到 Execution
 
@@ -283,12 +308,15 @@ Attempt
 - 不确定旧执行不自动重跑；
 - cancel 优先级高于 retry。
 
-### 5.5 代码演进
+### 5.5 Store Interface 与代码演进
+
+SQLite 继续作为当前正式状态库，但业务层开始通过 Store Interface 访问，避免未来状态后端变化时把数据库细节扩散到 Execution/Scheduler。
 
 新增：
 
 ```text
 internal/execution/
+internal/admission/
 internal/scheduler/
 internal/resource/
 ```
@@ -311,36 +339,43 @@ internal/server/tasks.go
 - v0.2 Job API 兼容测试通过；
 - migration / downgrade 边界有明确结果。
 
-## 6. P2：v0.4 — Runtime & Compute Fabric
+## 6. P2：v0.4 — Workload Model + Runtime & Compute Fabric
 
-### 6.1 Runtime Interface
+### 6.1 Workload 生命周期模型
 
-把当前 Codex / Claude adapter 抽象为稳定接口。
+正式定义三类一级生命周期：
 
-目标：
+```text
+Workload
+├── Execution  -> Stage -> Task -> Attempt
+├── Deployment -> Replica -> Instance
+└── Session    -> Turn -> Execution
+```
+
+Execution 面向有限任务；Deployment 面向长驻模型服务；Session 面向跨 Turn 的交互上下文。P2 先固定 Deployment / Session 的 Spec、Status 和生命周期边界，不要求一次实现完整 Serving/Session 功能。
+
+### 6.2 Runtime Capability Interface
+
+把当前 Codex / Claude adapter 抽象为最小基础 Runtime + 可组合能力接口，而不是要求所有 Runtime 实现同一组方法。
 
 ```go
 type Runtime interface {
-    Prepare(ctx context.Context, req PrepareRequest) error
-    Start(ctx context.Context, task Task) (ExecutionHandle, error)
-    Stop(ctx context.Context, id string) error
-    Status(ctx context.Context, id string) (*RuntimeStatus, error)
+    Name() string
+    Version() string
     Capabilities() CapabilitySet
 }
+
+type ExecutionRuntime interface { /* Start/Stop/Status execution */ }
+type ServingRuntime interface { /* Deploy/Scale/Stop serving */ }
+type StreamingRuntime interface { /* stream input/output */ }
+type SessionRuntime interface { /* create/resume/turn */ }
+type CheckpointRuntime interface { /* checkpoint/restore */ }
+type ToolRuntime interface { /* tool execution */ }
 ```
 
-Runtime 实现：
+Scheduler 根据 Capability 匹配，不根据 Runtime 名称猜能力。
 
-```text
-Codex
-Claude
-Shell
-Container
-vLLM / SGLang
-Future Runtime
-```
-
-### 6.2 Node Capability
+### 6.3 Node Capability
 
 Worker 注册升级为 Node Capability：
 
@@ -356,7 +391,7 @@ Model
 Topology
 ```
 
-### 6.3 推理 Runtime
+### 6.4 推理 Runtime
 
 至少接入一种推理 Runtime，使平台第一次同时支持：
 
@@ -368,7 +403,7 @@ Model Inference
 
 这一步之后 computecloud 才真正从 Agent Scheduler 扩展为 AI Execution Platform。
 
-### 6.4 GPU 资源模型
+### 6.5 GPU 资源模型
 
 新增：
 
@@ -381,15 +416,16 @@ Model Inference
 
 P2 先做整卡或显式资源单元，不急于实现复杂 GPU sharing。
 
-### 6.5 退出门槛
+### 6.6 退出门槛
 
-- Codex / Claude / 推理 Runtime 使用同一 Execution Kernel；
+- Execution / Deployment / Session 生命周期不混用；
+- Codex / Claude / 推理 Runtime 通过 Capability 接入；
 - Scheduler 不需要按 Runtime 写大量特殊分支；
 - Node capability 能做硬过滤；
 - GPU 资源不会超分配；
 - Runtime start/stop/status 语义一致。
 
-## 7. P3：v0.5 — Storage Fabric
+## 7. P3：v0.5 — Storage Fabric + Locality Directory v1
 
 这一阶段把当前本地 Artifact / Workspace 文件路径升级为平台级数据访问抽象。
 
@@ -470,16 +506,23 @@ internal/storage/
     └── object/
 ```
 
-### 7.6 退出门槛
+### 7.6 Locality Directory v1
+
+从 Storage 阶段开始记录位置，但暂不做复杂调度打分。最小对象建议包含 `ResourceRef / Location / Node / Tier / Version / Checksum / LastSeen / State`。
+
+至少记录 Model Location、Dataset Location、Artifact Location、Workspace Location、Runtime Location。Scheduler 此阶段可以查询位置，但仍以资源正确性优先，不把 locality 作为强制策略。
+
+### 7.7 退出门槛
 
 - 上层无具体存储路径依赖；
 - Provider 可替换；
+- Location metadata 可查询且有版本/过期语义；
 - Artifact checksum / version / ownership 稳定；
 - Workspace 故障恢复明确；
 - Local cache 可以删除后自动恢复；
 - Storage 故障不能产生静默数据错误。
 
-## 8. P4：v0.6 — Memory Fabric
+## 8. P4：v0.6 — Memory Fabric + CacheLocation
 
 ### 8.1 目标
 
@@ -520,7 +563,11 @@ Replicate
 Invalidate
 ```
 
-### 8.4 KV Cache Key
+### 8.4 CacheLocation
+
+在 Locality Directory v1 上增加缓存位置语义：cache namespace、model/runtime compatibility、location、tier、coverage、freshness、size、state。Location 信息允许过期，Scheduler 必须有 stale/unknown 降级路径。
+
+### 8.5 KV Cache Key
 
 不能只用 Prompt Hash，至少考虑：
 
@@ -533,7 +580,7 @@ Invalidate
 - cache schema version；
 - prefix hash。
 
-### 8.5 Fail-open
+### 8.6 Fail-open
 
 Memory Fabric 必须满足：
 
@@ -547,7 +594,7 @@ cache unavailable -> bypass
 
 Cache 是 performance dependency，不是 availability dependency。
 
-### 8.6 指标
+### 8.7 指标
 
 至少：
 
@@ -562,7 +609,7 @@ Cache 是 performance dependency，不是 availability dependency。
 - prefill saved tokens；
 - network throughput。
 
-### 8.7 退出门槛
+### 8.8 退出门槛
 
 只有真实负载证明：
 
@@ -575,7 +622,7 @@ GPU Prefill下降
 
 才允许默认启用。
 
-## 9. P5：v0.7 — Locality-aware Scheduler
+## 9. P5：v0.7 — AI-native Locality-aware Scheduler
 
 ### 9.1 Locality Directory
 
@@ -661,7 +708,11 @@ Training:
     GPU Topology / Network / Dataset
 ```
 
-### 9.5 退出门槛
+### 9.5 Placement Explainability
+
+每次调度至少保存候选集合摘要、Filter 拒绝原因、Score breakdown、最终选中节点以及 fallback 原因，使系统能够回答“为什么选择这个 Node”。
+
+### 9.6 退出门槛
 
 必须用 A/B 压测证明 locality 调度相对 round-robin / least-load 在目标工作负载上有稳定收益，并且：
 
@@ -669,9 +720,12 @@ Training:
 - 不破坏 quota；
 - 不降低故障恢复能力；
 - Score 可解释；
-- 调度决定可追踪。
+- 调度决定可追踪；
+- Locality 数据缺失或过期时能退化到安全的资源调度策略。
 
 ## 10. P6：v0.8 — Agent Execution Fabric
+
+P2 已经定义 Session 生命周期；P6 才实现完整 Session/Turn、交互、审批和恢复能力，避免到这一阶段才重新设计一级对象。
 
 ### 10.1 Session
 
@@ -713,7 +767,7 @@ Database
 Custom Tool
 ```
 
-Tool 作为可调度 Capability。
+Tool 作为可调度 Capability，并显式携带 permission、credential_ref、network policy 与 audit identity。
 
 ### 10.4 受控 DAG
 
@@ -812,7 +866,10 @@ v1.0 不应以“功能很多”为标准，而应满足：
 
 ### API
 
+- Workload 生命周期模型稳定；
 - Execution API 稳定；
+- Deployment API 稳定；
+- Session API 稳定；
 - Runtime Interface 稳定；
 - ResourceClaim 稳定；
 - Artifact / Storage URI 稳定；
@@ -983,8 +1040,10 @@ Billing / Metrics 数据量独立增长
 建议：
 
 ```text
-/v1/jobs        保留兼容
-/v1/executions  新 Execution API
+/v1/jobs         保留兼容
+/v1/executions   有限执行 API
+/v1/deployments  长驻服务 API
+/v1/sessions     交互会话 API
 ```
 
 待 Execution API 稳定后，再定义 Job API deprecation 周期。
@@ -1083,21 +1142,37 @@ L4 Real Runtime / Multi-host
 
 后续建议按实际进入阶段逐个写 ADR，而不是现在一次做完：
 
-1. Execution / Stage 数据模型；
-2. ResourceClaim / Placement；
-3. Runtime Interface；
-4. GPU Resource Model；
-5. Storage URI / Provider；
-6. Memory / Cache Provider；
-7. Locality Directory；
-8. Router 与 Scheduler 边界；
-9. Session 与交互；
-10. Tool Capability；
-11. State Backend 扩展触发条件；
-12. Control Plane HA；
-13. Multi-cluster Scheduling。
+1. Execution / Stage / Spec / Status；
+2. Admission Control；
+3. ResourceClaim / Placement；
+4. Workload：Execution / Deployment / Session；
+5. Runtime Capability Interface；
+6. GPU Resource Model；
+7. Storage URI / Provider；
+8. Locality Directory；
+9. Memory / Cache Provider；
+10. Router 与 Scheduler 边界；
+11. Session / Turn；
+12. Tool Capability；
+13. State Backend 扩展触发条件；
+14. Control Plane HA；
+15. Multi-cluster Scheduling。
 
-## 20. 近中长期交付建议
+## 20. 专家评审要求长期避免的三类风险
+
+### 20.1 过度抽象
+
+Fabric / Provider / Registry 只有在直接服务 AI Workload 的执行、局部性、恢复或治理时才引入；不能为了架构完整性先造空抽象。
+
+### 20.2 演变为通用 Workflow 平台
+
+DAG、Approval、Retry、Tool 都必须服务 AI Execution，不以替代 Temporal/Airflow 等通用 Workflow 系统为目标。
+
+### 20.3 退化为普通 GPU Scheduler
+
+长期差异化应来自对 Model、KV、Dataset、Workspace、Agent、Runtime、GPU、Queue、Network、Cost 的联合理解和 Placement，而不是“也能调 GPU”。
+
+## 21. 近中长期交付建议
 
 ### 近期：先完成 P0-P2
 
@@ -1105,8 +1180,8 @@ L4 Real Runtime / Multi-host
 
 ```text
 真实环境
-→ Execution Kernel
-→ Runtime / GPU
+→ Execution Kernel + Admission
+→ Workload Model + Runtime / GPU
 ```
 
 这是最重要的主线。
@@ -1116,10 +1191,10 @@ L4 Real Runtime / Multi-host
 重点：
 
 ```text
-Storage
-→ Memory
-→ Locality
-→ Agent / Tool
+Storage + Locality Metadata
+→ Memory + CacheLocation
+→ AI-native Locality Scheduler
+→ Agent Session / Tool
 ```
 
 这个阶段形成差异化的 AI-native 调度能力。
@@ -1136,7 +1211,7 @@ Production Governance
 
 只有真实业务规模到达后再做。
 
-## 21. 路线图成功标准
+## 22. 路线图成功标准
 
 长期演进不能只看“支持多少组件”，而应该观察：
 
@@ -1155,4 +1230,4 @@ GPU效率
 
 最终目标：
 
-> 在不牺牲轻量部署和故障可理解性的前提下，把当前多 Agent 调度器逐步演进为一个可以同时运行模型推理、Agent、Tool 和多阶段 AI 工作负载的统一执行平台。
+> 在不牺牲轻量部署、故障可理解性和兼容边界的前提下，把当前多 Agent 调度器逐步演进为可以统一管理 Execution、Deployment、Session、Model、Agent、Tool 的 AI Execution Infrastructure。
