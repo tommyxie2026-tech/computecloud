@@ -114,11 +114,11 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 		}
 		for _, id := range r.ArtifactIds {
 			var n int
-			if e = q.QueryRowContext(ctx, "SELECT count(*) FROM artifacts WHERE id=? AND attempt=?", id, r.Attempt.AttemptId).Scan(&n); e != nil {
+			if e = q.QueryRowContext(ctx, "SELECT count(*) FROM artifacts WHERE id=? AND attempt=? AND generation=? AND state='STAGED'", id, r.Attempt.AttemptId, a.generation).Scan(&n); e != nil {
 				return e
 			}
 			if n != 1 {
-				return status.Error(codes.FailedPrecondition, "artifact not registered")
+				return status.Error(codes.FailedPrecondition, "artifact not registered for current generation")
 			}
 		}
 		state, code, msg := "FAILED", r.ErrorCode, r.ErrorMessage
@@ -164,6 +164,28 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 			code = ""
 			msg = ""
 			if e = setState(ctx, q, t.TaskId, "VERIFYING", "", ""); e != nil {
+				return e
+			}
+		}
+		if state == "SUCCEEDED" {
+			for _, id := range r.ArtifactIds {
+				res, e := q.ExecContext(ctx, "UPDATE artifacts SET state='ACCEPTED' WHERE id=? AND attempt=? AND generation=? AND state='STAGED'", id, r.Attempt.AttemptId, a.generation)
+				if e != nil {
+					return e
+				}
+				n, e := res.RowsAffected()
+				if e != nil || n != 1 {
+					if e != nil {
+						return e
+					}
+					return status.Error(codes.FailedPrecondition, "artifact acceptance lost generation ownership")
+				}
+			}
+			if _, e = q.ExecContext(ctx, "UPDATE artifacts SET state='ORPHANED' WHERE attempt=? AND generation=? AND state='STAGED'", r.Attempt.AttemptId, a.generation); e != nil {
+				return e
+			}
+		} else {
+			if _, e = q.ExecContext(ctx, "UPDATE artifacts SET state='ORPHANED' WHERE attempt=? AND generation=? AND state='STAGED'", r.Attempt.AttemptId, a.generation); e != nil {
 				return e
 			}
 		}
