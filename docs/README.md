@@ -2,6 +2,7 @@
 
 | 文档 | 内容 | 状态 |
 | --- | --- | --- |
+| [长期演进路线图](implementation/long-term-roadmap.md) | 从 v0.2 到 AI Execution OS：Execution、Runtime、Storage、Memory、Locality、Agent、生产控制面与 HA | 长期演进规划 |
 | [AI Execution OS 总体架构](design/ai-execution-os-architecture.md) | Execution Kernel、Compute/Memory/Storage/Tool Fabric 与 Locality 演进边界 | 目标架构；基于 v0.2 逐步演进 |
 | [v0.2 网关与 Map/Reduce 设计](design/gateway-mapreduce-v0.2.md) | 双入口、分片/汇总、投递、取消、恢复、计量与升级 | 已实现，fixture 验证通过 |
 | [v0.2 接口与数据契约](contracts/job-gateway-v0.2.md) | HTTP/MCP、Worker 扩展、SQLite、Responses 边界 | v0.2 已实现，固定子集 |
