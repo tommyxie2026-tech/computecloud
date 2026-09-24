@@ -56,6 +56,42 @@ func readJob(ctx context.Context, q store.Query, id string) (*Job, error) {
 	j.Links = map[string]string{"self": "/v1/jobs/" + id, "events": "/v1/jobs/" + id + "/events", "result": "/v1/jobs/" + id + "/result"}
 	return j, nil
 }
+func insertStage(ctx context.Context, q store.Query, jobID, kind string, ordinal int, state string) (string, error) {
+	id := jobID + ":" + kind
+	now := store.Now()
+	_, e := q.ExecContext(ctx, "INSERT INTO stages(id,job_id,kind,ordinal,state,created,updated) VALUES(?,?,?,?,?,?,?)", id, jobID, kind, ordinal, state, now, now)
+	return id, e
+}
+func setStageState(ctx context.Context, q store.Query, stageID, next string) error {
+	if stageID == "" {
+		return nil
+	}
+	var jobID, kind, old string
+	if e := q.QueryRowContext(ctx, "SELECT job_id,kind,state FROM stages WHERE id=?", stageID).Scan(&jobID, &kind, &old); e != nil {
+		return e
+	}
+	if old == next {
+		return nil
+	}
+	if old == "SUCCEEDED" || old == "FAILED" || old == "CANCELED" {
+		return nil
+	}
+	if _, e := q.ExecContext(ctx, "UPDATE stages SET state=?,updated=? WHERE id=?", next, store.Now(), stageID); e != nil {
+		return e
+	}
+	return appendJobEvent(ctx, q, jobID, "job.stage_state", map[string]string{"stage_id": stageID, "kind": kind, "from": old, "to": next}, "", "")
+}
+func setTaskStageState(ctx context.Context, q store.Query, taskID, next string) error {
+	var stageID sql.NullString
+	if e := q.QueryRowContext(ctx, "SELECT stage_id FROM tasks WHERE id=?", taskID).Scan(&stageID); e != nil {
+		return e
+	}
+	if !stageID.Valid || stageID.String == "" {
+		return nil
+	}
+	return setStageState(ctx, q, stageID.String, next)
+}
+
 func appendJobEvent(ctx context.Context, q store.Query, id, typ string, body any, op, hash string) error {
 	var seq int64
 	if e := q.QueryRowContext(ctx, "UPDATE jobs SET seq=seq+1,updated=? WHERE id=? RETURNING seq", store.Now(), id).Scan(&seq); e != nil {
@@ -183,8 +219,17 @@ func (s *Server) SubmitJob(ctx context.Context, key string, b []byte) (*Job, err
 			return e
 		}
 		if spec.Mode == "single" {
+			if _, e = insertStage(ctx, q, id, "single", 0, "READY"); e != nil {
+				return e
+			}
 			e = s.insertJobTask(ctx, q, id, p.Identity.Owner, deadline, "single", "_single", spec, *spec.Execution, spec.Input.Text, frozen)
 		} else {
+			if _, e = insertStage(ctx, q, id, "map", 0, "READY"); e != nil {
+				return e
+			}
+			if _, e = insertStage(ctx, q, id, "reduce", 1, "PENDING"); e != nil {
+				return e
+			}
 			for _, part := range spec.Map.Partitions {
 				if e = s.insertJobTask(ctx, q, id, p.Identity.Owner, deadline, "map", part.Key, spec, part.Execution, spec.Input.Text+"\n\n"+part.Input.Text, frozen); e != nil {
 					break
@@ -218,7 +263,11 @@ func (s *Server) insertJobTask(ctx context.Context, q store.Query, jid, owner st
 	id := store.ID()
 	raw := encode(t)
 	now := store.Now()
-	if _, e := q.ExecContext(ctx, `INSERT INTO tasks(id,owner,project,idem,hash,spec,state,created,updated,deadline,job_id,stage,partition_key) VALUES(?,?,?,?,?,?,'QUEUED',?,?,?,?,?,?)`, id, owner, spec.ProjectID, t.IdempotencyKey, store.Hash(raw), raw, now, now, deadline, jid, stage, key); e != nil {
+	var stageID string
+	if e := q.QueryRowContext(ctx, "SELECT id FROM stages WHERE job_id=? AND kind=?", jid, stage).Scan(&stageID); e != nil {
+		return e
+	}
+	if _, e := q.ExecContext(ctx, `INSERT INTO tasks(id,owner,project,idem,hash,spec,state,created,updated,deadline,job_id,stage,stage_id,partition_key) VALUES(?,?,?,?,?,?,'QUEUED',?,?,?,?,?,?,?)`, id, owner, spec.ProjectID, t.IdempotencyKey, store.Hash(raw), raw, now, now, deadline, jid, stage, stageID, key); e != nil {
 		return e
 	}
 	return appendEvent(ctx, q, &pb.Event{TaskId: id, Type: "task.state_changed", PayloadJson: job.JSON(map[string]string{"to": "QUEUED"})}, nil)
@@ -571,6 +620,12 @@ func (s *Server) createReduce(ctx context.Context, q store.Query, j *Job, childr
 	if _, e := q.ExecContext(ctx, "UPDATE jobs SET manifest_json=?,manifest_hash=? WHERE id=? AND state='MAPPING'", raw, digest, j.ID); e != nil {
 		return e
 	}
+	if e := setStageState(ctx, q, j.ID+":map", "SUCCEEDED"); e != nil {
+		return e
+	}
+	if e := setStageState(ctx, q, j.ID+":reduce", "READY"); e != nil {
+		return e
+	}
 	if e := s.insertJobTask(ctx, q, j.ID, j.owner, j.Deadline, "reduce", "_reduce", j.frozen.Spec, j.frozen.Spec.Reduce.Execution, j.frozen.Spec.Input.Text+"\n\n"+j.frozen.Spec.Reduce.Input.Text, j.frozen); e != nil {
 		return e
 	}
@@ -610,6 +665,44 @@ func (s *Server) finishJob(ctx context.Context, q store.Query, j *Job, children 
 	result := job.JSON(map[string]any{"job_id": j.ID, "state": state, "error_code": j.ErrorCode, "stop_reason": j.StopReason, "base_commit": j.frozen.Spec.Workspace.BaseCommit, "manifest_sha256": j.manifestHash, "summary": summary, "final_artifacts": finals, "child_failures": failures})
 	if _, e := q.ExecContext(ctx, "UPDATE jobs SET result_json=? WHERE id=?", result, j.ID); e != nil {
 		return e
+	}
+	stageState := state
+	if state == "CANCELED" {
+		stageState = "CANCELED"
+	}
+	rows, e := q.QueryContext(ctx, "SELECT id,state FROM stages WHERE job_id=? ORDER BY ordinal", j.ID)
+	if e != nil {
+		return e
+	}
+	var stageIDs []string
+	var stageStates []string
+	for rows.Next() {
+		var sid, ss string
+		if e = rows.Scan(&sid, &ss); e != nil {
+			break
+		}
+		stageIDs = append(stageIDs, sid)
+		stageStates = append(stageStates, ss)
+	}
+	re := rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	if re != nil {
+		return re
+	}
+	for i, sid := range stageIDs {
+		if stageStates[i] == "SUCCEEDED" {
+			continue
+		}
+		next := stageState
+		if state == "SUCCEEDED" {
+			next = "SUCCEEDED"
+		}
+		if e = setStageState(ctx, q, sid, next); e != nil {
+			return e
+		}
 	}
 	return jobState(ctx, q, j, state, j.StopReason, j.ErrorCode)
 }
@@ -737,7 +830,13 @@ func selectedResultArtifact(ctx context.Context, q store.Query, c jobChild) (*pb
 		return nil, nil
 	}
 	a := new(pb.Artifact)
-	e := q.QueryRowContext(ctx, "SELECT id,task,attempt,kind,hash,size FROM artifacts WHERE id=? AND task=? AND attempt=? AND kind='result-bundle'", completion.IDs[0], c.id, c.attempt).Scan(&a.ArtifactId, &a.TaskId, &a.AttemptId, &a.Kind, &a.Sha256, &a.Size)
+	e := q.QueryRowContext(ctx, `SELECT ar.id,ar.task,ar.attempt,ar.kind,ar.hash,ar.size
+		FROM artifacts ar
+		JOIN tasks t ON t.id=ar.task
+		JOIN attempts x ON x.id=ar.attempt
+		WHERE ar.id=? AND ar.task=? AND ar.attempt=? AND ar.kind='result-bundle'
+		  AND ar.state='ACCEPTED' AND ar.generation=x.generation
+		  AND t.attempt=x.id AND t.current_generation=x.generation`, completion.IDs[0], c.id, c.attempt).Scan(&a.ArtifactId, &a.TaskId, &a.AttemptId, &a.Kind, &a.Sha256, &a.Size)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil, nil
 	}
