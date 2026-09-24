@@ -309,7 +309,7 @@ type attemptRow struct {
 	finalHash                           string
 }
 
-func (s *Server) checkAttempt(ctx context.Context, q store.Query, worker string, r *pb.AttemptRef) (attemptRow, error) {
+func (s *Server) readAttemptIdentity(ctx context.Context, q store.Query, worker string, r *pb.AttemptRef) (attemptRow, error) {
 	var a attemptRow
 	if r == nil {
 		return a, status.Error(codes.InvalidArgument, "attempt required")
@@ -330,9 +330,18 @@ func (s *Server) checkAttempt(ctx context.Context, q store.Query, worker string,
 		a.generation != r.Generation ||
 		a.token != r.LeaseToken ||
 		a.currentAttempt != r.AttemptId ||
-		a.currentGeneration != r.Generation ||
-		a.currentEpoch == "" ||
-		a.epoch != a.currentEpoch {
+		a.currentGeneration != r.Generation {
+		return a, status.Error(codes.FailedPrecondition, "STALE_ATTEMPT")
+	}
+	return a, nil
+}
+
+func (s *Server) checkAttempt(ctx context.Context, q store.Query, worker string, r *pb.AttemptRef) (attemptRow, error) {
+	a, e := s.readAttemptIdentity(ctx, q, worker, r)
+	if e != nil {
+		return a, e
+	}
+	if a.currentEpoch == "" || a.epoch != a.currentEpoch {
 		return a, status.Error(codes.FailedPrecondition, "STALE_ATTEMPT")
 	}
 	return a, nil
