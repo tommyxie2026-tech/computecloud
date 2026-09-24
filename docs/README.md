@@ -22,6 +22,7 @@
 | [v0.1 验证记录](validation/v0.1-results.md) | 自动测试、二进制故障烟测与覆盖边界 | 本机双 Worker 已验证；真实 CLI/独立双机未执行 |
 | [Go 多客户端 Agent RPC 调度实施方案](design/agent-orchestration-go.md) | 完整目标架构、调度、持久化、恢复与里程碑 | v0.1 实现批任务子集；扩展仍为设计 |
 | [Agent Runtime v1 接口与事件契约](contracts/agent-runtime-v1.md) | 目标字段、RPC、事件、状态与幂等约束 | 已实现子集以 runtime.proto 为准 |
+| [Agent-aware 产品与竞品调研（2026）](research/agent-job-execution-product-landscape-2026.md) | OpenHands、Agents API、Microsoft Agent Framework、Cursor、Sandbox、Temporal/Ray 等产品比较及 computecloud 市场定位 | 2026-09-24 公开资料调研 |
 | [GitHub 同类实现调研与借鉴边界](research/agent-orchestration-landscape.md) | 多 Agent / 多模型 / 多节点项目比较与复用边界 | 官方文档及部分源码核查，未部署实测 |
 | [ADR-001：SQLite 与轻量部署决策](adr/0001-sqlite-lightweight.md) | 单二进制、内置队列、SQLite 与备份 | 核心路线已落地，本地存储/备份验证通过 |
 | [多节点 PoC 与故障验收计划](validation/multi-node-poc.md) | 两台独立主机、两执行器、完整故障矩阵 | 完整计划未执行；局部映射见验证记录 |
