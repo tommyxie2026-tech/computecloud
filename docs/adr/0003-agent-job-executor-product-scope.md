@@ -4,6 +4,7 @@
 - 状态：Accepted
 - 影响范围：长期路线图、总体架构、版本规划
 - 替代观点：将 v0.2 线性演进为 AI Execution OS
+- 后续修订：[ADR-004：Agent-aware 执行语义与长期演进边界](0004-agent-aware-execution-semantics.md)
 
 ## Context
 
@@ -31,20 +32,20 @@ computecloud 当前产品主线正式定义为：
 
 长期围绕 Agent Job 的可靠执行持续演进，而不是演进为通用 AI Execution Infrastructure。
 
-核心模型保持：
+核心模型保持 Agent Job 语义，并由 ADR-004 细化为：
 
 ~~~text
-Job -> Task -> Attempt
+Job -> Stage -> Task -> Attempt
 ~~~
 
 主要扩展方向：
 
 - Agent Runtime；
-- Tool Runtime；
+- Tool Capability / Tool Executor；
 - 有限 Job 编排；
 - 重试与恢复；
 - Worker capability；
-- resource-aware scheduling；
+- Agent-aware scheduling；
 - Artifact / Workspace；
 - 多租户、安全、审计；
 - 大规模 Worker 集群；
@@ -88,3 +89,8 @@ Job -> Task -> Attempt
 - [长期演进路线图](../implementation/long-term-roadmap.md)
 
 为准。
+
+
+## Amendment
+
+ADR-004 对本 ADR 做兼容性细化，不改变 Agent Job Executor 的产品边界：增加 Stage 作为有限阶段/屏障语义；将 Artifact/Workspace 生命周期纳入可靠性内核；明确 Runtime 与 Tool 分层；将长期 Scheduler 定位从通用 resource-aware 收敛为 Agent-aware；G1 模型网关长期仅作为 Agent Runtime Support Adapter。
