@@ -25,6 +25,8 @@ make smoke
 
 `make capacity-check` 运行轻量容量工具自测与小矩阵；`make capacity` 运行完整 Worker/槽位矩阵并输出 JSON。无额外 Python 依赖，指标口径与真实部署清单见[容量与部署验收](docs/validation/capacity.md)。
 
+主分支 CI 通过后会生成 Linux amd64/arm64 压缩包和 `SHA256SUMS`，可在对应 Actions run 的 Artifacts 下载。推送与 `Makefile` 版本一致的语义版本标签（例如 `v0.2.0`）后，同一组已验证产物会自动发布到 GitHub Releases；操作步骤见 [v0.2 运行指南](docs/implementation/v0.2-runbook.md#7-构建产物与发布)。
+
 Job/MCP 接入从 [v0.2 运行指南](docs/implementation/v0.2-runbook.md) 开始；旧 Task 与基础节点配置见 [v0.1 运行指南](docs/implementation/v0.1-runbook.md)，按 [examples](examples) 配置本机已经安装和登录的 Codex / Claude CLI。配置中的版本、模型、仓库和 commit 占位符需要替换。
 
 ```sh

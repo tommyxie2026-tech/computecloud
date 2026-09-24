@@ -1,6 +1,8 @@
 name: Go
 on:
   push:
+    branches: ['**']
+    tags: ['v*']
   pull_request:
 permissions:
   contents: read
@@ -22,3 +24,80 @@ jobs:
           name: fixture-capacity
           path: dist/capacity-check-*.json
           if-no-files-found: ignore
+  package:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - name: Resolve artifact version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          project_version="$(awk '$1 == "VERSION" && $2 == "?=" { print $3; exit }' Makefile)"
+          if [[ ! "$project_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Makefile VERSION is not a semantic version" >&2
+            exit 2
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+              echo "release tag must be v<semantic-version>" >&2
+              exit 2
+            fi
+            version="${tag#v}"
+            if [[ "$version" != "$project_version" ]]; then
+              echo "tag version $version does not match Makefile VERSION $project_version" >&2
+              exit 2
+            fi
+          else
+            version="$project_version-dev.${GITHUB_SHA:0:12}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Build release archives
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: scripts/package-release.sh "$VERSION" dist/release
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: computecloud-${{ steps.meta.outputs.version }}
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 30
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified archives
+        uses: actions/download-artifact@v4
+        with:
+          name: computecloud-${{ needs.package.outputs.version }}
+          path: dist/release
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.package.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          options=(--verify-tag --generate-notes --title "computecloud $VERSION")
+          if [[ "$VERSION" == *-* ]]; then
+            options+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" dist/release/* "${options[@]}"
