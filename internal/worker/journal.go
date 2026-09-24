@@ -145,6 +145,13 @@ func (w *Worker) recover(ctx context.Context) error {
 			c.ErrorCode = "CLEANUP_UNCONFIRMED"
 			c.ErrorMessage = "startup window requires manual inspection; no automatic restart"
 		}
+		// A new Worker epoch may prove cleanup, but it must never replay
+		// execution events from the old epoch as live state. Skip any locally
+		// unacknowledged old-epoch events and let the Server record only the
+		// recovery completion.
+		if _, e = w.db.SQL.ExecContext(ctx, "UPDATE runs SET ack=seq WHERE id=?", a.AttemptId); e != nil {
+			return e
+		}
 		if e = w.completion(ctx, a, c); e != nil {
 			return fmt.Errorf("recover attempt: %w", e)
 		}

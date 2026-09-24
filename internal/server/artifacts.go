@@ -121,16 +121,16 @@ func (s *Server) UploadArtifact(stream grpc.ClientStreamingServer[pb.ArtifactChu
 		if current.released {
 			return status.Error(codes.FailedPrecondition, "attempt already completed")
 		}
-		_, e = q.ExecContext(stream.Context(), "INSERT INTO artifacts(id,task,attempt,kind,hash,size,path) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", m.ArtifactId, m.TaskId, m.AttemptId, m.Kind, m.Sha256, m.Size, m.ArtifactId)
+		_, e = q.ExecContext(stream.Context(), "INSERT INTO artifacts(id,task,attempt,kind,hash,size,path,generation,state) VALUES(?,?,?,?,?,?,?,?, 'STAGED') ON CONFLICT(id) DO NOTHING", m.ArtifactId, m.TaskId, m.AttemptId, m.Kind, m.Sha256, m.Size, m.ArtifactId, current.generation)
 		if e != nil {
 			return e
 		}
-		var task, attempt, kind, hash string
-		var n int64
-		if e = q.QueryRowContext(stream.Context(), "SELECT task,attempt,kind,hash,size FROM artifacts WHERE id=?", m.ArtifactId).Scan(&task, &attempt, &kind, &hash, &n); e != nil {
+		var task, attempt, kind, hash, state string
+		var n, generation int64
+		if e = q.QueryRowContext(stream.Context(), "SELECT task,attempt,kind,hash,size,generation,state FROM artifacts WHERE id=?", m.ArtifactId).Scan(&task, &attempt, &kind, &hash, &n, &generation, &state); e != nil {
 			return e
 		}
-		if task != m.TaskId || attempt != m.AttemptId || kind != m.Kind || hash != m.Sha256 || n != m.Size {
+		if task != m.TaskId || attempt != m.AttemptId || kind != m.Kind || hash != m.Sha256 || n != m.Size || generation != current.generation || state != "STAGED" {
 			return status.Error(codes.AlreadyExists, "artifact metadata conflict")
 		}
 		return nil
@@ -164,7 +164,7 @@ func (s *Server) DownloadArtifact(r *pb.ArtifactRef, stream grpc.ServerStreaming
 		return e
 	}
 	var path string
-	if e := s.db.SQL.QueryRowContext(stream.Context(), "SELECT path FROM artifacts WHERE task=? AND id=?", r.TaskId, r.ArtifactId).Scan(&path); e != nil {
+	if e := s.db.SQL.QueryRowContext(stream.Context(), "SELECT path FROM artifacts WHERE task=? AND id=? AND state='ACCEPTED'", r.TaskId, r.ArtifactId).Scan(&path); e != nil {
 		return dbErr(e)
 	}
 	if !artifactID.MatchString(path) {

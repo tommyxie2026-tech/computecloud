@@ -89,9 +89,19 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 	}
 	hash := store.Hash(encode(r))
 	e = s.db.Tx(ctx, func(q store.Query) error {
-		a, e := s.checkAttempt(ctx, q, p.Identity.WorkerID, r.Attempt)
+		a, e := s.readAttemptIdentity(ctx, q, p.Identity.WorkerID, r.Attempt)
 		if e != nil {
 			return e
+		}
+		epochChanged := a.currentEpoch != "" && a.epoch != a.currentEpoch
+		if a.currentEpoch == "" {
+			return status.Error(codes.FailedPrecondition, "STALE_ATTEMPT")
+		}
+		// A restarted Worker gets a new epoch. It may prove that the old
+		// process was cleaned up, but it may never turn old-epoch work into
+		// success or publish artifacts.
+		if epochChanged && (!r.CleanupConfirmed || r.Success || r.ErrorCode != "WORKER_RESTARTED" || len(r.ArtifactIds) != 0) {
+			return status.Error(codes.FailedPrecondition, "STALE_ATTEMPT")
 		}
 		if a.finalHash != "" {
 			if a.finalHash != hash {
@@ -99,7 +109,7 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 			}
 			return nil
 		}
-		if a.seq != r.FinalWorkerSeq {
+		if !epochChanged && a.seq != r.FinalWorkerSeq {
 			return status.Error(codes.FailedPrecondition, "final event watermark not committed")
 		}
 		t, _, e := readTask(ctx, q, a.task)
@@ -114,11 +124,11 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 		}
 		for _, id := range r.ArtifactIds {
 			var n int
-			if e = q.QueryRowContext(ctx, "SELECT count(*) FROM artifacts WHERE id=? AND attempt=?", id, r.Attempt.AttemptId).Scan(&n); e != nil {
+			if e = q.QueryRowContext(ctx, "SELECT count(*) FROM artifacts WHERE id=? AND attempt=? AND generation=? AND state='STAGED'", id, r.Attempt.AttemptId, a.generation).Scan(&n); e != nil {
 				return e
 			}
 			if n != 1 {
-				return status.Error(codes.FailedPrecondition, "artifact not registered")
+				return status.Error(codes.FailedPrecondition, "artifact not registered for current generation")
 			}
 		}
 		state, code, msg := "FAILED", r.ErrorCode, r.ErrorMessage
@@ -135,6 +145,9 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 				code = ""
 				msg = ""
 			}
+		} else if epochChanged {
+			code = "WORKER_RESTARTED"
+			msg = "execution interrupted by worker restart"
 		} else if t.State == "RECONCILING" || a.until <= store.Now() {
 			code = "WORKER_LOST"
 			msg = "lease lost; execution stopped"
@@ -164,6 +177,28 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 			code = ""
 			msg = ""
 			if e = setState(ctx, q, t.TaskId, "VERIFYING", "", ""); e != nil {
+				return e
+			}
+		}
+		if state == "SUCCEEDED" {
+			for _, id := range r.ArtifactIds {
+				res, e := q.ExecContext(ctx, "UPDATE artifacts SET state='ACCEPTED' WHERE id=? AND attempt=? AND generation=? AND state='STAGED'", id, r.Attempt.AttemptId, a.generation)
+				if e != nil {
+					return e
+				}
+				n, e := res.RowsAffected()
+				if e != nil || n != 1 {
+					if e != nil {
+						return e
+					}
+					return status.Error(codes.FailedPrecondition, "artifact acceptance lost generation ownership")
+				}
+			}
+			if _, e = q.ExecContext(ctx, "UPDATE artifacts SET state='ORPHANED' WHERE attempt=? AND generation=? AND state='STAGED'", r.Attempt.AttemptId, a.generation); e != nil {
+				return e
+			}
+		} else {
+			if _, e = q.ExecContext(ctx, "UPDATE artifacts SET state='ORPHANED' WHERE attempt=? AND generation=? AND state='STAGED'", r.Attempt.AttemptId, a.generation); e != nil {
 				return e
 			}
 		}

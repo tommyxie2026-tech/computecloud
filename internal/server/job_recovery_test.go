@@ -55,7 +55,11 @@ func registerResult(t *testing.T, s *Server, task, attempt string) string {
 	if e := os.WriteFile(filepath.Join(dir, id), b, 0600); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.db.SQL.Exec("INSERT INTO artifacts VALUES(?,?,?,?,?,?,?)", id, task, attempt, "result-bundle", job.Hash(b), len(b), id); e != nil {
+	var generation int64
+	if e := s.db.SQL.QueryRow("SELECT generation FROM attempts WHERE id=?", attempt).Scan(&generation); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.db.SQL.Exec("INSERT INTO artifacts(id,task,attempt,kind,hash,size,path,generation,state) VALUES(?,?,?,?,?,?,?,?, 'STAGED')", id, task, attempt, "result-bundle", job.Hash(b), len(b), id, generation); e != nil {
 		t.Fatal(e)
 	}
 	return id

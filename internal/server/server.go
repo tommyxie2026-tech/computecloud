@@ -301,22 +301,47 @@ func (s *Server) receive(ctx context.Context, p *session, f *pb.WorkerFrame) err
 }
 
 type attemptRow struct {
-	task, worker, token    string
-	generation, until, seq int64
-	released               bool
-	finalHash              string
+	task, worker, token                 string
+	epoch, currentAttempt, currentEpoch string
+	generation, currentGeneration       int64
+	until, seq                          int64
+	released                            bool
+	finalHash                           string
 }
 
-func (s *Server) checkAttempt(ctx context.Context, q store.Query, worker string, r *pb.AttemptRef) (attemptRow, error) {
+func (s *Server) readAttemptIdentity(ctx context.Context, q store.Query, worker string, r *pb.AttemptRef) (attemptRow, error) {
 	var a attemptRow
 	if r == nil {
 		return a, status.Error(codes.InvalidArgument, "attempt required")
 	}
-	e := q.QueryRowContext(ctx, "SELECT task,worker,generation,token,lease_until,released,worker_seq,final_hash FROM attempts WHERE id=?", r.AttemptId).Scan(&a.task, &a.worker, &a.generation, &a.token, &a.until, &a.released, &a.seq, &a.finalHash)
+	e := q.QueryRowContext(ctx, `SELECT a.task,a.worker,a.epoch,a.generation,a.token,a.lease_until,a.released,a.worker_seq,a.final_hash,
+		t.attempt,t.current_generation,coalesce(w.epoch,'')
+		FROM attempts a
+		JOIN tasks t ON t.id=a.task
+		LEFT JOIN workers w ON w.id=a.worker
+		WHERE a.id=?`, r.AttemptId).Scan(
+		&a.task, &a.worker, &a.epoch, &a.generation, &a.token, &a.until, &a.released, &a.seq, &a.finalHash,
+		&a.currentAttempt, &a.currentGeneration, &a.currentEpoch,
+	)
 	if e != nil {
 		return a, e
 	}
-	if a.worker != worker || a.generation != r.Generation || a.token != r.LeaseToken {
+	if a.worker != worker ||
+		a.generation != r.Generation ||
+		a.token != r.LeaseToken ||
+		a.currentAttempt != r.AttemptId ||
+		a.currentGeneration != r.Generation {
+		return a, status.Error(codes.FailedPrecondition, "STALE_ATTEMPT")
+	}
+	return a, nil
+}
+
+func (s *Server) checkAttempt(ctx context.Context, q store.Query, worker string, r *pb.AttemptRef) (attemptRow, error) {
+	a, e := s.readAttemptIdentity(ctx, q, worker, r)
+	if e != nil {
+		return a, e
+	}
+	if a.currentEpoch == "" || a.epoch != a.currentEpoch {
 		return a, status.Error(codes.FailedPrecondition, "STALE_ATTEMPT")
 	}
 	return a, nil
@@ -456,17 +481,25 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 			_, e = q.ExecContext(ctx, "UPDATE tasks SET blocker=? WHERE id=?", blocker, id)
 			return e
 		}
-		a := &pb.Assignment{TaskId: id, AttemptId: store.ID(), Generation: 1, LeaseToken: store.ID() + store.ID(), LeaseTtlMs: int64(s.cfg.LeaseSeconds) * 1000, DeadlineMs: deadline, Spec: t.Spec, Job: jc}
-		if _, e = q.ExecContext(ctx, "INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until) VALUES(?,?,?,?,?,?,?)", a.AttemptId, id, chosen.hello.WorkerId, chosen.hello.Epoch, 1, a.LeaseToken, store.Now()+a.LeaseTtlMs); e != nil {
+		var currentGeneration int64
+		if e = q.QueryRowContext(ctx, "SELECT current_generation FROM tasks WHERE id=?", id).Scan(&currentGeneration); e != nil {
+			return e
+		}
+		nextGeneration := currentGeneration + 1
+		a := &pb.Assignment{TaskId: id, AttemptId: store.ID(), Generation: nextGeneration, LeaseToken: store.ID() + store.ID(), LeaseTtlMs: int64(s.cfg.LeaseSeconds) * 1000, DeadlineMs: deadline, Spec: t.Spec, Job: jc}
+		if _, e = q.ExecContext(ctx, "INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until) VALUES(?,?,?,?,?,?,?)", a.AttemptId, id, chosen.hello.WorkerId, chosen.hello.Epoch, nextGeneration, a.LeaseToken, store.Now()+a.LeaseTtlMs); e != nil {
 			return e
 		}
 		if e = s.bindGateway(ctx, q, a, j); e != nil {
 			return e
 		}
-		if _, e = q.ExecContext(ctx, "UPDATE tasks SET attempt=?,worker=?,blocker='' WHERE id=?", a.AttemptId, chosen.hello.WorkerId, id); e != nil {
+		if _, e = q.ExecContext(ctx, "UPDATE tasks SET attempt=?,worker=?,current_generation=?,blocker='' WHERE id=?", a.AttemptId, chosen.hello.WorkerId, nextGeneration, id); e != nil {
 			return e
 		}
 		if e = setState(ctx, q, id, "STARTING", "", ""); e != nil {
+			return e
+		}
+		if e = setTaskStageState(ctx, q, id, "RUNNING"); e != nil {
 			return e
 		}
 		if j != nil && j.State == "QUEUED" {

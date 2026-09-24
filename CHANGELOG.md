@@ -1,6 +1,21 @@
 # 版本记录
 
-## 未发布 — CI 端到端任务流
+## 未发布 — v0.3.0 Reliability Kernel I
+
+- Server schema 升级到 v4：新增一等 Stage 记录，并把现有 single / map / reduce 迁移到 Stage。
+- Attempt 从 `UNIQUE(task)` 演进为 `UNIQUE(task,generation)`，保留历史 Attempt，同时通过 partial unique index 保证每个 Task 最多一个 active Attempt。
+- Assignment generation 改为事务性递增，Task 持久化 current generation / current attempt；Worker 写入增加 current-generation 与 Worker epoch fencing。
+- Worker 重启后的旧 epoch 只允许提交 cleanup-only 的失败证明，不能继续上报执行事件、成功结果或 Artifact。
+- Artifact 增加 generation 和 STAGED / ACCEPTED / ORPHANED 状态；Reduce、Job Result 和正式下载只接受当前 generation 的 ACCEPTED Artifact。
+- Map/Reduce 继续保持 v0.2 API 兼容，但内部建立 Stage lifecycle，为后续有限 fan-out/barrier/fan-in 留出稳定边界。
+- 新增 Stage / multi-Attempt / fencing 测试，并保持 CI task-flow、vet、unit、race、smoke、capacity-check 回归。
+- 自动 Retry 仍未启用；`max_attempts_per_task` 继续报告 1。v0.3.1 才进入 Retry Safety。
+
+### 仍待生产 Gate
+
+真实 Codex / Claude、独立双机、真实 MCP、24h+ Job 和真实 Runtime 容量仍属于 v0.2.1 Production Baseline（Issue #1）。在这些证据完成前，v0.3.0 只视为代码/自动化验收完成，不宣称生产发布完成。
+
+## 0.2.x — CI 端到端任务流
 
 - 增加独立 GitHub Actions `task-flow`：使用真实 Server/Worker 进程和 Codex/Claude 协议 fixture 模拟 single、Map/Reduce、取消与 Worker 故障。
 - 输出包含 Job/Attempt、事件、Worker 分配、产物 SHA-256 和 SQLite 完整性的 `ci-task-flow.v1` 报告；发布打包依赖该流程通过。

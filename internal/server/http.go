@@ -169,7 +169,7 @@ func (s *Server) HTTPHandler() http.Handler {
 			httpError(w, e)
 			return
 		}
-		jsonResponse(w, 200, map[string]any{"api_version": "v0.2", "jobs_enabled": s.cfg.Jobs.Enabled, "mcp_enabled": s.cfg.MCP.Enabled, "model_gateway_enabled": s.cfg.ModelGateway.Enabled, "job_modes": []string{"single", "map_reduce"}, "max_partitions": s.cfg.Jobs.MaxPartitions, "max_parallelism": s.cfg.Jobs.MaxParallelism, "recommended_parallelism": s.cfg.Jobs.RecommendedParallelism, "max_attempts_per_task": 1})
+		jsonResponse(w, 200, map[string]any{"api_version": "v0.3", "jobs_enabled": s.cfg.Jobs.Enabled, "mcp_enabled": s.cfg.MCP.Enabled, "model_gateway_enabled": s.cfg.ModelGateway.Enabled, "job_modes": []string{"single", "map_reduce"}, "max_partitions": s.cfg.Jobs.MaxPartitions, "max_parallelism": s.cfg.Jobs.MaxParallelism, "recommended_parallelism": s.cfg.Jobs.RecommendedParallelism, "max_attempts_per_task": 1})
 	})
 	if s.cfg.MCP.Enabled {
 		mux.Handle("/mcp", s.mcpHandler())
@@ -311,7 +311,7 @@ func (s *Server) httpJobArtifacts(w http.ResponseWriter, r *http.Request) {
 		httpError(w, e)
 		return
 	}
-	rows, e := s.db.SQL.QueryContext(r.Context(), "SELECT a.id,a.task,a.attempt,a.kind,a.hash,a.size FROM artifacts a JOIN tasks t ON a.task=t.id WHERE t.job_id=? AND a.id>? ORDER BY a.id LIMIT ?", id, r.URL.Query().Get("after"), limit+1)
+	rows, e := s.db.SQL.QueryContext(r.Context(), "SELECT a.id,a.task,a.attempt,a.kind,a.hash,a.size FROM artifacts a JOIN tasks t ON a.task=t.id WHERE t.job_id=? AND a.state='ACCEPTED' AND a.id>? ORDER BY a.id LIMIT ?", id, r.URL.Query().Get("after"), limit+1)
 	if e != nil {
 		httpError(w, dbErr(e))
 		return
@@ -350,7 +350,7 @@ func (s *Server) httpJobArtifact(w http.ResponseWriter, r *http.Request) {
 	}
 	var path, hash string
 	var size int64
-	e := s.db.SQL.QueryRowContext(r.Context(), "SELECT a.path,a.hash,a.size FROM artifacts a JOIN tasks t ON a.task=t.id WHERE t.job_id=? AND a.id=?", id, r.PathValue("artifact")).Scan(&path, &hash, &size)
+	e := s.db.SQL.QueryRowContext(r.Context(), "SELECT a.path,a.hash,a.size FROM artifacts a JOIN tasks t ON a.task=t.id WHERE t.job_id=? AND a.id=? AND a.state='ACCEPTED'", id, r.PathValue("artifact")).Scan(&path, &hash, &size)
 	if e != nil {
 		httpError(w, dbErr(e))
 		return
