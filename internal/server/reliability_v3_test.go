@@ -81,6 +81,11 @@ func TestStageAndGenerationFencing(t *testing.T) {
 	if status.Code(e) != codes.FailedPrecondition {
 		t.Fatalf("stale event accepted: %v", e)
 	}
+	if _, e = s.CompleteAttempt(wc, &pb.CompleteRequest{
+		Attempt: old, CleanupConfirmed: true, ErrorCode: "OLD_GENERATION",
+	}); status.Code(e) != codes.FailedPrecondition {
+		t.Fatalf("stale completion accepted: %v", e)
+	}
 
 	var oldState string
 	if e = s.db.SQL.QueryRow("SELECT state FROM artifacts WHERE id=?", oldArtifact).Scan(&oldState); e != nil {
