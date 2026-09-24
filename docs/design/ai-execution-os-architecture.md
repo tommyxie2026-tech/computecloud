@@ -1,31 +1,50 @@
 # AI Execution OS 总体架构
 
-> **状态：历史探索 / 已被替代。** 本文不再作为 computecloud 当前产品路线的实施依据。当前路线以 [Agent Job Executor 总体架构](agent-job-executor-architecture.md) 和 [ADR-003](../adr/0003-agent-job-executor-product-scope.md) 为准。
+> **状态：上层目标架构 / 独立产品边界。** AI Execution OS 不再被视为 computecloud v0.2 的线性演进；computecloud 继续保持 Agent Job Executor 产品边界，并作为 AI Execution OS 的 Execution Kernel / Agent Job Executor 子系统被复用。参见 [ADR-003](../adr/0003-agent-job-executor-product-scope.md)。
 
-- 项目：computecloud
+- 项目：computecloud（承载 Execution Kernel 子系统）
 - 日期：2026-09-24
-- 状态：目标架构 / 演进设计；不是当前 v0.2 已实现事实
+- 状态：AI Execution OS 上层架构；不是当前 v0.2 已实现事实
 - 当前实现基线：[v0.2 网关与 Map/Reduce 设计](gateway-mapreduce-v0.2.md)
 - 现有 Runtime 基线：[Go 多客户端 Agent RPC 调度实施方案](agent-orchestration-go.md)
 
 ## 1. 定位
 
-computecloud 的长期定位从“多 Agent / 多节点 RPC 调度”继续演进为 **AI Execution OS / AI Execution Infrastructure**。
+AI Execution OS 的核心不是“管理所有 AI 基础设施”，而是：
 
-它不是单纯的模型推理平台，也不是只面向 GPU 的资源调度器。平台处理的核心对象是 **Execution（一次 AI 执行）**，统一承载：
+> **把 Goal 编译为可执行的 Execution Graph，动态组织 Model、Agent、Tool、Knowledge 与 Compute，并将结果验证为 Verified Outcome；再利用执行反馈持续优化后续 Execution。**
 
-- LLM 推理；
-- Codex / Claude 等 Agent 执行；
-- Tool / Shell / Browser / MCP 调用；
-- RAG / Dataset 访问；
-- Batch / Workflow / Map-Reduce；
-- 多节点、GPU/CPU/VM/裸金属上的任务执行。
+稳定主链路：
 
-核心问题是：
+~~~text
+Goal
+  ↓
+Plan / Execution Graph
+  ↓
+Intelligence Selection
+  ↓
+Execution Kernel
+  ↓
+Model / Agent / Tool / Knowledge / Compute
+  ↓
+Verifier
+  ↓
+Verified Outcome
+  ↓
+Experience / Feedback
+  └──────────────↺
+~~~
 
-> 一个 AI 请求进入以后，应该由哪个模型、哪个 Agent、哪个 Runtime、哪台机器、哪份 KV/Context、哪份模型/数据来完成，并且整个过程如何调度、复用、容错、监控和治理。
+与 computecloud 的边界必须保持清晰：
 
-当前 v0.2 的单 Go Server、SQLite、多 Worker、Token Gateway、Job/Task 调度仍是可运行基线。本设计描述后续演进边界，不要求立即引入 PostgreSQL、Redis、消息队列、Kubernetes 或外部工作流引擎。
+- **AI Execution OS**：上层目标系统，负责 Goal → Verified Outcome；
+- **computecloud**：Agent Job Executor，负责可靠、可恢复、可治理的远程 Agent Job 执行；
+- computecloud 不因被 AI Execution OS 复用而扩展成 Model Serving、Training Scheduler、GPU Cloud 或通用 Workflow Engine；
+- Model Gateway、Training Platform、Knowledge Platform、Compute Platform 可以是独立系统，通过稳定接口接入。
+
+一句话：
+
+> **Models generate intelligence. Agents perform actions. AI Execution OS turns goals into verified outcomes.**
 
 ## 2. 总体架构
 
@@ -774,3 +793,364 @@ Syscall/API            -> Execution API
 ```
 
 该抽象为后续多模型、多 Agent、多节点、KubeVirt/裸金属、KV Cache、共享存储、高速网络以及 Token Gateway 提供统一演进边界。
+
+
+---
+
+## 19. 2026-09-24 架构补齐：Execution-centric AI OS
+
+本节覆盖本文早期“大一统 AI 基础设施”的表达。长期设计以 **Execution 为主轴**，而不是把 Model Serving、Storage、Training、GPU Cloud 全部并入同一产品。
+
+### 19.1 八个逻辑层
+
+~~~text
+1 Experience / API
+  User / App / IDE / API / MCP / A2A / Voice / Multimodal
+                         ↓
+2 Goal & Planning
+  Intent → Goal → Planner → Task Graph → Execution Graph
+                         ↓
+3 Intelligence Control Plane
+  Registry → Evaluation → Policy → Intelligent Router
+                         ↓
+4 Execution Kernel
+  Agent Job Executor
+  Scheduler / Runtime / State / Retry / Checkpoint / Sandbox / Workspace
+                         ↓
+5 Context / Knowledge / State
+  Context Manager / Memory / RAG / Knowledge / Artifact / Cache / Session State
+                         ↓
+6 AI Runtime & Tool Runtime
+  Token/Model Gateway / Cloud API / vLLM / SGLang
+  MCP / A2A / Browser / Computer / Shell / Git / API
+                         ↓
+7 Compute Fabric
+  K8s / KubeVirt / VM / Container / Bare Metal
+  GPU / NPU / PPU / CPU / Edge
+                         ↓
+8 Verification & Observability
+  Trace → Trajectory → Result → Verifier → Verified Outcome
+                         ↓
+  Experience / Feedback / Learning Loop
+                         └────────────────────────────↺
+~~~
+
+这些是逻辑层，不要求实现成八个服务。
+
+### 19.2 Execution Kernel 与 computecloud
+
+Agent Job Executor 是 AI Execution OS 的核心执行子系统，但不是整个 AI Execution OS。
+
+传统 OS 与 AI Execution OS 的近似映射：
+
+| Operating System | AI Execution OS |
+| --- | --- |
+| Process | Agent / Job |
+| Thread | Task / Sub-Agent |
+| Scheduler | Agent-aware Scheduler |
+| CPU | Model / Agent Runtime / Compute |
+| syscall | Tool / MCP / API |
+| Process memory | Context |
+| Page cache | Prompt / Prefix / Context Cache |
+| File system | Artifact / Workspace / Knowledge |
+| Device driver | Runtime / Provider Adapter |
+| IPC | A2A / Event / Message |
+| process state | Execution / Attempt State |
+| perf / tracing | Evaluation / Observability |
+
+computecloud 当前的 Job → Stage → Task → Attempt 模型继续保持，不改成 AI Execution OS 的全部领域模型。
+
+### 19.3 四个一级对象
+
+AI Execution OS 上层领域建议收敛为：
+
+~~~text
+Goal
+  ↓
+Execution
+  ↓
+Resource
+  ↓
+Outcome
+~~~
+
+- **Goal**：调用方希望得到的业务结果；
+- **Execution**：为实现 Goal 生成、可恢复和可重放的执行图；
+- **Resource**：Model / Agent / Tool / Skill / Knowledge / Compute；
+- **Outcome**：经过 Verifier 确认的结果。
+
+computecloud 的 Job / Stage / Task / Attempt 是 Execution 的一种可靠执行实现，而不是 Goal / Resource / Outcome 的替代。
+
+### 19.4 Context Manager / Context Compiler
+
+Context 必须成为一级运行时能力。输入可以包括：
+
+~~~text
+User Context
++ Task Context
++ Conversation
++ Memory
++ Repository
++ Knowledge
++ Artifact
++ Tool Result
++ Previous Trajectory
+        ↓
+Context Compiler
+        ↓
+Selected Model / Agent
+~~~
+
+职责包括：
+
+- context selection；
+- compression / summarization；
+- cache reuse；
+- permission filtering；
+- model-specific context compilation；
+- token / cost budget；
+- stale context invalidation；
+- provenance。
+
+Context Plane 可以独立实现，不应把 computecloud 变成 Knowledge/RAG 产品。
+
+### 19.5 Execution State Machine
+
+长任务必须被视为有状态进程。上层建议状态：
+
+~~~text
+Created
+  ↓
+Planned
+  ↓
+Queued
+  ↓
+Running
+  ├─ WaitingTool
+  ├─ WaitingHuman
+  ├─ Suspended
+  ├─ Retry
+  └─ Migrating
+  ↓
+Verifying
+  ↓
+Completed / Failed
+~~~
+
+底层 Attempt fencing、lease、reconcile、checkpoint、retry safety 仍由 computecloud Reliability Kernel 负责。
+
+### 19.6 Verifier 是完成语义的一部分
+
+Agent 不能仅通过“自报完成”结束任务：
+
+~~~text
+Agent / Runtime
+      ↓
+Result
+      ↓
+Verifier
+ ├─ Unit Test
+ ├─ Compiler
+ ├─ Rule
+ ├─ Model Judge
+ ├─ Domain Validator
+ ├─ Human Approval
+ └─ Business Outcome
+      ↓
+Verified Outcome
+~~~
+
+Verifier 输出应进入 Outcome 与 Evaluation；只有符合策略的 Verified Outcome 才能作为高质量 Experience / Training Trajectory。
+
+### 19.7 Intelligence Registry
+
+长期上层 Registry 不应只注册 Model，而应注册可参与 Execution 的 Intelligence Unit：
+
+~~~text
+Model
+Agent
+Tool
+Skill
+Workflow
+Verifier
+Environment
+Dataset
+Policy
+~~~
+
+统一元数据至少包含：
+
+~~~text
+Capability
+Version
+Cost
+Latency
+Quality / Evaluation
+Risk
+License
+Deployment
+Dependencies
+Provenance
+~~~
+
+Model Registry 可以继续作为其子集。
+
+### 19.8 Intelligent Router
+
+Router 的目标从“选择模型”提升为：
+
+> **根据 Task、Context、Budget、SLA、Risk、Privacy、Deployment、License 和实时 Evaluation，选择完成任务所需的 Intelligence Graph。**
+
+输入：
+
+~~~text
+Task + Context + Budget + SLA + Risk + Privacy
+     + Deployment + Hardware + License
+~~~
+
+输出：
+
+~~~text
+Execution Graph
+  ├─ Model
+  ├─ Agent
+  ├─ Tool
+  ├─ Skill
+  ├─ Knowledge
+  └─ Verifier
+~~~
+
+Router 给出 Intelligence / Execution preference；computecloud Scheduler 仍负责具体 Worker / Runtime / Attempt 的可靠绑定。两者不能混为一个 Scheduler。
+
+### 19.9 两个闭环
+
+**Execution Loop（秒/分钟/小时级）：**
+
+~~~text
+Goal → Plan → Route → Execute → Observe → Verify
+                    ↑                    │
+                    └── Retry / Replan ──┘
+~~~
+
+**Learning Loop（天/周/月级）：**
+
+~~~text
+Execution
+  ↓
+Trajectory
+  ↓
+Outcome / Evaluation
+  ↓
+Experience
+  ↓
+Dataset / Optimization
+  ↓
+Prompt / Context / Router / Policy / Workflow / SFT / RL
+  ↓
+Canary / Evaluation
+  ↓
+Production
+  └──────────────────────────────↺
+~~~
+
+Learning 不等于在线修改大模型权重。优先可以改进 Prompt、Context Policy、Router、Workflow、Tool、Verifier、Memory 或小型/领域模型。
+
+### 19.10 Training Plane 的边界
+
+Training 是 AI Execution OS 的反馈接口，不强制内置完整训练平台：
+
+~~~text
+AI Execution OS
+   │ trajectories / evaluated datasets
+   ▼
+External Training Platform
+   │ model / adapter / policy
+   ▼
+Registry + Evaluation
+   │
+   └────→ Production Execution
+~~~
+
+这样可以形成学习闭环，同时避免 computecloud 承担 Training Scheduler。
+
+### 19.11 典型 Execution Graph
+
+“修复 Kubernetes Bug 并交付通过 CI 的补丁”：
+
+~~~text
+Goal
+ ↓
+Planner
+ ↓
+Execution Graph
+ ├─ Inspect Repository → Agent
+ ├─ Analyze Issue      → Reasoning Model + Skill
+ ├─ Implement          → Coding Agent
+ ├─ Test               → Sandbox / CI
+ ├─ Verify             → Unit Test + Static Analysis + Judge
+ └─ Deliver            → Git Tool
+                          ↓
+                    Verified Outcome
+~~~
+
+系统优化目标不是单个模型 Benchmark，而是：
+
+> **Cost / Verified Outcome**
+
+### 19.12 产品边界原则
+
+任何新能力进入 AI Execution OS 时必须回答：
+
+1. 是否直接帮助 Goal → Verified Outcome？
+2. 是否属于 Intelligence Selection、Execution、Context、Verification 或 Feedback？
+3. 是否应该通过独立平台接口接入，而不是进入 Execution Kernel？
+4. 是否会破坏 computecloud 的 Agent Job Executor 边界？
+
+若一个能力主要解决 Model Serving、Training Scheduling、GPU Cloud、通用 Storage 或通用 Workflow，应优先保持独立产品边界。
+
+## 20. 演进层次
+
+AI Execution OS 与 computecloud 的关系建议按以下层次推进：
+
+~~~text
+V0  Agent Job Executor
+    能执行
+ ↓
+V1  Execution Kernel
+    DAG/Stage + State + Retry + Checkpoint + Sandbox + Workspace
+ ↓
+V2  Intelligence Control Plane
+    Registry + Evaluation + Policy + Router
+ ↓
+V3  Execution Graph
+    Goal → Planner → Dynamic Execution Graph → Replan
+ ↓
+V4  Verified Execution
+    Verifier + Outcome + Replay + SLA + Audit
+ ↓
+V5  Adaptive Execution OS
+    Trajectory → Experience → Optimization → Better Execution
+~~~
+
+注意：这不是要求 computecloud 本身从 V0 线性膨胀到 V5。V0/V1 可由 computecloud 提供核心执行能力；V2–V5 可以由上层 AI Execution OS 服务组合完成，通过 API 复用 computecloud。
+
+## 21. 最终定义
+
+> **AI Execution OS 是一个面向智能任务的执行与学习操作系统，通过统一组织模型、Agent、工具、知识与算力，将人类目标持续转化为可验证结果，并利用执行经验不断优化后续执行。**
+
+核心闭环：
+
+~~~text
+Goal → Plan → Intelligence → Execute → Verify → Learn → Improve → Execute again
+~~~
+
+长期北极星指标：
+
+~~~text
+Verified Outcome Rate
+Cost / Verified Outcome
+Time / Verified Outcome
+Recovery Success Rate
+Policy / Safety Compliance
+Learning Improvement Rate
+~~~
