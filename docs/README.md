@@ -3,7 +3,7 @@
 | 文档 | 内容 | 状态 |
 | --- | --- | --- |
 | [Agent-aware Distributed Job Execution Platform 总体架构](design/agent-job-executor-architecture.md) | Job/Stage/Task/Attempt、Runtime/Tool 分层、Artifact/Workspace 生命周期与 Agent-aware Scheduler | 当前目标架构 |
-| [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性内核、Agent Runtime/Tool、Agent-aware Scheduler、治理与规模化 | 当前长期主路线 |
+| [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | 产品调研对齐：可靠性内核、Runtime/Tool/Environment、Prepared Workspace、Agent-aware Scheduler、Private Worker、治理与规模化 | 当前长期主路线 |
 | [AI Execution OS 总体架构](design/ai-execution-os-architecture.md) | Goal → Execution Graph → Intelligence Control → Execution Kernel → Verified Outcome → Learning Loop；明确 computecloud 为 Agent Job Executor 子系统 | 上层目标架构；不改变 ADR-003 的 computecloud 产品边界 |
 | [v0.2 网关与 Map/Reduce 设计](design/gateway-mapreduce-v0.2.md) | 双入口、分片/汇总、投递、取消、恢复、计量与升级 | 已实现，fixture 验证通过 |
 | [v0.2 接口与数据契约](contracts/job-gateway-v0.2.md) | HTTP/MCP、Worker 扩展、SQLite、Responses 边界 | v0.2 已实现，固定子集 |
@@ -31,4 +31,4 @@
 
 实现事实以代码、[Proto](../api/agent/v1/runtime.proto) 和对应版本验证记录为准。第三方测试不算本项目测试，fixture 测试不算真实模型或独立双机验收。
 
-v0.2 网关/Job 已落地，实际边界以运行指南及验证记录为准；旧主设计中的 Session、交互、通用 DAG 和 R1 重试仍是后续目标。
+v0.2 网关/Job 已落地，实际边界以运行指南及验证记录为准；后续主线以 Stage、Attempt fencing、Retry Safety、Artifact/Workspace lifecycle、Runtime/Tool/Environment Provider 和 Agent-aware Scheduling 为核心；通用 DAG、LLM Gateway、Model Serving 不属于 computecloud 主线。
