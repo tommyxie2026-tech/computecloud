@@ -169,7 +169,7 @@ func (s *Server) HTTPHandler() http.Handler {
 			httpError(w, e)
 			return
 		}
-		jsonResponse(w, 200, map[string]any{"api_version": "v0.2", "jobs_enabled": s.cfg.Jobs.Enabled, "mcp_enabled": s.cfg.MCP.Enabled, "model_gateway_enabled": s.cfg.ModelGateway.Enabled, "job_modes": []string{"single", "map_reduce"}, "max_partitions": s.cfg.Jobs.MaxPartitions, "max_parallelism": s.cfg.Jobs.MaxParallelism, "recommended_parallelism": s.cfg.Jobs.RecommendedParallelism, "max_attempts_per_task": 1})
+		jsonResponse(w, 200, map[string]any{"api_version": "v0.3", "jobs_enabled": s.cfg.Jobs.Enabled, "mcp_enabled": s.cfg.MCP.Enabled, "model_gateway_enabled": s.cfg.ModelGateway.Enabled, "job_modes": []string{"single", "map_reduce"}, "max_partitions": s.cfg.Jobs.MaxPartitions, "max_parallelism": s.cfg.Jobs.MaxParallelism, "recommended_parallelism": s.cfg.Jobs.RecommendedParallelism, "max_attempts_per_task": 1})
 	})
 	if s.cfg.MCP.Enabled {
 		mux.Handle("/mcp", s.mcpHandler())
