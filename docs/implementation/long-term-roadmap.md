@@ -9,6 +9,7 @@
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 - 当前实现依据：[v0.2 实施计划](v0.2-plan.md)、[v0.2 验证记录](../validation/v0.2-results.md)
+- 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 
 > 本路线图继续坚持 v0.2 的 Agent Job Executor 本质，不再向 AI Execution OS 演变。长期差异化来自 **Agent-aware execution semantics**，而不是扩大成通用 AI 基础设施。
 
@@ -44,7 +45,98 @@ Agent-aware Scheduling
 规模化与按需 HA
 ~~~
 
-## 2. 长期版本主线
+## 2. 产品调研后的演进原则
+
+本轮产品调研进一步确认：computecloud 应建设“Agent Job Control Layer”，而不是继续向 Agent Harness、Sandbox Cloud、LLM Gateway 或通用 Workflow Engine 扩张。
+
+### 2.1 必须自己做深的能力
+
+这些能力构成 computecloud 的核心差异化，不能外包给通用基础设施：
+
+- Job / Stage / Task / Attempt；
+- Attempt generation / fencing；
+- Retry Safety；
+- Artifact provenance；
+- Workspace lifecycle；
+- Agent Runtime / Tool capability；
+- Credential / account-aware scheduling；
+- Workspace / repository affinity；
+- Worker / queue / concurrency control；
+- self-hosted / private worker governance。
+
+### 2.2 优先通过 Adapter / Provider 接入的能力
+
+以下能力优先集成，不默认自研完整平台：
+
+~~~text
+Agent Harness
+  -> Codex / Claude / OpenHands / Managed Agent API / Custom Agent
+
+Sandbox / Environment
+  -> process / container / VM / Kubernetes / external sandbox provider
+
+Tool
+  -> Shell / Git / Browser / MCP / HTTP / Verifier
+
+Storage
+  -> Local / Shared File / Object
+
+Durable Workflow
+  -> 只借鉴可靠性语义，不复制通用 Workflow Engine
+~~~
+
+核心原则：
+
+> **Build the Agent Job control plane; integrate the Agent, Sandbox and infrastructure ecosystems.**
+
+### 2.3 Environment 成为 Runtime 之外的独立扩展点
+
+行业产品显示，Prepared Environment / Sandbox 对远程 Agent Job 的启动速度、隔离和可重复性很重要。因此长期模型增加：
+
+~~~text
+Runtime
++
+Tool
++
+Environment
++
+Workspace
+~~~
+
+其中 Environment 负责“任务在哪种隔离与依赖环境中运行”，Runtime 负责“哪个 Agent 执行任务”。
+
+Environment 不升级为新的一级业务对象，而作为 Worker capability / provider。
+
+### 2.4 兼容多种 Agent 接入形态
+
+Runtime API 不只面向本地 CLI，还应覆盖：
+
+~~~text
+local CLI agent
+remote CLI agent
+API-backed agent
+managed cloud agent
+self-hosted agent server
+custom enterprise agent
+~~~
+
+因此 Runtime API v2 必须避免把“本地子进程”写死在公共协议中。
+
+### 2.5 Prepared Workspace 成为重要优化方向
+
+参考远程 Coding Agent 产品，Workspace 长期不仅是临时目录，还需要支持：
+
+- repository baseline；
+- dependency/image/template；
+- warm workspace；
+- cached checkout；
+- preinstalled tools；
+- network / secret policy；
+- reproducible environment fingerprint。
+
+这属于 Agent Job 性能与可恢复性优化，不发展成通用开发环境产品。
+
+## 3. 长期版本主线
 
 ~~~text
 v0.2.x
@@ -54,7 +146,7 @@ v0.3.x
 可靠性内核
    ↓
 v0.4.x
-Agent Runtime / Tool 生态
+Agent Runtime / Tool / Environment 生态
    ↓
 v0.5.x
 Agent-aware Scheduler
@@ -73,13 +165,13 @@ v1.0
 | --- | --- | --- |
 | v0.2.x | Production Baseline | 真实 Codex/Claude/MCP、多机、故障、容量、部署 |
 | v0.3.x | Reliability Kernel | Stage、Attempt fencing、Retry Safety、Artifact/Workspace lifecycle、长任务 |
-| v0.4.x | Runtime & Tool Ecosystem | Runtime API v2、ToolCapability、更多 Agent、Approval、Sandbox |
-| v0.5.x | Agent-aware Scheduler | Capability、Credential、Workspace/Repo affinity、Network、Fair Queue、Resource |
-| v0.6.x | Enterprise Governance | Multi-tenant、RBAC、Quota、Secret、Policy、Audit、Isolation |
+| v0.4.x | Runtime / Tool / Environment Ecosystem | Runtime API v2、ToolCapability、EnvironmentProvider、Prepared Workspace、更多 Agent、Approval |
+| v0.5.x | Agent-aware Scheduler | Capability、Credential、Environment readiness、Workspace/Repo affinity、Network、Fair Queue、Resource |
+| v0.6.x | Enterprise Governance | Multi-tenant、RBAC、Quota、Secret、Policy、Audit、Private Worker / Trust Domain |
 | v0.7.x | Scale & Resilience | Worker Group、GC、调度扩展、容量治理、按需 HA |
 | v1.0 | Stable Platform | 稳定协议、SDK、兼容矩阵、SLO、运维体系 |
 
-## 3. v0.2.x — Production Baseline
+## 4. v0.2.x — Production Baseline
 
 ### 3.1 目标
 
@@ -141,7 +233,7 @@ artifact_id
 - 容量基线形成；
 - backup / restore / rollback 可复现。
 
-## 4. v0.3.x — Reliability Kernel
+## 5. v0.3.x — Reliability Kernel
 
 v0.3 不以增加功能数量为目标，而以建立 Agent Job Executor 的正确性内核为目标。
 
@@ -311,9 +403,9 @@ Workspace 同样进入可靠性内核：
 - cancel/retry/timeout race 有自动测试；
 - fair queue 有 starvation 测试。
 
-## 5. v0.4.x — Agent Runtime 与 Tool 生态
+## 6. v0.4.x — Agent Runtime、Tool 与 Environment 生态
 
-这一阶段扩大“Agent Job 能做什么”，但不扩大产品领域。
+这一阶段扩大“Agent Job 能做什么、能在哪里安全运行、能如何快速准备工作环境”，但不扩大产品领域。产品调研明确要求这一阶段采用 **Adapter / Provider-first** 策略：优先接入现有 Agent 和 Sandbox 生态，而不是自建完整 Harness 或 Sandbox Cloud。
 
 ### 5.1 Runtime API v2
 
@@ -397,36 +489,110 @@ Session 不升级为平台一级领域模型，只作为 Runtime capability：
 - interrupt；
 - optional interactive input。
 
-### 5.5 Sandbox
+### 6.5 EnvironmentProvider / SandboxProvider
 
-按风险逐级：
+Environment 与 Runtime 分离：
 
 ~~~text
-process
-  ↓
-container
-  ↓
-VM / sandbox（按业务需要）
+Runtime
+  = 谁执行 Agent Job
+
+Environment
+  = Agent Job 在什么隔离、依赖和网络环境里运行
 ~~~
 
-隔离级别进入 Worker / Tool capability。
+建议 Provider：
 
-### 5.6 v0.4 退出门槛
+~~~text
+local-process
+container
+vm
+kubernetes
+external-sandbox
+~~~
+
+外部 Sandbox 产品作为 Provider 接入，不进入 computecloud 核心领域模型。
+
+EnvironmentCapability 至少包含：
+
+- isolation level；
+- image / template；
+- CPU / Memory / Disk；
+- network policy；
+- filesystem mode；
+- startup latency；
+- checkpoint/snapshot capability；
+- trusted / untrusted execution class。
+
+### 6.6 Prepared Workspace / Workspace Template
+
+在 v0.3 Workspace Lifecycle 基础上增加“可重复准备环境”：
+
+- workspace_template_id；
+- repository baseline；
+- dependency/image fingerprint；
+- preinstalled Runtime / Tool；
+- warm workspace；
+- cached checkout；
+- environment fingerprint；
+- startup / prepare latency。
+
+目标是降低远程 Agent Job 冷启动和重复准备成本，而不是构建 IDE/Dev Environment 产品。
+
+### 6.7 API-backed / Managed Agent Adapter
+
+Runtime API v2 必须支持不仅是 Worker 本地进程，也包括：
+
+- local CLI Agent；
+- remote CLI Agent；
+- self-hosted Agent Server；
+- API-backed Agent；
+- managed cloud Agent。
+
+因此 Runtime contract 需要把：
+
+~~~text
+Job semantics
+Attempt lifecycle
+events
+artifacts
+cancel
+capabilities
+~~~
+
+与具体进程模型解耦。
+
+### 6.8 Trigger / Delivery Integration
+
+借鉴 Coding Agent Cloud 的任务交付方式，增加轻量集成 Adapter：
+
+- GitHub / GitLab issue or PR trigger；
+- CI trigger；
+- webhook trigger；
+- branch / patch / report delivery；
+- verifier result；
+- PR/commit reference。
+
+这些都是 Job ingress / result delivery adapter，不改变 Job 核心模型。
+
+### 6.9 v0.4 退出门槛
 
 - 3+ Runtime 共享同一 Runtime API；
+- 至少覆盖 local CLI 与 API-backed 两种 Runtime 形态；
 - 新 Runtime 不修改核心 Scheduler；
-- RuntimeCapability / ToolCapability 分离；
+- RuntimeCapability / ToolCapability / EnvironmentCapability 分离；
+- 至少 2 类 Environment Provider 通过统一 contract test；
+- Prepared Workspace 能显著降低重复 Job prepare latency；
 - Approval 可审计；
-- Container 可选运行；
 - Tool 越权 / 网络越权有负向测试。
 
-## 6. v0.5.x — Agent-aware Scheduler
+## 7. v0.5.x — Agent-aware Scheduler
 
 v0.5 不做通用资源调度器，而是回答：
 
 > **这个 Agent Task 在哪个 Worker 上最适合、最安全、最可能成功？**
 
-### 6.1 调度优先级
+### 7.1 调度优先级
 
 长期信号顺序：
 
@@ -434,14 +600,15 @@ v0.5 不做通用资源调度器，而是回答：
 1 Runtime / Agent Capability
 2 Security / Permission
 3 Credential / Account Availability
-4 Workspace / Repository Affinity
-5 Network / Tool Reachability
-6 Queue / Concurrency
-7 CPU / Memory / Disk
-8 Optional Accelerator
+4 Environment / Isolation Compatibility
+5 Prepared Workspace / Repository Affinity
+6 Network / Tool Reachability
+7 Queue / Concurrency
+8 CPU / Memory / Disk
+9 Optional Accelerator
 ~~~
 
-### 6.2 Worker Capability
+### 7.2 Worker Capability
 
 Worker 报告：
 
@@ -450,10 +617,13 @@ labels
 os / arch
 runtime + version
 tool capability
+environment capability
 credential/account class
 network zone
 repository/workspace hints
-isolation
+prepared workspace/template hints
+isolation / trust class
+environment startup cost
 cpu
 memory
 disk
@@ -463,7 +633,7 @@ slots
 
 不报告 Secret 原文。
 
-### 6.3 Filter
+### 7.3 Filter
 
 硬约束：
 
@@ -477,7 +647,7 @@ slots
 - Worker pool；
 - minimum resources。
 
-### 6.4 Queue / Fairness
+### 7.4 Queue / Fairness
 
 - project fair share；
 - account concurrency；
@@ -487,11 +657,12 @@ slots
 - backpressure；
 - blocker visibility。
 
-### 6.5 Score
+### 7.5 Score
 
 主要评分：
 
-- Workspace affinity；
+- Environment readiness / startup cost；
+- Prepared Workspace affinity；
 - Repository affinity；
 - warm Runtime；
 - Worker load；
@@ -501,7 +672,7 @@ slots
 - failure rate；
 - resource headroom。
 
-### 6.6 Bind 与解释性
+### 7.6 Bind 与解释性
 
 保存至少：
 
@@ -517,7 +688,7 @@ fallback reason
 
 > 为什么 Task-123 被分配到 Worker-07？
 
-### 6.7 资源边界
+### 7.7 资源边界
 
 CPU / Memory / Disk / optional GPU 可以作为约束，但不建设：
 
@@ -526,7 +697,7 @@ CPU / Memory / Disk / optional GPU 可以作为约束，但不建设：
 - KV locality；
 - model serving placement。
 
-### 6.8 Artifact 跨节点
+### 7.8 Artifact 跨节点
 
 当 Server 本地文件不能满足需求时，引入通用 Provider：
 
@@ -538,7 +709,33 @@ Object
 
 仅解决 Workspace / Artifact 交接，不建设 Storage Fabric。
 
-### 6.9 v0.5 退出门槛
+### 7.9 Private Worker / BYO Worker Pool
+
+产品调研显示企业私有执行环境是 computecloud 的重要差异化，因此 v0.5 开始把 private worker 作为一等部署模式验证：
+
+~~~text
+Central Control Plane
+        ↓
+Outbound Worker Connection
+        ↓
+Enterprise Private Network
+        ↓
+Private Worker Pool
+~~~
+
+要求：
+
+- Worker 主动出站连接；
+- 不要求控制面直接入站访问企业 Worker；
+- Worker identity / certificate；
+- Worker pool / trust class；
+- project -> worker pool policy；
+- credential 不离开授权 trust domain；
+- Artifact 可选择保留在私有域。
+
+此能力不等于多集群控制面，而是 Agent Job Executor 的企业执行边界。
+
+### 7.10 v0.5 退出门槛
 
 - Capability 过滤正确；
 - credential/account 不超并发；
@@ -546,11 +743,13 @@ Object
 - affinity 有实际收益证据；
 - 调度原因可解释；
 - 16 / 32 / 64+ Worker 容量曲线可测；
-- Artifact 跨节点可靠。
+- Artifact 跨节点可靠；
+- Private Worker Pool 能通过 outbound-only 模式运行；
+- Environment readiness / startup cost 能被调度观测和解释。
 
-## 7. v0.6.x — Enterprise Governance
+## 8. v0.6.x — Enterprise Governance
 
-### 7.1 Tenant / Project
+### 8.1 Tenant / Project
 
 稳定对象：
 
@@ -565,7 +764,7 @@ Quota
 CredentialRef
 ~~~
 
-### 7.2 RBAC
+### 8.2 RBAC
 
 至少：
 
@@ -579,7 +778,7 @@ CredentialRef
 - audit read；
 - admin。
 
-### 7.3 Secret / Credential
+### 8.3 Secret / Credential
 
 JobSpec 不保存 Secret 原文。
 
@@ -599,7 +798,7 @@ runtime_identity
 - auditable；
 - Worker 只获得最小必要凭据。
 
-### 7.4 Policy
+### 8.4 Policy
 
 控制：
 
@@ -613,7 +812,7 @@ runtime_identity
 - verifier；
 - retry class。
 
-### 7.5 Audit
+### 8.5 Audit
 
 记录：
 
@@ -626,7 +825,7 @@ runtime_identity
 - artifact download；
 - policy change。
 
-### 7.6 Metering
+### 8.6 Metering
 
 围绕 Agent Job：
 
@@ -638,7 +837,24 @@ runtime_identity
 - Tool calls；
 - model tokens（Runtime 能提供时）。
 
-### 7.7 v0.6 退出门槛
+### 8.7 Worker Trust Domain
+
+企业治理需要把 Worker 视为安全边界，而不仅是资源节点。
+
+至少定义：
+
+- worker_pool；
+- trust_domain；
+- isolation_class；
+- allowed_projects；
+- allowed_credentials；
+- allowed_repositories；
+- allowed_network_zones；
+- artifact residency policy。
+
+控制面只下发 Job 所需的最小 credential reference 和 policy，不让 Worker 获得跨项目 Secret。
+
+### 8.8 v0.6 退出门槛
 
 - Tenant 数据隔离；
 - Secret 不泄漏到普通 event/artifact；
@@ -646,9 +862,9 @@ runtime_identity
 - Quota 并发竞态不超限；
 - Audit 能追到 actor -> Job -> Stage -> Task -> Attempt。
 
-## 8. v0.7.x — Scale & Resilience
+## 9. v0.7.x — Scale & Resilience
 
-### 8.1 Lifecycle / GC
+### 9.1 Lifecycle / GC
 
 建立：
 
@@ -665,7 +881,7 @@ runtime_identity
 
 > 仍被 Job / Stage / Attempt 引用的数据不得删除。
 
-### 8.2 Scheduler Scaling
+### 9.2 Scheduler Scaling
 
 优化：
 
@@ -677,7 +893,7 @@ runtime_identity
 - event batching；
 - command batching。
 
-### 8.3 Worker Group
+### 9.3 Worker Group
 
 支持：
 
@@ -692,7 +908,7 @@ special-tool
 restricted-network
 ~~~
 
-### 8.4 HA 仅按真实瓶颈触发
+### 9.4 HA 仅按真实瓶颈触发
 
 继续保留单 Server + SQLite，直到出现：
 
@@ -710,7 +926,24 @@ restricted-network
 
 版本号到 v0.7 本身不是引入 HA 的理由。
 
-### 8.5 v0.7 退出门槛
+### 9.5 Ecosystem Compatibility Matrix
+
+规模化阶段不仅验证 Worker 数量，也要维护生态兼容矩阵：
+
+~~~text
+Runtime
+Environment Provider
+Tool
+OS / Arch
+Worker version
+Protocol version
+~~~
+
+对外明确 certified / experimental / unsupported 状态。
+
+避免 Runtime、Sandbox 和 Worker 生态扩展后形成不可维护的隐式组合。
+
+### 9.6 v0.7 退出门槛
 
 - 历史数据可治理；
 - 大规模 heartbeat 不拖垮 Server；
@@ -719,11 +952,11 @@ restricted-network
 - RTO 有实测；
 - 是否需要 HA 有数据结论。
 
-## 9. v1.0 — Stable Agent-aware Job Platform
+## 10. v1.0 — Stable Agent-aware Job Platform
 
 v1.0 不以功能多为标准，而以契约成熟和生产边界清晰为标准。
 
-### 9.1 稳定协议
+### 10.1 稳定协议
 
 稳定：
 
@@ -731,6 +964,7 @@ v1.0 不以功能多为标准，而以契约成熟和生产边界清晰为标准
 - Runtime API；
 - RuntimeCapability；
 - ToolCapability；
+- EnvironmentCapability / EnvironmentProvider contract；
 - Worker protocol；
 - Event schema；
 - Artifact lifecycle；
@@ -738,7 +972,7 @@ v1.0 不以功能多为标准，而以契约成熟和生产边界清晰为标准
 - auth / quota / audit semantics；
 - deprecation policy。
 
-### 9.2 正式支持场景
+### 10.2 正式支持场景
 
 至少：
 
@@ -754,7 +988,7 @@ Session-resume Agent Job
 Sandboxed Agent Job
 ~~~
 
-### 9.3 SDK / Integration
+### 10.3 SDK / Integration
 
 稳定：
 
@@ -764,7 +998,7 @@ Sandboxed Agent Job
 - Go client；
 - 根据需求提供 Python SDK。
 
-### 9.4 运维
+### 10.4 运维
 
 完整：
 
@@ -778,7 +1012,7 @@ Sandboxed Agent Job
 - compatibility matrix；
 - supported scale。
 
-### 9.5 v1.0 必须回答
+### 10.5 v1.0 必须回答
 
 - 最大已验证 Worker 数；
 - 并发 Job / Task / Attempt 边界；
@@ -791,7 +1025,7 @@ Sandboxed Agent Job
 - 支持的 isolation；
 - 升级 / 回退流程。
 
-## 10. 永久边界
+## 11. 永久边界
 
 以下方向不作为本产品线性演进：
 
@@ -819,7 +1053,7 @@ computecloud
 
 通过 API 复用 Agent Job Executor，而不是把 computecloud 改造成另一套平台。
 
-## 11. 单二进制 / SQLite 原则
+## 12. 单二进制 / SQLite 原则
 
 继续坚持：
 
@@ -835,7 +1069,7 @@ computecloud
 - etcd；
 - 微服务拆分。
 
-## 12. 代码模块演进
+## 13. 代码模块演进
 
 建议逐步整理：
 
@@ -868,7 +1102,7 @@ internal/
 
 模块化不等于服务化。
 
-## 13. 测试策略
+## 14. 测试策略
 
 长期保持四层：
 
@@ -892,7 +1126,7 @@ L4 Real Runtime / Multi-host
 - scheduler starvation；
 - GC recovery。
 
-## 14. ADR 演进序列
+## 15. ADR 演进序列
 
 已完成：
 
@@ -912,7 +1146,7 @@ L4 Real Runtime / Multi-host
 11. History / GC；
 12. HA Trigger / State Backend（仅需要时）。
 
-## 15. 方向判断规则
+## 16. 方向判断规则
 
 任何新能力进入路线图前回答：
 
@@ -923,16 +1157,45 @@ L4 Real Runtime / Multi-host
 
 若第 4 条成立，应优先建设独立系统。
 
-## 16. 最终路线一句话
+## 17. 市场触发的路线重审条件
+
+产品调研不是一次性结论。出现以下情况时，应重新进行架构 Review，而不是自动跟随行业加功能：
+
+- Agent Runtime 出现事实标准协议；
+- MCP / ACP 或类似协议形成稳定跨 Agent runtime 标准；
+- Agent Sandbox 形成广泛通用基础设施标准；
+- Durable Agent Job 出现事实上的公共执行模型；
+- 主流 Coding Agent 开放企业私有 Worker / BYO execution；
+- Managed Agent API 普遍支持外部 durable job controller；
+- Agent-aware Scheduling 被上游 Runtime 原生覆盖；
+- private worker / credential / workspace 需求发生明显变化。
+
+Review 的判断问题是：
+
+> 该行业变化应该成为 computecloud 的核心能力、Adapter/Provider，还是应该完全交给外部系统？
+
+默认优先顺序：
+
+~~~text
+reuse protocol
+  ↓
+build adapter
+  ↓
+build provider
+  ↓
+only then consider core model change
+~~~
+
+## 18. 最终路线一句话
 
 ~~~text
 v0.2  能稳定运行真实 Agent Job
   ↓
 v0.3  不重复、不丢结果、可安全重试
   ↓
-v0.4  理解更多 Agent 与 Tool
+v0.4  接入更多 Agent / Tool / Environment，并加速 Workspace 准备
   ↓
-v0.5  根据 Agent 语义智能选择 Worker
+v0.5  根据 Agent、Credential、Environment、Workspace 语义智能选择 Worker
   ↓
 v0.6  多团队安全治理
   ↓
