@@ -1,5 +1,5 @@
 GO ?= go
-VERSION ?= 0.2.0
+VERSION ?= 0.3.0
 
 .PHONY: build test race vet smoke ci-flow capacity capacity-check release-package generate
 build:
