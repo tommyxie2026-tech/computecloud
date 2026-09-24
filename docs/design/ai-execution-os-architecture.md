@@ -1,5 +1,7 @@
 # AI Execution OS 总体架构
 
+> **状态：历史探索 / 已被替代。** 本文不再作为 computecloud 当前产品路线的实施依据。当前路线以 [Agent Job Executor 总体架构](agent-job-executor-architecture.md) 和 [ADR-003](../adr/0003-agent-job-executor-product-scope.md) 为准。
+
 - 项目：computecloud
 - 日期：2026-09-24
 - 状态：目标架构 / 演进设计；不是当前 v0.2 已实现事实
