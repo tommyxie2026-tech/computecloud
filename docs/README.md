@@ -2,8 +2,9 @@
 
 | 文档 | 内容 | 状态 |
 | --- | --- | --- |
-| [长期演进路线图](implementation/long-term-roadmap.md) | 专家评审修订：Workload、Execution/Deployment/Session、Admission、Runtime Capability、Storage/Memory/Locality 与生产控制面 | 长期演进规划 |
-| [AI Execution OS 总体架构](design/ai-execution-os-architecture.md) | Execution Kernel、Compute/Memory/Storage/Tool Fabric 与 Locality 演进边界 | 目标架构；基于 v0.2 逐步演进 |
+| [Agent Job Executor 总体架构](design/agent-job-executor-architecture.md) | Job/Task/Attempt、Worker、Runtime、Scheduler、Workspace/Artifact 与可靠性边界 | 当前目标架构 |
+| [Agent Job Executor 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性、Runtime/Tool、资源感知、多租户、规模化与稳定接口 | 当前长期主路线 |
+| [AI Execution OS 总体架构](design/ai-execution-os-architecture.md) | 早期大平台方向探索 | 历史探索；已被 ADR-003 替代 |
 | [v0.2 网关与 Map/Reduce 设计](design/gateway-mapreduce-v0.2.md) | 双入口、分片/汇总、投递、取消、恢复、计量与升级 | 已实现，fixture 验证通过 |
 | [v0.2 接口与数据契约](contracts/job-gateway-v0.2.md) | HTTP/MCP、Worker 扩展、SQLite、Responses 边界 | v0.2 已实现，固定子集 |
 | [v0.2 实施计划与验收](implementation/v0.2-plan.md) | M1–M6、G1、R1 依赖与 V01–V22 验收 | 代码与本地验证完成；真实环境待验收 |
@@ -14,6 +15,7 @@
 | [容量与部署验收](validation/capacity.md) | fixture 容量工具、指标口径、完整矩阵与真实双机门槛 | 本机矩阵通过，真实环境待验收 |
 | [v0.2 接入示例](examples/v0.2/README.md) | Job JSON Schema、请求及 Codex/Server 配置 | v0.2 示例；需要替换部署引用 |
 | [ADR-002：网关与 Map/Reduce](adr/0002-gateway-mapreduce.md) | 双入口和固定两阶段作业的决策依据 | 已实施 |
+| [ADR-003：Agent Job Executor 产品边界](adr/0003-agent-job-executor-product-scope.md) | 推翻 AI Execution OS 线性演进，固定 computecloud 的 Agent Job Executor 产品边界 | Accepted |
 | [v0.1 实施计划与进度](implementation/v0.1-plan.md) | 交付阶段、完成状态与后续工作 | 第一版已实现，本地验证完成 |
 | [v0.1 运行指南](implementation/v0.1-runbook.md) | 构建、CLI 接入、TLS、多机、恢复、设计差异 | 旧 Task 与基础部署依据 |
 | [v0.1 验证记录](validation/v0.1-results.md) | 自动测试、二进制故障烟测与覆盖边界 | 本机双 Worker 已验证；真实 CLI/独立双机未执行 |
