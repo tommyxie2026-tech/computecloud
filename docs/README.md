@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | [Agent-aware Distributed Job Execution Platform 总体架构](design/agent-job-executor-architecture.md) | Job/Stage/Task/Attempt、Runtime/Tool 分层、Artifact/Workspace 生命周期与 Agent-aware Scheduler | 当前目标架构 |
 | [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性内核、Agent Runtime/Tool、Agent-aware Scheduler、治理与规模化 | 当前长期主路线 |
+| [v0.2.1 → v0.3.0 实施计划与跟踪](implementation/v0.2.1-v0.3.0-plan.md) | Production Baseline、Stage、multi-Attempt、Generation Fencing、Artifact gating 与 Release Gate；GitHub Issues #1–#9 跟踪 | 当前实施中 |
 | [AI Execution OS 总体架构](design/ai-execution-os-architecture.md) | 早期大平台方向探索 | 历史探索；已被 ADR-003 替代 |
 | [v0.2 网关与 Map/Reduce 设计](design/gateway-mapreduce-v0.2.md) | 双入口、分片/汇总、投递、取消、恢复、计量与升级 | 已实现，fixture 验证通过 |
 | [v0.2 接口与数据契约](contracts/job-gateway-v0.2.md) | HTTP/MCP、Worker 扩展、SQLite、Responses 边界 | v0.2 已实现，固定子集 |
