@@ -173,11 +173,11 @@ v1.0
 
 ## 4. v0.2.x — Production Baseline
 
-### 3.1 目标
+### 4.1 目标
 
 不增加新的领域模型，先把 v0.2 已实现能力在真实环境做实。
 
-### 3.2 必须完成
+### 4.2 必须完成
 
 - 固定真实 Codex / Claude 版本；
 - 真实 Codex exec；
@@ -196,7 +196,7 @@ v1.0
 - upgrade / rollback；
 - fixture 结果与真实环境结果分开保存。
 
-### 3.3 G1 处理原则
+### 4.3 G1 处理原则
 
 现有 Responses / SSE / compact 能力继续保留，但从现在开始只定义为：
 
@@ -209,7 +209,7 @@ v1.0
 - Model Gateway 产品能力；
 - 推理服务调度。
 
-### 3.4 基础 Trace
+### 4.4 基础 Trace
 
 至少贯穿：
 
@@ -223,7 +223,7 @@ runtime
 artifact_id
 ~~~
 
-### 3.5 退出门槛
+### 4.5 退出门槛
 
 - 两台独立主机通过；
 - 真实 Codex / Claude 通过；
@@ -237,7 +237,7 @@ artifact_id
 
 v0.3 不以增加功能数量为目标，而以建立 Agent Job Executor 的正确性内核为目标。
 
-### 4.1 v0.3.0 — Stage + Attempt Fencing
+### 5.1 v0.3.0 — Stage + Attempt Fencing
 
 领域模型从当前：
 
@@ -286,7 +286,7 @@ Job
 
 > 网络抖动、Server 重启、Worker 重连都不能产生两个有效 Attempt。
 
-### 4.2 v0.3.1 — Retry Safety
+### 5.2 v0.3.1 — Retry Safety
 
 实现当前 R1，但严格受限：
 
@@ -309,7 +309,7 @@ External mutation / publish 默认不自动重试
 Execution state unknown     RECONCILING，不重试
 ~~~
 
-### 4.3 v0.3.2 — Artifact Lifecycle
+### 5.3 v0.3.2 — Artifact Lifecycle
 
 Artifact 进入可靠性内核，不等到 Runtime 扩展阶段。
 
@@ -348,7 +348,7 @@ STAGED -> REJECTED / ORPHANED
 - 旧 Attempt Artifact 只能诊断，不进入正式结果；
 - Artifact upload 与 completion 必须有稳定幂等语义。
 
-### 4.4 v0.3.3 — Workspace Lifecycle
+### 5.4 v0.3.3 — Workspace Lifecycle
 
 Workspace 同样进入可靠性内核：
 
@@ -366,7 +366,7 @@ Workspace 同样进入可靠性内核：
 
 > 新旧 Attempt 不允许无约束共享同一个可写 Workspace。
 
-### 4.5 v0.3.4 — Long-running Job
+### 5.5 v0.3.4 — Long-running Job
 
 支持：
 
@@ -379,7 +379,7 @@ Workspace 同样进入可靠性内核：
 - explicit deadline extension policy；
 - long-running event compaction / bounded retention。
 
-### 4.6 v0.3.5 — Fair Scheduling
+### 5.6 v0.3.5 — Fair Scheduling
 
 在正确性稳定之后再增加：
 
@@ -392,7 +392,7 @@ Workspace 同样进入可靠性内核：
 - queue blocker reason；
 - backpressure。
 
-### 4.7 v0.3 退出门槛
+### 5.7 v0.3 退出门槛
 
 - Stage schema 与 v0.2 Job 兼容策略明确；
 - Retry 不制造双执行；
@@ -407,7 +407,7 @@ Workspace 同样进入可靠性内核：
 
 这一阶段扩大“Agent Job 能做什么、能在哪里安全运行、能如何快速准备工作环境”，但不扩大产品领域。产品调研明确要求这一阶段采用 **Adapter / Provider-first** 策略：优先接入现有 Agent 和 Sandbox 生态，而不是自建完整 Harness 或 Sandbox Cloud。
 
-### 5.1 Runtime API v2
+### 6.1 Runtime API v2
 
 Runtime 是 Agent 执行载体：
 
@@ -443,7 +443,7 @@ network_required
 container_supported
 ~~~
 
-### 5.2 ToolCapability
+### 6.2 ToolCapability
 
 Tool 与 Runtime 分离：
 
@@ -466,7 +466,7 @@ ToolCapability 至少包含：
 - isolation requirement；
 - audit identity。
 
-### 5.3 Agent Runtime 扩展
+### 6.3 Agent Runtime 扩展
 
 保持 Codex / Claude，并逐步支持：
 
@@ -477,7 +477,7 @@ ToolCapability 至少包含：
 
 每个 Runtime 必须通过统一 contract test。
 
-### 5.4 SessionRef / Approval
+### 6.4 SessionRef / Approval
 
 Session 不升级为平台一级领域模型，只作为 Runtime capability：
 
@@ -1086,6 +1086,11 @@ internal/
 │   ├── codex/
 │   ├── claude/
 │   └── custom/
+├── environment/
+│   ├── local/
+│   ├── container/
+│   ├── vm/
+│   └── provider/
 ├── tool/
 │   ├── shell/
 │   ├── git/
@@ -1141,10 +1146,12 @@ L4 Real Runtime / Multi-host
 6. Retry Safety；
 7. Runtime API v2；
 8. RuntimeCapability / ToolCapability；
-9. Agent-aware Scheduling；
-10. Multi-tenant / RBAC；
-11. History / GC；
-12. HA Trigger / State Backend（仅需要时）。
+9. EnvironmentProvider / Prepared Workspace；
+10. Agent-aware Scheduling；
+11. Private Worker / Trust Domain；
+12. Multi-tenant / RBAC；
+13. History / GC；
+14. HA Trigger / State Backend（仅需要时）。
 
 ## 16. 方向判断规则
 
