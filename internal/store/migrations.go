@@ -38,6 +38,21 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 	if version == target {
 		return nil
 	}
+	// SQLite table rebuilds of a referenced parent table require foreign-key
+	// enforcement to be disabled before the transaction starts. v4 rebuilds
+	// attempts in order to replace UNIQUE(task) with UNIQUE(task,generation);
+	// gateway_requests may already reference attempts. Integrity is checked
+	// explicitly before commit and enforcement is always restored afterwards.
+	restoreFK := false
+	if schema == ServerSchema && version < 4 {
+		if _, err := db.Exec("PRAGMA foreign_keys=OFF"); err != nil {
+			return err
+		}
+		restoreFK = true
+		defer func() {
+			_, _ = db.Exec("PRAGMA foreign_keys=ON")
+		}()
+	}
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -86,7 +101,23 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 	if _, err = tx.Exec(fmt.Sprintf("PRAGMA user_version=%d", version)); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	if restoreFK {
+		if _, err = db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+			return err
+		}
+		restoreFK = false
+		var enabled int
+		if err = db.QueryRow("PRAGMA foreign_keys").Scan(&enabled); err != nil {
+			return err
+		}
+		if enabled != 1 {
+			return errors.New("foreign key enforcement not restored after migration")
+		}
+	}
+	return nil
 }
 
 const serverV2 = `CREATE TABLE jobs (
@@ -164,9 +195,7 @@ CREATE TABLE gateway_requests (
 CREATE INDEX gateway_requests_job ON gateway_requests(job_id, started);`
 
 
-const serverV4 = `PRAGMA defer_foreign_keys=ON;
-
-CREATE TABLE stages (
+const serverV4 = `CREATE TABLE stages (
   id TEXT PRIMARY KEY,
   job_id TEXT NOT NULL REFERENCES jobs(id),
   kind TEXT NOT NULL CHECK (kind IN ('single','map','reduce','verify')),
