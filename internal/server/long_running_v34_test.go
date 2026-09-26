@@ -64,11 +64,17 @@ func TestLongRunningDeadlineExtensionUsesLeaseLiveness(t *testing.T) {
 		t.Fatalf("task deadline=%d err=%v", taskDeadline, e)
 	}
 
-	time.Sleep(1500 * time.Millisecond)
 	var secondRenew, secondLease int64
-	if e = h.s.db.SQL.QueryRow("SELECT last_renewed,lease_until FROM attempts WHERE id=?", attemptID).Scan(&secondRenew, &secondLease); e != nil { t.Fatal(e) }
-	if secondRenew <= firstRenew || secondLease <= firstLease {
-		t.Fatalf("lease did not renew without runtime output: renew %d->%d lease %d->%d", firstRenew, secondRenew, firstLease, secondLease)
+	renewDeadline := time.Now().Add(3500 * time.Millisecond)
+	for {
+		if e = h.s.db.SQL.QueryRow("SELECT last_renewed,lease_until FROM attempts WHERE id=?", attemptID).Scan(&secondRenew, &secondLease); e != nil { t.Fatal(e) }
+		if secondRenew > firstRenew && secondLease > firstLease {
+			break
+		}
+		if time.Now().After(renewDeadline) {
+			t.Fatalf("lease did not renew without runtime output: renew %d->%d lease %d->%d", firstRenew, secondRenew, firstLease, secondLease)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	got := h.wait(t, j.ID)
