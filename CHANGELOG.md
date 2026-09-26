@@ -1,6 +1,6 @@
 # 版本记录
 
-## 未发布 — v0.3.3 Workspace Lifecycle
+## 未发布 — v0.3.3 Workspace Lifecycle（实现完成，待版本发布）
 
 - Worker schema 升级到 v3，新增 `workspaces` metadata，把 Workspace 与 Attempt / Task / generation / repository baseline / path 一次性绑定。
 - Workspace 生命周期明确为 `PREPARING -> READY -> IN_USE -> RETAINED -> DELETING -> DELETED`；cleanup proof 不确定时进入 `QUARANTINED`，默认不自动 GC。

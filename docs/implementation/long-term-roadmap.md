@@ -2,14 +2,14 @@
 
 - 项目：computecloud
 - 日期：2026-09-27
-- 当前稳定基线：v0.3.2
+- 当前稳定发布基线：v0.3.2；main 功能基线：v0.3.3
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
-- 当前实现依据：[v0.3.2 Artifact Lifecycle](v0.3.2-plan.md)、[v0.3.2 验证记录](../validation/v0.3.2-results.md)
-- 当前实施跟踪：[v0.3.3 Workspace Lifecycle](v0.3.3-plan.md) / [Issue #18](https://github.com/tommyxie2026-tech/computecloud/issues/18)；v0.3.0–v0.3.2 代码与自动化已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实现依据：[v0.3.3 Workspace Lifecycle](v0.3.3-plan.md)、[v0.3.3 验证记录](../validation/v0.3.3-results.md)
+- 当前实施跟踪：v0.3.0–v0.3.3 代码与自动化已完成；Workspace Lifecycle [Issue #18](https://github.com/tommyxie2026-tech/computecloud/issues/18) 完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -457,7 +457,7 @@ Workspace 同样进入可靠性内核：
 
 v0.3.2 只解决 Agent Job Artifact 正确性，不提前实现通用 Storage Provider、用户 TTL 或全历史 GC。
 
-### 5.10 v0.3.3 Workspace Lifecycle — 当前功能主线
+### 5.10 v0.3.3 Workspace Lifecycle — 已完成
 
 在 Artifact provenance 之后补齐 Worker 本地可写状态的可靠性边界：
 
@@ -474,6 +474,8 @@ v0.3.2 只解决 Agent Job Artifact 正确性，不提前实现通用 Storage Pr
 - 独立 GitHub Actions `workspace-flow`。
 
 v0.3.3 仍坚持每个 Attempt 独占 writable Workspace；Prepared/warm Workspace 和跨 Attempt 复用留给 v0.4 的受控优化，不允许破坏 generation isolation。
+
+完成证据：PR #20 已合并为 `fa48c199829ad322a2976d0f6354c92368e9406a`；PR-head CI `36252887159` 与 main CI `36253102444` 均通过，main package Gate 通过。
 
 ## 6. v0.4.x — Agent Runtime、Tool 与 Environment 生态
 
