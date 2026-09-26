@@ -327,3 +327,46 @@ func TestV5ToV6BackfillsFrozenArtifactReferences(t *testing.T) {
 		}
 	}
 }
+
+
+func TestWorkerV3WorkspaceLifecycleSchema(t *testing.T) {
+	dir := t.TempDir()
+	db, e := Open(dir, WorkerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+
+	var version int
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 3 {
+		t.Fatalf("worker version=%d err=%v", version, e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO runs(id,assignment,state) VALUES('a','{}','DONE')"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec(`INSERT INTO workspaces(attempt,task,generation,repository_ref,base_commit,path,state,created,updated)
+		VALUES('a','t',1,'repo','commit','a','PREPARING',1,1)`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE workspaces SET state='IN_USE' WHERE attempt='a'"); e == nil {
+		t.Fatal("PREPARING -> IN_USE transition accepted")
+	}
+	if _, e = db.SQL.Exec("UPDATE workspaces SET state='READY' WHERE attempt='a'"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE workspaces SET task='other' WHERE attempt='a'"); e == nil {
+		t.Fatal("workspace ownership mutation accepted")
+	}
+	if _, e = db.SQL.Exec("UPDATE workspaces SET state='IN_USE' WHERE attempt='a'"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE workspaces SET state='RETAINED',retain_until=2 WHERE attempt='a'"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE workspaces SET state='DELETING' WHERE attempt='a'"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE workspaces SET state='DELETED',deleted_at=3 WHERE attempt='a'"); e != nil {
+		t.Fatal(e)
+	}
+}

@@ -113,15 +113,22 @@ func (w *Worker) Run(ctx context.Context) error {
 	if e := w.recover(ctx); e != nil {
 		return e
 	}
+	if e := w.bootstrapWorkspaceInventory(ctx); e != nil {
+		return e
+	}
+	if e := w.reconcileWorkspaceLifecycle(ctx); e != nil {
+		return e
+	}
 	if e := w.probe(ctx); e != nil {
 		return e
 	}
 	loopsCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var loops sync.WaitGroup
-	loops.Add(2)
+	loops.Add(3)
 	go func() { defer loops.Done(); w.flushLoop(loopsCtx) }()
 	go func() { defer loops.Done(); w.leaseLoop(loopsCtx) }()
+	go func() { defer loops.Done(); w.workspaceLoop(loopsCtx) }()
 	for ctx.Err() == nil {
 		if e := w.connect(ctx); e != nil && ctx.Err() == nil {
 			slog.Warn("worker disconnected", "error", e)

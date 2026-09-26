@@ -90,6 +90,24 @@ func (w *Worker) emit(ctx context.Context, a *pb.Assignment, kind string, payloa
 	})
 }
 func (w *Worker) completion(ctx context.Context, a *pb.Assignment, c *pb.CompleteRequest) error {
+	if e := w.finalizeWorkspace(ctx, a, c.CleanupConfirmed); e != nil {
+		if c.Success {
+			c.Success = false
+			c.ErrorCode = "WORKSPACE_ERROR"
+			c.ErrorMessage = "workspace lifecycle persistence failed"
+		} else if c.ErrorMessage == "" {
+			c.ErrorMessage = "workspace lifecycle persistence failed"
+		}
+	}
+	if c.CleanupConfirmed {
+		if e := w.cleanupAttemptInputs(a.AttemptId); e != nil {
+			// Input bundles are attempt-scoped and never reused. Keep the
+			// completion deliverable, persist the cleanup error on the retained
+			// workspace, and let lifecycle reconciliation retry it later.
+			_, _ = w.db.SQL.ExecContext(ctx, "UPDATE workspaces SET cleanup_error=?,updated=? WHERE attempt=? AND state='RETAINED'",
+				"input cleanup: "+e.Error(), store.Now(), a.AttemptId)
+		}
+	}
 	return w.db.Tx(ctx, func(q store.Query) error {
 		if e := q.QueryRowContext(ctx, "SELECT seq FROM runs WHERE id=?", a.AttemptId).Scan(&c.FinalWorkerSeq); e != nil {
 			return e
@@ -139,6 +157,12 @@ func (w *Worker) recover(ctx context.Context) error {
 		clean := r.state == "ACCEPTED"
 		if r.pid > 1 {
 			clean = process.Stop(r.pid, r.id, time.Duration(w.cfg.StopGraceMS)*time.Millisecond)
+		} else if r.state == "STARTING" && w.workspacePreSpawnSafe(ctx, a.AttemptId) {
+			// PREPARING/READY is persisted before IN_USE, and IN_USE is
+			// persisted before any Runtime/Verifier spawn. This closes the
+			// historical STARTING+pid=0 ambiguity when the workspace itself
+			// proves that no execution process could have started.
+			clean = true
 		}
 		c := &pb.CompleteRequest{CleanupConfirmed: clean, ErrorCode: "WORKER_RESTARTED", ErrorMessage: "execution interrupted by worker restart"}
 		if !clean {
