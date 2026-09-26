@@ -9,7 +9,7 @@
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 - 当前实现依据：[v0.2 实施计划](v0.2-plan.md)、[v0.2 验证记录](../validation/v0.2-results.md)
-- 当前实施跟踪：[v0.3.2 Artifact Lifecycle](v0.3.2-plan.md) / [Issue #15](https://github.com/tommyxie2026-tech/computecloud/issues/15)；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实施跟踪：[v0.3.3 Workspace Lifecycle](v0.3.3-plan.md) / [Issue #18](https://github.com/tommyxie2026-tech/computecloud/issues/18)；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 
 > 本路线图继续坚持 v0.2 的 Agent Job Executor 本质，不再向 AI Execution OS 演变。长期差异化来自 **Agent-aware execution semantics**，而不是扩大成通用 AI 基础设施。
@@ -425,7 +425,7 @@ Workspace 同样进入可靠性内核：
 
 执行状态不确定、非 replay-safe、验证失败、deadline/cancel 等场景均不自动 Retry。
 
-### 5.9 v0.3.2 Artifact Lifecycle — 当前功能主线
+### 5.9 v0.3.2 Artifact Lifecycle — 已完成
 
 在 Retry Safety 之后补齐 Artifact provenance 与删除恢复：
 
@@ -440,6 +440,24 @@ Workspace 同样进入可靠性内核：
 - package gate 同时依赖 verify / task-flow / retry-flow / artifact-flow。
 
 v0.3.2 只解决 Agent Job Artifact 正确性，不提前实现通用 Storage Provider、用户 TTL 或全历史 GC。
+
+### 5.10 v0.3.3 Workspace Lifecycle — 当前功能主线
+
+在 Artifact provenance 之后补齐 Worker 本地可写状态的可靠性边界：
+
+- Worker schema v3；
+- Attempt/task/generation/repository baseline/path immutable ownership；
+- `PREPARING -> READY -> IN_USE -> RETAINED -> DELETING -> DELETED`；
+- cleanup unknown -> `QUARANTINED`；
+- Runtime spawn 前持久 `IN_USE`；
+- Retention GC 同时要求过期与 Server completion ack；
+- restart 可恢复 DELETING；
+- legacy Workspace 只按已知 local run 安全接管；
+- `workspace_max_bytes` 运行期 quota；
+- Attempt-scoped Reduce input 随 cleanup proof 清理；
+- 独立 GitHub Actions `workspace-flow`。
+
+v0.3.3 仍坚持每个 Attempt 独占 writable Workspace；Prepared/warm Workspace 和跨 Attempt 复用留给 v0.4 的受控优化，不允许破坏 generation isolation。
 
 ## 6. v0.4.x — Agent Runtime、Tool 与 Environment 生态
 
@@ -1177,11 +1195,11 @@ L4 Real Runtime / Multi-host
 2. ADR-004：Agent-aware 执行语义与长期边界；
 3. ADR-005：Stage / Multi-Attempt / Fencing；
 4. ADR-006：Retry Safety；
-5. ADR-007：Artifact Lifecycle。
+5. ADR-007：Artifact Lifecycle；
+6. ADR-008：Workspace Lifecycle。
 
 后续建议：
 
-6. Workspace Lifecycle；
 7. Runtime API v2；
 8. RuntimeCapability / ToolCapability；
 9. EnvironmentProvider / Prepared Workspace；
