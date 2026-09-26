@@ -53,6 +53,7 @@ def main():
             'legacy_workspace_adoption': True,
             'workspace_path_guard': True,
             'workspace_quota_guard': True,
+            'attempt_input_cleanup': True,
             'worker_schema_v3_guards': True,
         },
         'tests': tests,
