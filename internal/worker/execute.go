@@ -159,11 +159,6 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: e.Error()})
 		return
 	}
-	if e = w.markWorkspaceInUse(ctx, a); e != nil {
-		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "WORKSPACE_ERROR", ErrorMessage: e.Error()})
-		return
-	}
-
 	execCtx, execCancel := context.WithCancel(ctx)
 	var quotaMu sync.Mutex
 	var quotaErr error
@@ -205,6 +200,10 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		} else {
 			complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: jobInputCode(e), ErrorMessage: e.Error()})
 		}
+		return
+	}
+	if e = w.markWorkspaceInUse(ctx, a); e != nil {
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "WORKSPACE_ERROR", ErrorMessage: e.Error()})
 		return
 	}
 	parser := &adapter.Parser{Profile: a.Spec.RuntimeProfile, Emit: func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) }}
