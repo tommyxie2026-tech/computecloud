@@ -94,8 +94,18 @@ func TestWorkspaceLifecycleOwnershipRetentionAndGC(t *testing.T) {
 	if err = w.markWorkspaceInUse(context.Background(), a); err != nil {
 		t.Fatal(err)
 	}
+	inputDir := filepath.Join(dir, "inputs", a.AttemptId)
+	if err = os.MkdirAll(inputDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(inputDir, "manifest.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err = w.completion(context.Background(), a, &pb.CompleteRequest{Success: true, CleanupConfirmed: true}); err != nil {
 		t.Fatal(err)
+	}
+	if _, err = os.Stat(inputDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("attempt inputs survived cleanup-confirmed completion: %v", err)
 	}
 	var retainUntil int64
 	if err = db.SQL.QueryRow("SELECT state,retain_until FROM workspaces WHERE attempt=?", a.AttemptId).Scan(&state, &retainUntil); err != nil || state != "RETAINED" || retainUntil == 0 {
@@ -178,6 +188,13 @@ func TestWorkspaceRecoveryUsesPreSpawnProofAndQuarantinesUnknown(t *testing.T) {
 	} {
 		a := workspaceAssignment(tc.id, tc.id, 1, commit)
 		insertWorkspaceRun(t, w, a, "STARTING")
+		inputDir := filepath.Join(dir, "inputs", tc.id)
+		if err = os.MkdirAll(inputDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join(inputDir, "bundle"), []byte("fixture"), 0600); err != nil {
+			t.Fatal(err)
+		}
 		path := filepath.Join(dir, "workspaces", tc.id)
 		if err = os.MkdirAll(path, 0700); err != nil {
 			t.Fatal(err)
@@ -213,6 +230,13 @@ func TestWorkspaceRecoveryUsesPreSpawnProofAndQuarantinesUnknown(t *testing.T) {
 		}
 		if err = db.SQL.QueryRow("SELECT state FROM workspaces WHERE attempt=?", tc.id).Scan(&state); err != nil || state != tc.wsState {
 			t.Fatalf("%s state=%s err=%v", tc.id, state, err)
+		}
+		_, inputErr := os.Stat(filepath.Join(dir, "inputs", tc.id))
+		if tc.clean && !errors.Is(inputErr, os.ErrNotExist) {
+			t.Fatalf("%s safe recovery kept attempt inputs: %v", tc.id, inputErr)
+		}
+		if !tc.clean && inputErr != nil {
+			t.Fatalf("%s quarantined recovery removed attempt inputs: %v", tc.id, inputErr)
 		}
 	}
 	if _, err = db.SQL.Exec("UPDATE runs SET completed=1 WHERE id='unknown-spawn'"); err != nil {
