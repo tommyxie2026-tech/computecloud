@@ -1,6 +1,6 @@
 # 版本记录
 
-## 未发布 — v0.3.2 Full Artifact Lifecycle
+## 0.3.2 — 2026-09-26 — Full Artifact Lifecycle
 
 - Server schema 升级到 v6；Artifact 增加 `created / updated / gc_after / deleted_at`，状态扩展为 `STAGED / ACCEPTED / ORPHANED / DELETING / DELETED`。
 - 新增不可变 `artifact_refs`，显式固化 `task_result / reduce_input / job_result` provenance；只有 ACCEPTED Artifact 可以被引用。
@@ -12,7 +12,7 @@
 - Release package 现在依赖 verify、task-flow、retry-flow、artifact-flow 四个 Gate。
 - 用户 TTL、全历史 retention、Workspace GC、远端存储 Provider 与 HA 不属于 v0.3.2。
 
-## 未发布 — v0.3.1 Retry Safety
+## v0.3.1 Retry Safety（随 v0.3.2 一并发布，未单独打 tag）
 
 - Job Execution 增加显式 `replay_safe`；当 `max_attempts_per_task > 1` 时禁止隐式推断可重放性。
 - `max_attempts_per_task` 支持 1..3；Retry budget 不重置 Job/Task 原 deadline。
