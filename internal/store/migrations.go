@@ -383,6 +383,19 @@ BEGIN
   SELECT RAISE(ABORT,'referenced artifact cannot leave ACCEPTED state');
 END;
 
+CREATE TRIGGER artifact_state_transition_guard
+BEFORE UPDATE OF state ON artifacts
+FOR EACH ROW
+WHEN NOT (
+  OLD.state=NEW.state
+  OR (OLD.state='STAGED' AND NEW.state IN ('ACCEPTED','ORPHANED'))
+  OR (OLD.state='ORPHANED' AND NEW.state='DELETING')
+  OR (OLD.state='DELETING' AND NEW.state='DELETED')
+)
+BEGIN
+  SELECT RAISE(ABORT,'invalid artifact lifecycle transition');
+END;
+
 INSERT INTO artifact_refs(artifact,ref_type,ref_id,created)
 SELECT id,'task_result',task,CAST(strftime('%s','now') AS INTEGER) * 1000
 FROM artifacts
