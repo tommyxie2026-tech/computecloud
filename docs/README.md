@@ -5,7 +5,10 @@
 | [Agent-aware Distributed Job Execution Platform 总体架构](design/agent-job-executor-architecture.md) | Job/Stage/Task/Attempt、Runtime/Tool 分层、Artifact/Workspace 生命周期与 Agent-aware Scheduler | 当前目标架构 |
 | [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性内核、Agent Runtime/Tool、Agent-aware Scheduler、治理与规模化 | 当前长期主路线 |
 | [v0.2.1 → v0.3.0 实施计划与跟踪](implementation/v0.2.1-v0.3.0-plan.md) | Production Baseline、Stage、multi-Attempt、Generation Fencing、Artifact gating 与 Release Gate；GitHub Issues #1–#9 跟踪 | v0.3 实现/自动化完成；Production Gate 待 #1 |
-| [v0.3.2 Artifact Lifecycle 实施计划](implementation/v0.3.2-plan.md) | schema v6、immutable refs、ORPHANED GC、两阶段删除与 CI artifact-flow | 当前功能主线 |
+| [v0.3.3 Workspace Lifecycle 实施计划](implementation/v0.3.3-plan.md) | Worker schema v3、Attempt ownership、retention/GC、quota 与 CI workspace-flow | 当前功能主线 |
+| [v0.3.3 Workspace Lifecycle 运行与升级](implementation/v0.3.3-runbook.md) | Workspace 状态、inventory、retention、quota、升级与回退 | v0.3.3 操作依据 |
+| [ADR-008：Workspace Lifecycle](adr/0008-workspace-lifecycle.md) | Attempt-owned writable Workspace、restart cleanup proof 与可恢复 GC | Accepted |
+| [v0.3.2 Artifact Lifecycle 实施计划](implementation/v0.3.2-plan.md) | schema v6、immutable refs、ORPHANED GC、两阶段删除与 CI artifact-flow | v0.3.2 已实现 |
 | [v0.3.2 Artifact Lifecycle 运行与升级](implementation/v0.3.2-runbook.md) | Artifact 状态、reference、reconciliation、升级与回退 | v0.3.2 操作依据 |
 | [v0.3.2 Artifact Lifecycle 验证记录](validation/v0.3.2-results.md) | schema v6、immutable refs、ORPHANED GC、两阶段删除与 artifact-flow CI 证据 | fixture 自动化通过；Production Gate 仍待 #1 |
 | [ADR-007：Artifact Lifecycle](adr/0007-artifact-lifecycle.md) | ACCEPTED + immutable refs、crash-recoverable deletion 与 GC 边界 | Accepted |
