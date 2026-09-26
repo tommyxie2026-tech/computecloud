@@ -68,8 +68,10 @@ type Worker struct {
 	Runtimes     map[string]Runtime    `yaml:"runtimes"`
 	Repositories map[string]string     `yaml:"repositories"`
 	Policies     map[string]Policy     `yaml:"policies"`
-	Verifiers    map[string][][]string `yaml:"verifiers"`
-	StopGraceMS  int                   `yaml:"stop_grace_ms"`
+	Verifiers            map[string][][]string `yaml:"verifiers"`
+	StopGraceMS          int                   `yaml:"stop_grace_ms"`
+	WorkspaceRetentionMS int                   `yaml:"workspace_retention_ms"`
+	WorkspaceMaxBytes    int64                 `yaml:"workspace_max_bytes"`
 }
 type Client struct {
 	Address   string `yaml:"address"`
@@ -158,6 +160,9 @@ func Load(path string) (Config, error) {
 	if c.Worker.StopGraceMS == 0 {
 		c.Worker.StopGraceMS = 3000
 	}
+	if c.Worker.WorkspaceRetentionMS == 0 {
+		c.Worker.WorkspaceRetentionMS = 24 * 60 * 60 * 1000
+	}
 	c.Server.DefaultV02()
 	return c, nil
 }
@@ -194,6 +199,9 @@ func (c Server) Validate() error {
 func (c Worker) Validate() error {
 	if c.ID == "" || c.DataDir == "" || c.Address == "" || c.Slots < 1 || len(c.Runtimes) == 0 {
 		return errors.New("worker id/data_dir/address/slots/runtimes required")
+	}
+	if c.WorkspaceRetentionMS < 0 || c.WorkspaceMaxBytes < 0 {
+		return errors.New("worker workspace retention/quota must be non-negative")
 	}
 	for ref, path := range c.Repositories {
 		if ref == "" || !filepath.IsAbs(path) {
