@@ -9,7 +9,7 @@
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 - 当前实现依据：[v0.3.3 Workspace Lifecycle](v0.3.3-plan.md)、[v0.3.3 验证记录](../validation/v0.3.3-results.md)
-- 当前实施跟踪：v0.3.0–v0.3.3 代码与自动化已完成；Workspace Lifecycle [Issue #18](https://github.com/tommyxie2026-tech/computecloud/issues/18) 完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实施跟踪：[v0.3.4 Long-running Job Reliability](v0.3.4-plan.md) / [Issue #21](https://github.com/tommyxie2026-tech/computecloud/issues/21)；v0.3.0–v0.3.3 代码与自动化已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -476,6 +476,26 @@ v0.3.2 只解决 Agent Job Artifact 正确性，不提前实现通用 Storage Pr
 v0.3.3 仍坚持每个 Attempt 独占 writable Workspace；Prepared/warm Workspace 和跨 Attempt 复用留给 v0.4 的受控优化，不允许破坏 generation isolation。
 
 完成证据：PR #20 已合并为 `fa48c199829ad322a2976d0f6354c92368e9406a`；PR-head CI `36252887159` 与 main CI `36253102444` 均通过，main package Gate 通过。
+
+### 5.11 v0.3.4 Long-running Job Reliability — 当前功能主线
+
+在 Workspace ownership 完整后，补齐长时间执行的控制平面语义：
+
+- Server schema v7；
+- Attempt `last_renewed / lease_until` 持久 liveness；
+- runtime no-output 与 Worker liveness 解耦；
+- Server 成为 mutable deadline 唯一事实源；
+- HTTP + MCP 显式 deadline extension；
+- `jobs:extend` 权限、operation idempotency、per-operation/total runtime bound；
+- child Task deadline 同步更新且不重置 Retry generation/budget；
+- process group TERM -> KILL escalation evidence；
+- cleanup proof 继续 fail-closed；
+- bounded Task event payload retention；
+- `event_floor_seq` + `EVENT_CURSOR_COMPACTED`；
+- `event_dedup` 保持压缩后的 Worker replay hash 校验；
+- 独立 GitHub Actions `long-run-flow`。
+
+v0.3.4 不以“Runtime 有无 stdout”判断 hung，也不自动延长 deadline。真实 24h+ 仍属于 Production Baseline #1，而不是 fixture CI 的替代项。
 
 ## 6. v0.4.x — Agent Runtime、Tool 与 Environment 生态
 
@@ -1215,18 +1235,19 @@ L4 Real Runtime / Multi-host
 4. ADR-006：Retry Safety；
 5. ADR-007：Artifact Lifecycle；
 6. ADR-008：客户端控制面采用薄客户端与服务端事实源；
-7. ADR-009：Workspace Lifecycle。
+7. ADR-009：Workspace Lifecycle；
+8. ADR-010：Long-running Job Reliability。
 
 后续建议：
 
-8. Runtime API v2；
-9. RuntimeCapability / ToolCapability；
-10. EnvironmentProvider / Prepared Workspace；
-11. Agent-aware Scheduling；
-12. Private Worker / Trust Domain；
-13. Multi-tenant / RBAC；
-14. History / GC；
-15. HA Trigger / State Backend（仅需要时）。
+9. Runtime API v2；
+10. RuntimeCapability / ToolCapability；
+11. EnvironmentProvider / Prepared Workspace；
+12. Agent-aware Scheduling；
+13. Private Worker / Trust Domain；
+14. Multi-tenant / RBAC；
+15. History / GC；
+16. HA Trigger / State Backend（仅需要时）。
 
 ## 16. 方向判断规则
 

@@ -94,6 +94,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 6
 	}
+	if schema == ServerSchema && version < 7 {
+		if _, err = tx.Exec(serverV7); err != nil {
+			return err
+		}
+		version = 7
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -470,4 +476,24 @@ WHEN NOT (
 BEGIN
   SELECT RAISE(ABORT,'invalid workspace lifecycle transition');
 END;
+`
+
+
+const serverV7 = `ALTER TABLE attempts ADD COLUMN last_renewed INTEGER NOT NULL DEFAULT 0;
+UPDATE attempts SET last_renewed=lease_until WHERE last_renewed=0;
+
+ALTER TABLE tasks ADD COLUMN event_floor_seq INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE event_dedup (
+  attempt TEXT NOT NULL,
+  worker_seq INTEGER NOT NULL,
+  hash TEXT NOT NULL,
+  PRIMARY KEY(attempt,worker_seq)
+);
+INSERT OR IGNORE INTO event_dedup(attempt,worker_seq,hash)
+SELECT attempt,worker_seq,hash
+FROM events
+WHERE worker_seq IS NOT NULL;
+
+CREATE INDEX event_dedup_attempt_seq ON event_dedup(attempt,worker_seq);
 `

@@ -53,7 +53,7 @@ func readJob(ctx context.Context, q store.Query, id string) (*Job, error) {
 		return nil, e
 	}
 	j.result = result
-	j.Links = map[string]string{"self": "/v1/jobs/" + id, "events": "/v1/jobs/" + id + "/events", "result": "/v1/jobs/" + id + "/result"}
+	j.Links = map[string]string{"self": "/v1/jobs/" + id, "events": "/v1/jobs/" + id + "/events", "result": "/v1/jobs/" + id + "/result", "deadline": "/v1/jobs/" + id + "/deadline"}
 	return j, nil
 }
 func insertStage(ctx context.Context, q store.Query, jobID, kind string, ordinal int, state string) (string, error) {

@@ -6,6 +6,10 @@
 | [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性内核、Agent Runtime/Tool、Agent-aware Scheduler、治理与规模化 | 当前长期主路线 |
 | [Control 客户端控制面技术方案](design/client-control-plane.md) | Web/iOS/Android、API、事件同步、设备身份、E2EE、Push、CI 和验收 | C0 设计基线完成；按 C1–C5 实施 |
 | [Agent 客户端控制端方案调研](research/agent-control-client-landscape-2026.md) | Orca、Paseo、Happy、Soromi、Codex/Claude Remote 等比较 | 2026-09-26 快照；已形成 ADR-008 |
+| [v0.3.4 Long-running Job 实施计划](implementation/v0.3.4-plan.md) | lease liveness、显式 deadline、取消升级、事件压缩与 CI long-run-flow | 当前功能主线 |
+| [v0.3.4 Long-running Job 运行与升级](implementation/v0.3.4-runbook.md) | liveness、deadline extension、stop escalation、event floor 与 schema v7 | v0.3.4 操作依据 |
+| [v0.3.4 Long-running Job 验证记录](validation/v0.3.4-results.md) | lease/no-output、deadline extension、event compaction、TERM→KILL 与 long-run-flow CI 证据 | fixture 功能 CI 通过；最终 merge Gate 待 PR |
+| [ADR-010：Long-running Job Reliability](adr/0010-long-running-job-reliability.md) | Server deadline 事实源、lease liveness、事件压缩与 fail-closed cleanup | Accepted |
 | [v0.3.3 Workspace Lifecycle 实施计划](implementation/v0.3.3-plan.md) | Worker schema v3、Attempt ownership、retention/GC、quota 与 CI workspace-flow | 已实现并合并 main |
 | [v0.3.3 Workspace Lifecycle 运行与升级](implementation/v0.3.3-runbook.md) | Workspace 状态、inventory、retention、quota、升级与回退 | v0.3.3 操作依据 |
 | [v0.3.3 Workspace Lifecycle 验证记录](validation/v0.3.3-results.md) | Worker schema v3、ownership/recovery、retention/GC、quota、workspace-flow CI 证据 | PR/main CI 与 package 通过；Production Gate 仍待 #1 |

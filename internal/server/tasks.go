@@ -177,6 +177,12 @@ func appendEvent(ctx context.Context, q store.Query, e *pb.Event, workerSeq *int
 		return err
 	}
 	_, err := q.ExecContext(ctx, "INSERT INTO events(task,seq,attempt,worker_seq,id,hash,body) VALUES(?,?,?,?,?,?,?)", e.TaskId, e.Seq, e.AttemptId, workerSeq, e.EventId, rawHash, encode(e))
+	if err != nil {
+		return err
+	}
+	if workerSeq != nil {
+		_, err = q.ExecContext(ctx, "INSERT INTO event_dedup(attempt,worker_seq,hash) VALUES(?,?,?) ON CONFLICT(attempt,worker_seq) DO NOTHING", e.AttemptId, *workerSeq, rawHash)
+	}
 	return err
 }
 func choose(a, b string) string {
@@ -277,8 +283,15 @@ func (s *Server) WatchEvents(r *pb.WatchRequest, stream grpc.ServerStreamingServ
 	if e != nil {
 		return e
 	}
+	var floor int64
+	if e = s.db.SQL.QueryRowContext(stream.Context(), "SELECT event_floor_seq FROM tasks WHERE id=?", r.TaskId).Scan(&floor); e != nil {
+		return dbErr(e)
+	}
 	if r.AfterSeq < 0 || r.AfterSeq > t.LastSeq {
 		return status.Error(codes.OutOfRange, "invalid event cursor")
+	}
+	if r.AfterSeq < floor {
+		return status.Errorf(codes.OutOfRange, "EVENT_CURSOR_COMPACTED floor=%d", floor)
 	}
 	seq := r.AfterSeq
 	for {
