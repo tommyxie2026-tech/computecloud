@@ -9,7 +9,7 @@
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 - 当前实现依据：[v0.2 实施计划](v0.2-plan.md)、[v0.2 验证记录](../validation/v0.2-results.md)
-- 当前实施跟踪：[v0.2.1 → v0.3.0 实施计划](v0.2.1-v0.3.0-plan.md) / [GitHub Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9)
+- 当前实施跟踪：[v0.3.2 Artifact Lifecycle](v0.3.2-plan.md) / [Issue #15](https://github.com/tommyxie2026-tech/computecloud/issues/15)；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 
 > 本路线图继续坚持 v0.2 的 Agent Job Executor 本质，不再向 AI Execution OS 演变。长期差异化来自 **Agent-aware execution semantics**，而不是扩大成通用 AI 基础设施。
@@ -328,26 +328,32 @@ state
 owner
 ~~~
 
-生命周期：
+v0.3.2 采用“状态 + 显式不可变引用”模型：
 
 ~~~text
-UPLOADING
-   ↓
 STAGED
-   ↓
-ACCEPTED
-   ↓
-PUBLISHED
-
-STAGED -> REJECTED / ORPHANED
+ ├──> ACCEPTED
+ │      ├── task_result
+ │      ├── reduce_input
+ │      └── job_result
+ │
+ └──> ORPHANED
+          ↓
+      DELETING
+          ↓
+       DELETED
 ~~~
 
 规则：
 
-- 只有有效 generation 的 Artifact 可以 ACCEPT；
-- 只有 ACCEPTED Artifact 可以进入下一 Stage；
-- 旧 Attempt Artifact 只能诊断，不进入正式结果；
-- Artifact upload 与 completion 必须有稳定幂等语义。
+- 只有有效 current generation 的 Artifact 可以 ACCEPT；
+- 只有 ACCEPTED Artifact 可以进入下一 Stage 或正式结果；
+- Reference 只能指向 ACCEPTED，创建后不可变；
+- Reduce input 与 Job result 都通过显式 reference 固化 provenance；
+- old/retried generation Artifact 进入 ORPHANED，不进入正式结果；
+- ORPHANED 只有在安全窗口到期且无 reference 时才可进入 GC；
+- 文件删除使用可恢复的 DELETING -> DELETED tombstone；
+- 用户 TTL、全历史 retention 与 tombstone 最终 GC 延后到规模化治理阶段。
 
 ### 5.4 v0.3.3 — Workspace Lifecycle
 
@@ -404,7 +410,7 @@ Workspace 同样进入可靠性内核：
 - cancel/retry/timeout race 有自动测试；
 - fair queue 有 starvation 测试。
 
-### 5.8 v0.3.1 Retry Safety — 当前功能主线
+### 5.8 v0.3.1 Retry Safety — 已完成
 
 在 v0.3.0 Stage / multi-Attempt / fencing 基础上，v0.3.1 引入保守自动 Retry：
 
@@ -418,6 +424,22 @@ Workspace 同样进入可靠性内核：
 - 独立 GitHub Actions `retry-flow`。
 
 执行状态不确定、非 replay-safe、验证失败、deadline/cancel 等场景均不自动 Retry。
+
+### 5.9 v0.3.2 Artifact Lifecycle — 当前功能主线
+
+在 Retry Safety 之后补齐 Artifact provenance 与删除恢复：
+
+- Server schema v6；
+- ACCEPTED-only immutable references；
+- `task_result / reduce_input / job_result`；
+- failed/retried generation 自动 ORPHANED；
+- ORPHANED safety window；
+- `ORPHANED -> DELETING -> DELETED` 两阶段删除；
+- restart 后恢复 DELETING；
+- 独立 GitHub Actions `artifact-flow`；
+- package gate 同时依赖 verify / task-flow / retry-flow / artifact-flow。
+
+v0.3.2 只解决 Agent Job Artifact 正确性，不提前实现通用 Storage Provider、用户 TTL 或全历史 GC。
 
 ## 6. v0.4.x — Agent Runtime、Tool 与 Environment 生态
 
@@ -1152,14 +1174,14 @@ L4 Real Runtime / Multi-host
 已完成：
 
 1. ADR-003：Agent Job Executor 产品边界；
-2. ADR-004：Agent-aware 执行语义与长期边界。
+2. ADR-004：Agent-aware 执行语义与长期边界；
+3. ADR-005：Stage / Multi-Attempt / Fencing；
+4. ADR-006：Retry Safety；
+5. ADR-007：Artifact Lifecycle。
 
 后续建议：
 
-3. Stage Schema / Compatibility；
-4. Attempt Generation / Fencing；
-5. Artifact / Workspace Lifecycle；
-6. Retry Safety；
+6. Workspace Lifecycle；
 7. Runtime API v2；
 8. RuntimeCapability / ToolCapability；
 9. EnvironmentProvider / Prepared Workspace；
