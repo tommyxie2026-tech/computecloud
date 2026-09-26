@@ -43,6 +43,10 @@ Job/MCP 接入从 [v0.2 运行指南](docs/implementation/v0.2-runbook.md) 开�
 ## 文档
 
 - [文档索引](docs/README.md)
+- [Agent Job Executor 长期路线图](docs/implementation/long-term-roadmap.md)（v0.2.x→v1.0；含 Control 客户端横向能力线）
+- [computecloud Control 客户端控制面技术方案](docs/design/client-control-plane.md)
+- [Agent 客户端控制端方案调研](docs/research/agent-control-client-landscape-2026.md)
+- [ADR-008：薄客户端与服务端事实源](docs/adr/0008-client-control-plane.md)
 - [v0.2 Token 网关与 Map/Reduce 设计](docs/design/gateway-mapreduce-v0.2.md)（已实现，真实环境验收边界见验证记录）
 - [v0.2 Job / MCP / 网关接口契约](docs/contracts/job-gateway-v0.2.md)
 - [v0.2 实施计划、进度与验收](docs/implementation/v0.2-plan.md)
@@ -73,6 +77,7 @@ Job/MCP 接入从 [v0.2 运行指南](docs/implementation/v0.2-runbook.md) 开�
 - 受信任务使用独立工作区与进程监督；容器按隔离需求启用。
 - 已实现启动去重、事件补传、取消确认和 SQLite 离线备份恢复；Session 能力延后。
 - 持续交互、跨节点会话迁移、通用 DAG 和控制平面高可用延后。
+- Web/iOS/Android Control 是长期产品表面：先只读 PWA，再随 Runtime、Scheduler 和 Governance 能力开放控制、原生 App、设备治理与可选 E2EE Relay；客户端不成为第二个调度器，手机不作为通用 Worker。
 
 本地验证使用可控协议程序；真实模型账号及两台独立主机验收仍需在目标环境执行。通过项和未执行项分别记录，测试程序结果不代表真实客户端已通过兼容性验收。
 

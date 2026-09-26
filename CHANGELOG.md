@@ -1,5 +1,10 @@
 # 版本记录
 
+## 未发布 — Control Client Design
+
+- 在既有 v0.2.x→v1.0 Agent Job Executor 路线图中新增 Control 客户端横向能力线。
+- 增加客户端控制端竞品调研、ADR-008 和完整技术方案；确定 Server 单事实源、PWA 先行、移动端不作为通用 Worker、E2EE Relay 延后按证据引入。
+
 ## 0.3.2 — 2026-09-26 — Full Artifact Lifecycle
 
 - Server schema 升级到 v6；Artifact 增加 `created / updated / gc_after / deleted_at`，状态扩展为 `STAGED / ACCEPTED / ORPHANED / DELETING / DELETED`。

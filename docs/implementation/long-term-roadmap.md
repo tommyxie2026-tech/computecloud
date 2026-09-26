@@ -1,16 +1,17 @@
 # computecloud Agent-aware Distributed Job Execution Platform 长期路线图
 
 - 项目：computecloud
-- 日期：2026-09-24
-- 当前稳定基线：v0.2.0
+- 日期：2026-09-26
+- 当前稳定基线：v0.3.2
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
-- 当前实现依据：[v0.2 实施计划](v0.2-plan.md)、[v0.2 验证记录](../validation/v0.2-results.md)
-- 当前实施跟踪：[v0.3.2 Artifact Lifecycle](v0.3.2-plan.md) / [Issue #15](https://github.com/tommyxie2026-tech/computecloud/issues/15)；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实现依据：[v0.3.2 Artifact Lifecycle](v0.3.2-plan.md)、[v0.3.2 验证记录](../validation/v0.3.2-results.md)
+- 当前实施跟踪：v0.3.0–v0.3.2 代码与自动化已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
+- 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
 > 本路线图继续坚持 v0.2 的 Agent Job Executor 本质，不再向 AI Execution OS 演变。长期差异化来自 **Agent-aware execution semantics**，而不是扩大成通用 AI 基础设施。
 
@@ -171,6 +172,21 @@ v1.0
 | v0.6.x | Enterprise Governance | Multi-tenant、RBAC、Quota、Secret、Policy、Audit、Private Worker / Trust Domain |
 | v0.7.x | Scale & Resilience | Worker Group、GC、调度扩展、容量治理、按需 HA |
 | v1.0 | Stable Platform | 稳定协议、SDK、兼容矩阵、SLO、运维体系 |
+
+### 3.1 Control 客户端横向能力线
+
+Control 是既有 Agent Job Executor 的产品表面，不是第二个调度器，也不建立独立事实源。Server 继续负责 Job、Stage、Task、Attempt、Worker、租约、Artifact 和审计；客户端仅持有可重建投影。保持单 Go Server + SQLite 的轻量部署，首版不引入独立 BFF、PostgreSQL、Redis 或消息队列。
+
+| Control 里程碑 | 对齐主版本 | 核心交付 | 状态/门槛 |
+| --- | --- | --- | --- |
+| C0 Design Baseline | v0.3.2 | 调研、ADR-008、API/安全/UX 技术方案 | 当前完成 |
+| C1 Observe PWA | v0.3.3+ | Job/Task/Attempt/Worker/Artifact 只读投影、稳定分页、SSE、attention | Stage、multi-Attempt、Retry Safety、Artifact Lifecycle 已完成；补查询与事件契约 |
+| C2 Operate PWA | v0.4.x | 提交、取消、输入、审批、重试、Diff/测试审阅 | Runtime 原生输入/审批能力逐项验收；所有写操作幂等并带 generation fencing |
+| C3 Mobile Beta | v0.5.x | Expo iOS/Android、QR 配对、Push、主机/运行时选择 | Agent-aware Scheduler 与设备身份可用 |
+| C4 Governed Remote | v0.6.x | OIDC/RBAC、设备策略、审计、单写者 Lease、可选 E2EE Relay | 治理模型和威胁测试通过；Relay 不参与调度判断 |
+| C5 Production | v0.7.x/v1.0 | 弱网、规模、兼容矩阵、应用商店/企业分发、SLO | Scale & Resilience 门槛完成 |
+
+永久边界：手机不作为通用 Worker；离线客户端不排队取消、审批或重试等危险操作；Push 不携带提示词、代码或审批正文；公网 Relay 仅在直连/VPN 无法满足已验证需求时引入。
 
 ## 4. v0.2.x — Production Baseline
 
@@ -1178,18 +1194,19 @@ L4 Real Runtime / Multi-host
 3. ADR-005：Stage / Multi-Attempt / Fencing；
 4. ADR-006：Retry Safety；
 5. ADR-007：Artifact Lifecycle。
+6. ADR-008：客户端控制面采用薄客户端与服务端事实源。
 
 后续建议：
 
-6. Workspace Lifecycle；
-7. Runtime API v2；
-8. RuntimeCapability / ToolCapability；
-9. EnvironmentProvider / Prepared Workspace；
-10. Agent-aware Scheduling；
-11. Private Worker / Trust Domain；
-12. Multi-tenant / RBAC；
-13. History / GC；
-14. HA Trigger / State Backend（仅需要时）。
+7. Workspace Lifecycle；
+8. Runtime API v2；
+9. RuntimeCapability / ToolCapability；
+10. EnvironmentProvider / Prepared Workspace；
+11. Agent-aware Scheduling；
+12. Private Worker / Trust Domain；
+13. Multi-tenant / RBAC；
+14. History / GC；
+15. HA Trigger / State Backend（仅需要时）。
 
 ## 16. 方向判断规则
 
