@@ -98,11 +98,14 @@ func Size(dir string) (int64, error) {
 }
 
 func CheckQuota(dir string, limit int64) (int64, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
 	size, err := Size(dir)
 	if err != nil {
 		return 0, err
 	}
-	if limit > 0 && size > limit {
+	if size > limit {
 		return size, fmt.Errorf("%w: %d > %d bytes", ErrQuotaExceeded, size, limit)
 	}
 	return size, nil
