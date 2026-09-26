@@ -93,6 +93,12 @@ DELETING 是持久状态；Worker restart 后可继续删除。DELETED 保留 to
 
 Quota 是安全阈值，不是精确实时计费或文件系统配额。
 
+### 2.8 Attempt-scoped Reduce inputs
+
+`inputs/<attempt-id>` 与 writable Workspace 使用相同 Attempt ownership。只有在 process cleanup confirmed 后才立即清理；cleanup unknown / QUARANTINED 时不删除。若即时清理失败，后续 Workspace deletion reconciliation 再次尝试。
+
+这样 Reduce 输入不会跨 generation 复用，也不会因为 Worker restart 的不确定执行状态被提前删除。
+
 ## 3. Invariants
 
 ~~~text
