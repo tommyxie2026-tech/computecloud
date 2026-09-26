@@ -218,6 +218,9 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		}
 		return w.emit(persistCtx, a, "attempt.started", config.JSON(map[string]any{"runtime_version": r.Version, "workspace": a.AttemptId, "model": a.Spec.Model}))
 	})
+	if run.TermSent || run.KillSent {
+		_ = w.emit(persistCtx, a, "attempt.stop_escalation", config.JSON(map[string]any{"phase": "runtime", "term_sent": run.TermSent, "kill_sent": run.KillSent, "cleanup_confirmed": run.Cleanup}))
+	}
 	parseErr := lines.Flush()
 	out := parser.Outcome()
 	success := run.Err == nil && run.ExitCode == 0 && run.Cleanup && parseErr == nil && out.Final && out.Success
@@ -265,6 +268,9 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 			_, e := w.db.SQL.ExecContext(persistCtx, "UPDATE runs SET state='RUNNING',pid=?,start_id=? WHERE id=?", pid, id, a.AttemptId)
 			return e
 		})
+		if vr.TermSent || vr.KillSent {
+			_ = w.emit(persistCtx, a, "attempt.stop_escalation", config.JSON(map[string]any{"phase": "verifier", "term_sent": vr.TermSent, "kill_sent": vr.KillSent, "cleanup_confirmed": vr.Cleanup}))
+		}
 		verification = append(verification, map[string]any{"command": cmd, "exit_code": vr.ExitCode, "cleanup": vr.Cleanup, "output": string(redact(log.Bytes(), secrets)), "truncated": log.truncated})
 		if vr.Err != nil || vr.ExitCode != 0 || !vr.Cleanup {
 			success = false
