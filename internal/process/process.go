@@ -17,7 +17,15 @@ import (
 type Result struct {
 	ExitCode int
 	Cleanup  bool
+	TermSent bool
+	KillSent bool
 	Err      error
+}
+
+type StopResult struct {
+	Cleanup  bool
+	TermSent bool
+	KillSent bool
 }
 
 func Identity(pid int) (string, error) {
@@ -64,44 +72,53 @@ func groupAlive(pgid int) bool {
 	}
 	return false
 }
-func Stop(pid int, identity string, grace time.Duration) bool {
+func StopDetailed(pid int, identity string, grace time.Duration) StopResult {
 	if pid <= 1 || identity == "" {
-		return false
+		return StopResult{}
 	}
 	boot, e := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if e != nil {
-		return false
+		return StopResult{}
 	}
 	if !strings.HasPrefix(identity, strings.TrimSpace(string(boot))+":") {
-		return true
+		return StopResult{Cleanup: true}
 	}
 	current, e := Identity(pid)
 	if e == nil && current != identity {
-		return false
+		return StopResult{}
 	}
 	if e != nil && !errors.Is(e, os.ErrNotExist) {
-		return false
+		return StopResult{}
 	}
 	if !groupAlive(pid) {
-		return true
+		return StopResult{Cleanup: true}
 	}
+	out := StopResult{TermSent: true}
 	_ = syscall.Kill(-pid, syscall.SIGTERM)
 	end := time.Now().Add(grace)
 	for time.Now().Before(end) {
 		if !groupAlive(pid) {
-			return true
+			out.Cleanup = true
+			return out
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+	out.KillSent = true
 	_ = syscall.Kill(-pid, syscall.SIGKILL)
 	end = time.Now().Add(2 * time.Second)
 	for time.Now().Before(end) {
 		if !groupAlive(pid) {
-			return true
+			out.Cleanup = true
+			return out
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	return !groupAlive(pid)
+	out.Cleanup = !groupAlive(pid)
+	return out
+}
+
+func Stop(pid int, identity string, grace time.Duration) bool {
+	return StopDetailed(pid, identity, grace).Cleanup
 }
 func Run(ctx context.Context, exe string, args, env []string, cwd string, stdin io.Reader, stdout, stderr io.Writer, grace time.Duration, onStart func(int, string) error) Result {
 	if e := ctx.Err(); e != nil {
@@ -136,10 +153,10 @@ func Run(ctx context.Context, exe string, args, env []string, cwd string, stdin 
 	select {
 	case e = <-done:
 	case <-ctx.Done():
-		clean := Stop(cmd.Process.Pid, id, grace)
+		stopped := StopDetailed(cmd.Process.Pid, id, grace)
 		e = <-done
-		return Result{ExitCode: cmd.ProcessState.ExitCode(), Cleanup: clean, Err: errors.Join(ctx.Err(), e)}
+		return Result{ExitCode: cmd.ProcessState.ExitCode(), Cleanup: stopped.Cleanup, TermSent: stopped.TermSent, KillSent: stopped.KillSent, Err: errors.Join(ctx.Err(), e)}
 	}
-	clean := Stop(cmd.Process.Pid, id, grace)
-	return Result{ExitCode: cmd.ProcessState.ExitCode(), Cleanup: clean, Err: e}
+	stopped := StopDetailed(cmd.Process.Pid, id, grace)
+	return Result{ExitCode: cmd.ProcessState.ExitCode(), Cleanup: stopped.Cleanup, TermSent: stopped.TermSent, KillSent: stopped.KillSent, Err: e}
 }
