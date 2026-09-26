@@ -43,7 +43,7 @@ func TestV1UpgradeBackupAndDrainGate(t *testing.T) {
 		t.Fatal(e)
 	}
 	db.SQL.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 5 {
+	if v != 6 {
 		t.Fatalf("version %d", v)
 	}
 	var state, stage string
@@ -109,7 +109,7 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 	}
 	defer db.Close()
 	var v int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 5 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 6 {
 		t.Fatalf("version=%d err=%v", v, e)
 	}
 	// New schema must allow multiple historical attempts for one Task while
@@ -173,7 +173,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 6 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -218,5 +218,42 @@ func TestV5RetryBackoffColumn(t *testing.T) {
 	var retryAfter int64
 	if e = db.SQL.QueryRow("SELECT retry_after FROM tasks WHERE id='retry'").Scan(&retryAfter); e != nil || retryAfter != 0 {
 		t.Fatalf("retry_after=%d err=%v", retryAfter, e)
+	}
+}
+
+
+func TestV6ArtifactLifecycleSchema(t *testing.T) {
+	dir := t.TempDir()
+	db, e := Open(dir, ServerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	if _, e = db.SQL.Exec("INSERT INTO tasks(id,owner,project,idem,hash,spec,state,created,updated,deadline) VALUES('art-task','o','p','art','h','{}','SUCCEEDED',1,1,9999999999999)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO artifacts(id,task,attempt,kind,hash,size,path,generation,state,created,updated) VALUES('art','art-task','attempt','result-bundle','hash',1,'art',1,'ACCEPTED',1,1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO artifact_refs(artifact,ref_type,ref_id,created) VALUES('art','task_result','art-task',1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE artifacts SET state='ORPHANED' WHERE id='art'"); e == nil {
+		t.Fatal("referenced ACCEPTED artifact left accepted state")
+	}
+	if _, e = db.SQL.Exec("INSERT INTO artifacts(id,task,attempt,kind,hash,size,path,generation,state,created,updated) VALUES('orphan','art-task','attempt','result-bundle','hash2',1,'orphan',1,'STAGED',1,1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE artifacts SET state='DELETING' WHERE id='orphan'"); e == nil {
+		t.Fatal("invalid STAGED -> DELETING transition accepted")
+	}
+	if _, e = db.SQL.Exec("UPDATE artifacts SET state='ORPHANED' WHERE id='orphan'"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE artifacts SET state='DELETING' WHERE id='orphan'"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE artifacts SET state='DELETED',path='',deleted_at=2 WHERE id='orphan'"); e != nil {
+		t.Fatal(e)
 	}
 }
