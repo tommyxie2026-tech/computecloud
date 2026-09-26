@@ -8,6 +8,7 @@
 | [Agent 客户端控制端方案调研](research/agent-control-client-landscape-2026.md) | Orca、Paseo、Happy、Soromi、Codex/Claude Remote 等比较 | 2026-09-26 快照；已形成 ADR-008 |
 | [v0.3.4 Long-running Job 实施计划](implementation/v0.3.4-plan.md) | lease liveness、显式 deadline、取消升级、事件压缩与 CI long-run-flow | 当前功能主线 |
 | [v0.3.4 Long-running Job 运行与升级](implementation/v0.3.4-runbook.md) | liveness、deadline extension、stop escalation、event floor 与 schema v7 | v0.3.4 操作依据 |
+| [v0.3.4 Long-running Job 验证记录](validation/v0.3.4-results.md) | lease/no-output、deadline extension、event compaction、TERM→KILL 与 long-run-flow CI 证据 | fixture 功能 CI 通过；最终 merge Gate 待 PR |
 | [ADR-010：Long-running Job Reliability](adr/0010-long-running-job-reliability.md) | Server deadline 事实源、lease liveness、事件压缩与 fail-closed cleanup | Accepted |
 | [v0.3.3 Workspace Lifecycle 实施计划](implementation/v0.3.3-plan.md) | Worker schema v3、Attempt ownership、retention/GC、quota 与 CI workspace-flow | 已实现并合并 main |
 | [v0.3.3 Workspace Lifecycle 运行与升级](implementation/v0.3.3-runbook.md) | Workspace 状态、inventory、retention、quota、升级与回退 | v0.3.3 操作依据 |
