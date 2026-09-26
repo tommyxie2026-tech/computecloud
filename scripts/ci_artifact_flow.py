@@ -34,6 +34,7 @@ def main():
         "TestArtifactLifecycleResumesDeletingTombstone",
         "TestArtifactLifecyclePinsReduceInputsAndJobResult",
         "TestV6ArtifactLifecycleSchema",
+        "TestV5ToV6BackfillsFrozenArtifactReferences",
     ]
     pattern = "^(" + "|".join(tests) + ")$"
     result = run(["go", "test", "./internal/server", "./internal/store", "-run", pattern, "-count=1", "-v"])
@@ -53,6 +54,7 @@ def main():
             "reduce_input_refs": True,
             "job_result_refs": True,
             "schema_v6_guards": True,
+            "v5_frozen_reference_backfill": True,
         },
         "tests": tests,
         "command": result["command"],
