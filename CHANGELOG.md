@@ -1,5 +1,17 @@
 # 版本记录
 
+## 未发布 — v0.3.2 Full Artifact Lifecycle
+
+- Server schema 升级到 v6；Artifact 增加 `created / updated / gc_after / deleted_at`，状态扩展为 `STAGED / ACCEPTED / ORPHANED / DELETING / DELETED`。
+- 新增不可变 `artifact_refs`，显式固化 `task_result / reduce_input / job_result` provenance；只有 ACCEPTED Artifact 可以被引用。
+- Reduce frozen manifest 与显式 `reduce_input` reference 共同授权下游读取；Job 最终结果通过 `job_result` reference 固化。
+- failed / retried / 未选中的 generation Artifact 进入 ORPHANED，并设置固定安全窗口，不进入正式列表、下载、Reduce 或 Job Result。
+- 增加可恢复两阶段删除：`ORPHANED -> DELETING -> DELETED`，文件已删除或 Server 中途重启均可安全继续；DELETED 保留 tombstone。
+- 增加老化 upload temp 与无 DB metadata 文件的安全清理；不把 Artifact 目录作为 source of truth。
+- 新增独立 GitHub Actions `artifact-flow`，覆盖 accepted visibility、immutable refs、orphan GC、deletion recovery、Reduce/Job refs、schema v6 lifecycle guards。
+- Release package 现在依赖 verify、task-flow、retry-flow、artifact-flow 四个 Gate。
+- 用户 TTL、全历史 retention、Workspace GC、远端存储 Provider 与 HA 不属于 v0.3.2。
+
 ## 未发布 — v0.3.1 Retry Safety
 
 - Job Execution 增加显式 `replay_safe`；当 `max_attempts_per_task > 1` 时禁止隐式推断可重放性。
