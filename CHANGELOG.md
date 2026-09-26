@@ -1,5 +1,17 @@
 # 版本记录
 
+## 未发布 — v0.3.3 Workspace Lifecycle
+
+- Worker schema 升级到 v3，新增 `workspaces` metadata，把 Workspace 与 Attempt / Task / generation / repository baseline / path 一次性绑定。
+- Workspace 生命周期明确为 `PREPARING -> READY -> IN_USE -> RETAINED -> DELETING -> DELETED`；cleanup proof 不确定时进入 `QUARANTINED`，默认不自动 GC。
+- Runtime/Verifier spawn 前必须持久化 `IN_USE`，Worker restart 可用 Workspace 状态区分安全 pre-spawn 与不确定 spawn window。
+- Retention GC 只有在 `RETAINED + retain_until expired + runs.completed=1` 时才开始，删除使用可恢复的 `DELETING -> DELETED` tombstone。
+- 升级时仅接管能与本地 run 对应的 legacy Workspace；未知目录不自动删除、不自动认领。
+- 新增 `workspace_retention_ms` 与 `workspace_max_bytes`；quota 在 prepare、运行期与 completion 前检查，超限阻止成功 completion。
+- Reduce input 临时目录跟随 Attempt cleanup proof 清理；cleanup unknown 的 Attempt 不删除其输入目录。
+- 新增独立 GitHub Actions `workspace-flow`，覆盖 ownership、generation isolation、restart recovery、quarantine、retention、GC、legacy adoption、path/quota guard 与 Worker schema v3。
+- Release package 现在依赖 verify、task-flow、retry-flow、artifact-flow、workspace-flow 五个 Gate。
+- Prepared/warm Workspace、共享 Workspace、snapshot/checkpoint、EnvironmentProvider 与全局历史 GC 不属于 v0.3.3。
 ## 0.3.2 — 2026-09-26 — Full Artifact Lifecycle
 
 - Server schema 升级到 v6；Artifact 增加 `created / updated / gc_after / deleted_at`，状态扩展为 `STAGED / ACCEPTED / ORPHANED / DELETING / DELETED`。
