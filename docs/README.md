@@ -7,6 +7,7 @@
 | [v0.2.1 → v0.3.0 实施计划与跟踪](implementation/v0.2.1-v0.3.0-plan.md) | Production Baseline、Stage、multi-Attempt、Generation Fencing、Artifact gating 与 Release Gate；GitHub Issues #1–#9 跟踪 | v0.3 实现/自动化完成；Production Gate 待 #1 |
 | [v0.3.1 Retry Safety 实施计划](implementation/v0.3.1-plan.md) | replay_safe、bounded retry、backoff、error taxonomy 与 CI retry-flow | 当前功能主线 |
 | [v0.3.1 Retry Safety 运行与升级](implementation/v0.3.1-runbook.md) | schema v5、Retry 条件、backoff、事件、升级与回退 | v0.3.1 操作依据 |
+| [v0.3.1 Retry Safety 验证记录](validation/v0.3.1-results.md) | bounded retry、deadline、error taxonomy、schema v5 与独立 retry-flow CI 证据 | fixture 自动化通过；Production Gate 仍待 #1 |
 | [v0.3.0 Reliability Kernel 运行与升级](implementation/v0.3-runbook.md) | schema v4、Stage、multi-Attempt、fencing、Artifact gating、升级与回退 | 当前 v0.3 操作依据 |
 | [v0.3.0 验证记录](validation/v0.3.0-results.md) | Stage/multi-Attempt/fencing 自动化证据与真实环境未覆盖项 | 自动化通过；Production Gate 待 #1 |
 | [AI Execution OS 总体架构](design/ai-execution-os-architecture.md) | 早期大平台方向探索 | 历史探索；已被 ADR-003 替代 |
