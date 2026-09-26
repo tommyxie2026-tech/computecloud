@@ -37,7 +37,8 @@ type Server struct {
 	grpc         *grpc.Server
 	jobCursor    string
 	queueCursor  map[int32]string
-	modelHandler http.Handler
+	modelHandler  http.Handler
+	artifactSweepAt int64
 }
 
 func New(c config.Server) (*Server, error) {
@@ -402,6 +403,13 @@ func (s *Server) tick(ctx context.Context) error {
 	}
 	if e := s.advanceJobs(ctx); e != nil {
 		return e
+	}
+	now := store.Now()
+	if now >= s.artifactSweepAt {
+		s.artifactSweepAt = now + artifactSweepIntervalMS
+		if e := s.reconcileArtifactLifecycle(ctx); e != nil {
+			return e
+		}
 	}
 	if s.cfg.Maintenance {
 		return nil

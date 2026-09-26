@@ -88,6 +88,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 5
 	}
+	if schema == ServerSchema && version < 6 {
+		if _, err = tx.Exec(serverV6); err != nil {
+			return err
+		}
+		version = 6
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -310,3 +316,110 @@ WHERE state='STAGED' AND attempt IN (SELECT id FROM attempts WHERE released=1);
 
 const serverV5 = `ALTER TABLE tasks ADD COLUMN retry_after INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX tasks_retry_queue ON tasks(state,retry_after,priority DESC,created);`
+
+
+const serverV6 = `CREATE TABLE artifacts_v6 (
+  id TEXT PRIMARY KEY,
+  task TEXT NOT NULL REFERENCES tasks(id),
+  attempt TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  hash TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  path TEXT NOT NULL,
+  generation INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT 'STAGED'
+    CHECK (state IN ('STAGED','ACCEPTED','ORPHANED','DELETING','DELETED')),
+  created INTEGER NOT NULL DEFAULT 0,
+  updated INTEGER NOT NULL DEFAULT 0,
+  gc_after INTEGER NOT NULL DEFAULT 0,
+  deleted_at INTEGER NOT NULL DEFAULT 0
+);
+
+INSERT INTO artifacts_v6(id,task,attempt,kind,hash,size,path,generation,state,created,updated,gc_after,deleted_at)
+SELECT id,task,attempt,kind,hash,size,path,generation,state,
+       CAST(strftime('%s','now') AS INTEGER) * 1000,
+       CAST(strftime('%s','now') AS INTEGER) * 1000,
+       CASE WHEN state='ORPHANED'
+            THEN CAST(strftime('%s','now') AS INTEGER) * 1000 + 86400000
+            ELSE 0 END,
+       0
+FROM artifacts;
+
+DROP TABLE artifacts;
+ALTER TABLE artifacts_v6 RENAME TO artifacts;
+CREATE INDEX artifacts_task_state ON artifacts(task,state,id);
+CREATE INDEX artifacts_gc ON artifacts(state,gc_after,id);
+
+CREATE TABLE artifact_refs (
+  artifact TEXT NOT NULL REFERENCES artifacts(id),
+  ref_type TEXT NOT NULL CHECK (ref_type IN ('task_result','reduce_input','job_result')),
+  ref_id TEXT NOT NULL,
+  created INTEGER NOT NULL,
+  PRIMARY KEY(artifact,ref_type,ref_id)
+);
+CREATE INDEX artifact_refs_owner ON artifact_refs(ref_type,ref_id,artifact);
+
+CREATE TRIGGER artifact_refs_accept_only
+BEFORE INSERT ON artifact_refs
+FOR EACH ROW
+WHEN coalesce((SELECT state FROM artifacts WHERE id=NEW.artifact),'') <> 'ACCEPTED'
+BEGIN
+  SELECT RAISE(ABORT,'artifact reference requires ACCEPTED artifact');
+END;
+
+CREATE TRIGGER artifact_refs_immutable
+BEFORE UPDATE ON artifact_refs
+BEGIN
+  SELECT RAISE(ABORT,'artifact references are immutable');
+END;
+
+CREATE TRIGGER artifact_refs_delete_guard
+BEFORE DELETE ON artifact_refs
+BEGIN
+  SELECT RAISE(ABORT,'artifact references are immutable');
+END;
+
+CREATE TRIGGER artifact_state_reference_guard
+BEFORE UPDATE OF state ON artifacts
+FOR EACH ROW
+WHEN OLD.state='ACCEPTED'
+ AND NEW.state<>'ACCEPTED'
+ AND EXISTS (SELECT 1 FROM artifact_refs WHERE artifact=OLD.id)
+BEGIN
+  SELECT RAISE(ABORT,'referenced artifact cannot leave ACCEPTED state');
+END;
+
+CREATE TRIGGER artifact_state_transition_guard
+BEFORE UPDATE OF state ON artifacts
+FOR EACH ROW
+WHEN NOT (
+  OLD.state=NEW.state
+  OR (OLD.state='STAGED' AND NEW.state IN ('ACCEPTED','ORPHANED'))
+  OR (OLD.state='ORPHANED' AND NEW.state='DELETING')
+  OR (OLD.state='DELETING' AND NEW.state='DELETED')
+)
+BEGIN
+  SELECT RAISE(ABORT,'invalid artifact lifecycle transition');
+END;
+
+INSERT INTO artifact_refs(artifact,ref_type,ref_id,created)
+SELECT id,'task_result',task,CAST(strftime('%s','now') AS INTEGER) * 1000
+FROM artifacts
+WHERE state='ACCEPTED';
+
+-- Preserve already-frozen Reduce barriers created before v6. A drained server may
+-- still contain queued Reduce work even when no Attempt is active.
+INSERT OR IGNORE INTO artifact_refs(artifact,ref_type,ref_id,created)
+SELECT a.id,'reduce_input',j.id || ':reduce',CAST(strftime('%s','now') AS INTEGER) * 1000
+FROM jobs j, json_each(j.manifest_json, '$.items') item
+JOIN artifacts a ON a.id=json_extract(item.value,'$.artifact_id')
+WHERE j.manifest_hash<>'' AND a.state='ACCEPTED';
+
+-- Preserve already-published terminal Job results so provenance is complete
+-- immediately after a v5 -> v6 upgrade.
+INSERT OR IGNORE INTO artifact_refs(artifact,ref_type,ref_id,created)
+SELECT a.id,'job_result',j.id,CAST(strftime('%s','now') AS INTEGER) * 1000
+FROM jobs j, json_each(j.result_json, '$.final_artifacts') item
+JOIN artifacts a ON a.id=json_extract(item.value,'$.artifact_id')
+WHERE a.state='ACCEPTED';
+`

@@ -182,23 +182,15 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 		}
 		if state == "SUCCEEDED" {
 			for _, id := range r.ArtifactIds {
-				res, e := q.ExecContext(ctx, "UPDATE artifacts SET state='ACCEPTED' WHERE id=? AND attempt=? AND generation=? AND state='STAGED'", id, r.Attempt.AttemptId, a.generation)
-				if e != nil {
-					return e
-				}
-				n, e := res.RowsAffected()
-				if e != nil || n != 1 {
-					if e != nil {
-						return e
-					}
-					return status.Error(codes.FailedPrecondition, "artifact acceptance lost generation ownership")
+				if e = acceptArtifact(ctx, q, id, r.Attempt.AttemptId, t.TaskId, a.generation); e != nil {
+					return status.Error(codes.FailedPrecondition, e.Error())
 				}
 			}
-			if _, e = q.ExecContext(ctx, "UPDATE artifacts SET state='ORPHANED' WHERE attempt=? AND generation=? AND state='STAGED'", r.Attempt.AttemptId, a.generation); e != nil {
+			if e = orphanStagedArtifacts(ctx, q, r.Attempt.AttemptId, a.generation); e != nil {
 				return e
 			}
 		} else {
-			if _, e = q.ExecContext(ctx, "UPDATE artifacts SET state='ORPHANED' WHERE attempt=? AND generation=? AND state='STAGED'", r.Attempt.AttemptId, a.generation); e != nil {
+			if e = orphanStagedArtifacts(ctx, q, r.Attempt.AttemptId, a.generation); e != nil {
 				return e
 			}
 		}

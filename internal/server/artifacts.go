@@ -121,7 +121,8 @@ func (s *Server) UploadArtifact(stream grpc.ClientStreamingServer[pb.ArtifactChu
 		if current.released {
 			return status.Error(codes.FailedPrecondition, "attempt already completed")
 		}
-		_, e = q.ExecContext(stream.Context(), "INSERT INTO artifacts(id,task,attempt,kind,hash,size,path,generation,state) VALUES(?,?,?,?,?,?,?,?, 'STAGED') ON CONFLICT(id) DO NOTHING", m.ArtifactId, m.TaskId, m.AttemptId, m.Kind, m.Sha256, m.Size, m.ArtifactId, current.generation)
+		now := store.Now()
+		_, e = q.ExecContext(stream.Context(), "INSERT INTO artifacts(id,task,attempt,kind,hash,size,path,generation,state,created,updated,gc_after,deleted_at) VALUES(?,?,?,?,?,?,?,?, 'STAGED',?,?,0,0) ON CONFLICT(id) DO NOTHING", m.ArtifactId, m.TaskId, m.AttemptId, m.Kind, m.Sha256, m.Size, m.ArtifactId, current.generation, now, now)
 		if e != nil {
 			return e
 		}
@@ -144,7 +145,7 @@ func (s *Server) ListArtifacts(ctx context.Context, r *pb.TaskRef) (*pb.Artifact
 	if _, e := s.authorized(ctx, r.TaskId); e != nil {
 		return nil, e
 	}
-	rows, e := s.db.SQL.QueryContext(ctx, "SELECT id,task,attempt,kind,hash,size FROM artifacts WHERE task=? ORDER BY id", r.TaskId)
+	rows, e := s.db.SQL.QueryContext(ctx, "SELECT id,task,attempt,kind,hash,size FROM artifacts WHERE task=? AND state='ACCEPTED' ORDER BY id", r.TaskId)
 	if e != nil {
 		return nil, dbErr(e)
 	}

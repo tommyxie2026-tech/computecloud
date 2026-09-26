@@ -43,7 +43,7 @@ func TestV1UpgradeBackupAndDrainGate(t *testing.T) {
 		t.Fatal(e)
 	}
 	db.SQL.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 5 {
+	if v != 6 {
 		t.Fatalf("version %d", v)
 	}
 	var state, stage string
@@ -109,7 +109,7 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 	}
 	defer db.Close()
 	var v int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 5 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 6 {
 		t.Fatalf("version=%d err=%v", v, e)
 	}
 	// New schema must allow multiple historical attempts for one Task while
@@ -173,7 +173,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 6 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -218,5 +218,112 @@ func TestV5RetryBackoffColumn(t *testing.T) {
 	var retryAfter int64
 	if e = db.SQL.QueryRow("SELECT retry_after FROM tasks WHERE id='retry'").Scan(&retryAfter); e != nil || retryAfter != 0 {
 		t.Fatalf("retry_after=%d err=%v", retryAfter, e)
+	}
+}
+
+
+func TestV6ArtifactLifecycleSchema(t *testing.T) {
+	dir := t.TempDir()
+	db, e := Open(dir, ServerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	if _, e = db.SQL.Exec("INSERT INTO tasks(id,owner,project,idem,hash,spec,state,created,updated,deadline) VALUES('art-task','o','p','art','h','{}','SUCCEEDED',1,1,9999999999999)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO artifacts(id,task,attempt,kind,hash,size,path,generation,state,created,updated) VALUES('art','art-task','attempt','result-bundle','hash',1,'art',1,'ACCEPTED',1,1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO artifact_refs(artifact,ref_type,ref_id,created) VALUES('art','task_result','art-task',1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE artifacts SET state='ORPHANED' WHERE id='art'"); e == nil {
+		t.Fatal("referenced ACCEPTED artifact left accepted state")
+	}
+	if _, e = db.SQL.Exec("DELETE FROM artifact_refs WHERE artifact='art'"); e == nil {
+		t.Fatal("immutable artifact reference was deleted")
+	}
+	if _, e = db.SQL.Exec("INSERT INTO artifacts(id,task,attempt,kind,hash,size,path,generation,state,created,updated) VALUES('orphan','art-task','attempt','result-bundle','hash2',1,'orphan',1,'STAGED',1,1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE artifacts SET state='DELETING' WHERE id='orphan'"); e == nil {
+		t.Fatal("invalid STAGED -> DELETING transition accepted")
+	}
+	if _, e = db.SQL.Exec("UPDATE artifacts SET state='ORPHANED' WHERE id='orphan'"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE artifacts SET state='DELETING' WHERE id='orphan'"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE artifacts SET state='DELETED',path='',deleted_at=2 WHERE id='orphan'"); e != nil {
+		t.Fatal(e)
+	}
+}
+
+
+func TestV5ToV6BackfillsFrozenArtifactReferences(t *testing.T) {
+	dir := t.TempDir()
+	raw, e := sql.Open("sqlite", filepath.Join(dir, "state.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(ServerSchema); e != nil {
+		t.Fatal(e)
+	}
+	for _, migration := range []string{serverV2, serverV3, serverV4, serverV5} {
+		if _, e = raw.Exec(migration); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, e = raw.Exec("PRAGMA user_version=5"); e != nil {
+		t.Fatal(e)
+	}
+
+	jobInsert := "INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism,manifest_json,manifest_hash,result_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+	if _, e = raw.Exec(jobInsert, "jm", "o", "p", "jm", "rh1", "sh1", "{}", "map_reduce", "REDUCING", 1, 1, int64(9999999999999), 1,
+		`{"version":"inputs.v1","items":[{"artifact_id":"ar-map"}]}`, "manifest-hash", "{}"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(jobInsert, "jf", "o", "p", "jf", "rh2", "sh2", "{}", "single", "SUCCEEDED", 1, 1, int64(9999999999999), 1,
+		"{}", "", `{"final_artifacts":[{"artifact_id":"ar-final"}]}`); e != nil {
+		t.Fatal(e)
+	}
+
+	taskInsert := "INSERT INTO tasks(id,owner,project,idem,hash,spec,state,attempt,worker,created,updated,deadline,job_id,stage,partition_key,current_generation) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+	if _, e = raw.Exec(taskInsert, "tm", "o", "p", "tm", "h1", "{}", "SUCCEEDED", "am", "w", 1, 1, int64(9999999999999), "jm", "map", "a", 1); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(taskInsert, "tf", "o", "p", "tf", "h2", "{}", "SUCCEEDED", "af", "w", 1, 1, int64(9999999999999), "jf", "single", "_single", 1); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until,released) VALUES('am','tm','w','e',1,'tm-token',1,1),('af','tf','w','e',1,'tf-token',1,1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("INSERT INTO artifacts(id,task,attempt,kind,hash,size,path,generation,state) VALUES('ar-map','tm','am','result-bundle','hm',1,'ar-map',1,'ACCEPTED'),('ar-final','tf','af','result-bundle','hf',1,'ar-final',1,'ACCEPTED')"); e != nil {
+		t.Fatal(e)
+	}
+	if e = raw.Close(); e != nil {
+		t.Fatal(e)
+	}
+
+	db, e := Open(dir, ServerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+
+	for _, tc := range []struct {
+		artifact, typ, ref string
+	}{
+		{"ar-map", "task_result", "tm"},
+		{"ar-map", "reduce_input", "jm:reduce"},
+		{"ar-final", "task_result", "tf"},
+		{"ar-final", "job_result", "jf"},
+	} {
+		var n int
+		if e = db.SQL.QueryRow("SELECT count(*) FROM artifact_refs WHERE artifact=? AND ref_type=? AND ref_id=?", tc.artifact, tc.typ, tc.ref).Scan(&n); e != nil || n != 1 {
+			t.Fatalf("missing migrated ref %+v count=%d err=%v", tc, n, e)
+		}
 	}
 }
