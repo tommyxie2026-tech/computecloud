@@ -43,7 +43,7 @@ func TestV1UpgradeBackupAndDrainGate(t *testing.T) {
 		t.Fatal(e)
 	}
 	db.SQL.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 4 {
+	if v != 5 {
 		t.Fatalf("version %d", v)
 	}
 	var state, stage string
@@ -109,7 +109,7 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 	}
 	defer db.Close()
 	var v int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 4 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 5 {
 		t.Fatalf("version=%d err=%v", v, e)
 	}
 	// New schema must allow multiple historical attempts for one Task while
@@ -173,7 +173,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 4 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -201,5 +201,22 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer rows.Close()
 	if rows.Next() {
 		t.Fatal("foreign key violation after v3->v4 migration")
+	}
+}
+
+
+func TestV5RetryBackoffColumn(t *testing.T) {
+	dir := t.TempDir()
+	db, e := Open(dir, ServerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	if _, e = db.SQL.Exec("INSERT INTO tasks(id,owner,project,idem,hash,spec,state,created,updated,deadline) VALUES('retry','o','p','retry','h','{}','QUEUED',1,1,9999999999999)"); e != nil {
+		t.Fatal(e)
+	}
+	var retryAfter int64
+	if e = db.SQL.QueryRow("SELECT retry_after FROM tasks WHERE id='retry'").Scan(&retryAfter); e != nil || retryAfter != 0 {
+		t.Fatalf("retry_after=%d err=%v", retryAfter, e)
 	}
 }

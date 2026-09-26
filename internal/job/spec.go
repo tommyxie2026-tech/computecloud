@@ -37,6 +37,7 @@ type Execution struct {
 	CredentialRef     string `json:"credential_ref"`
 	PolicyRef         string `json:"policy_ref"`
 	AcceptanceProfile string `json:"acceptance_profile"`
+	ReplaySafe        bool   `json:"replay_safe,omitempty"`
 }
 type Partition struct {
 	Key        string    `json:"key"`
@@ -155,8 +156,8 @@ func (s *Spec) Validate(maxParts, maxParallel int) error {
 	if s.SchemaVersion != "v0.2" || !Ref(s.ProjectID) || !Ref(s.Workspace.RepositoryRef) || !commitRE.MatchString(s.Workspace.BaseCommit) {
 		return fmt.Errorf("version, project and fixed repository commit required")
 	}
-	if s.Limits.TimeoutSeconds < 1 || s.Limits.TimeoutSeconds > 86400 || s.Limits.MaxAttemptsPerTask != 1 {
-		return fmt.Errorf("invalid deadline or unsupported automatic retry")
+	if s.Limits.TimeoutSeconds < 1 || s.Limits.TimeoutSeconds > 86400 || s.Limits.MaxAttemptsPerTask < 1 || s.Limits.MaxAttemptsPerTask > 3 {
+		return fmt.Errorf("invalid deadline or max_attempts_per_task")
 	}
 	validInput := func(i Input) bool { return len(i.Text) > 0 && len(i.Text) <= 64<<10 }
 	if !validInput(s.Input) {
@@ -166,7 +167,13 @@ func (s *Spec) Validate(maxParts, maxParallel int) error {
 		if s.Execution == nil || s.Map != nil || s.Reduce != nil {
 			return fmt.Errorf("single requires execution only")
 		}
-		return s.Execution.Validate()
+		if e := s.Execution.Validate(); e != nil {
+			return e
+		}
+		if s.Limits.MaxAttemptsPerTask > 1 && !s.Execution.ReplaySafe {
+			return fmt.Errorf("automatic retry requires replay_safe execution")
+		}
+		return nil
 	}
 	if s.Mode != "map_reduce" || s.Execution != nil || s.Map == nil || s.Reduce == nil {
 		return fmt.Errorf("map_reduce requires map and reduce")
@@ -212,6 +219,13 @@ func (s *Spec) Validate(maxParts, maxParallel int) error {
 		}
 	}
 	sort.Slice(s.Map.Partitions, func(i, j int) bool { return s.Map.Partitions[i].Key < s.Map.Partitions[j].Key })
+	if s.Limits.MaxAttemptsPerTask > 1 {
+		for _, ex := range s.Executions() {
+			if !ex.ReplaySafe {
+				return fmt.Errorf("automatic retry requires every execution to be replay_safe")
+			}
+		}
+	}
 	return nil
 }
 func Decode(b []byte, maxParts, maxParallel int) (Spec, error) {
@@ -246,6 +260,23 @@ var requestSchema = sync.OnceValue(func() *jsonschema.Resolved {
 	}
 	return r
 })
+
+func (s Spec) ExecutionFor(stage, key string) (Execution, bool) {
+	if stage == "single" && s.Execution != nil {
+		return *s.Execution, true
+	}
+	if stage == "reduce" && s.Reduce != nil {
+		return s.Reduce.Execution, true
+	}
+	if stage == "map" && s.Map != nil {
+		for _, p := range s.Map.Partitions {
+			if p.Key == key {
+				return p.Execution, true
+			}
+		}
+	}
+	return Execution{}, false
+}
 
 func (s Spec) Executions() []Execution {
 	if s.Execution != nil {

@@ -47,7 +47,7 @@
       "required": ["timeout_seconds", "max_attempts_per_task"],
       "properties": {
         "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 86400},
-        "max_attempts_per_task": {"const": 1}
+        "max_attempts_per_task": {"type": "integer", "minimum": 1, "maximum": 3}
       }
     }
   },
@@ -76,7 +76,8 @@
         "model": {"$ref": "#/$defs/ref"},
         "credential_ref": {"$ref": "#/$defs/ref"},
         "policy_ref": {"$ref": "#/$defs/ref"},
-        "acceptance_profile": {"$ref": "#/$defs/ref"}
+        "acceptance_profile": {"$ref": "#/$defs/ref"},
+        "replay_safe": {"type": "boolean"}
       },
       "allOf": [
         {

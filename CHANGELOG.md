@@ -1,5 +1,18 @@
 # 版本记录
 
+## 未发布 — v0.3.1 Retry Safety
+
+- Job Execution 增加显式 `replay_safe`；当 `max_attempts_per_task > 1` 时禁止隐式推断可重放性。
+- `max_attempts_per_task` 支持 1..3；Retry budget 不重置 Job/Task 原 deadline。
+- Server 使用固定 retryable error allowlist，只有 cleanup-confirmed 的 replay-safe Job Task 才能自动创建下一 generation。
+- Server schema 升级到 v5，持久化 `tasks.retry_after`，Scheduler 在 backoff 到期前不会重新 dispatch。
+- 增加 `task/job.retry_scheduled` 与 `task/job.retry_exhausted` 事件，并保留完整 Attempt history。
+- v0.3.0 generation / Worker epoch fencing 和 Artifact accepted-only 路径继续作为 Retry 的安全边界。
+- 新增独立 GitHub Actions `retry-flow`，覆盖 retry-once、budget exhaustion、non-retryable failure、replay-safe gate、schema/integrity。
+- Release package 现在必须同时通过 verify、原 task-flow 和 retry-flow。
+- 真实 Codex / Claude、独立主机、真实 MCP、24h+ Job 和真实 Runtime 容量仍由 Production Baseline #1 独立验收。
+
+
 ## 未发布 — v0.3.0 Reliability Kernel I
 
 - Server schema 升级到 v4：新增一等 Stage 记录，并把现有 single / map / reduce 迁移到 Stage。

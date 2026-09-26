@@ -428,12 +428,16 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 				return e
 			}
 		}
-		var deadline int64
-		if e = q.QueryRowContext(ctx, "SELECT deadline FROM tasks WHERE id=?", id).Scan(&deadline); e != nil {
+		var deadline, retryAfter int64
+		if e = q.QueryRowContext(ctx, "SELECT deadline,retry_after FROM tasks WHERE id=?", id).Scan(&deadline, &retryAfter); e != nil {
 			return e
 		}
-		if deadline <= store.Now() {
+		now := store.Now()
+		if deadline <= now {
 			return setState(ctx, q, id, "FAILED", "DEADLINE_EXCEEDED", "deadline reached before dispatch")
+		}
+		if retryAfter > now {
+			return nil
 		}
 		var creds, projects int
 		if e = q.QueryRowContext(ctx, "SELECT count(*) FROM attempts a JOIN tasks t ON a.task=t.id WHERE a.released=0 AND json_extract(t.spec,'$.credential_ref')=?", t.Spec.CredentialRef).Scan(&creds); e != nil {
@@ -493,7 +497,7 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		if e = s.bindGateway(ctx, q, a, j); e != nil {
 			return e
 		}
-		if _, e = q.ExecContext(ctx, "UPDATE tasks SET attempt=?,worker=?,current_generation=?,blocker='' WHERE id=?", a.AttemptId, chosen.hello.WorkerId, nextGeneration, id); e != nil {
+		if _, e = q.ExecContext(ctx, "UPDATE tasks SET attempt=?,worker=?,current_generation=?,blocker='',retry_after=0 WHERE id=?", a.AttemptId, chosen.hello.WorkerId, nextGeneration, id); e != nil {
 			return e
 		}
 		if e = setState(ctx, q, id, "STARTING", "", ""); e != nil {

@@ -5,6 +5,7 @@ import (
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
+	"github.com/tommyxie2026-tech/computecloud/internal/store"
 )
 
 func fitsJob(p *session, t *pb.Task, jc *pb.JobExecution) bool {
@@ -23,7 +24,8 @@ func (s *Server) scheduleQueued(ctx context.Context, peers []*session) error {
 	// At most 64 groups per priority and 32 queued children per group enter memory.
 	// With no dispatch, advance the scan so an unserviceable page cannot starve later jobs.
 	for priority := int32(10); priority >= 0; priority-- {
-		rows, e := s.db.SQL.QueryContext(ctx, `SELECT coalesce(job_id,id) AS grp FROM tasks WHERE state='QUEUED' AND priority=? GROUP BY grp ORDER BY (grp<=?),grp LIMIT 64`, priority, s.queueCursor[priority])
+		now := store.Now()
+		rows, e := s.db.SQL.QueryContext(ctx, `SELECT coalesce(job_id,id) AS grp FROM tasks WHERE state='QUEUED' AND priority=? AND retry_after<=? GROUP BY grp ORDER BY (grp<=?),grp LIMIT 64`, priority, now, s.queueCursor[priority])
 		if e != nil {
 			return e
 		}
@@ -45,7 +47,7 @@ func (s *Server) scheduleQueued(ctx context.Context, peers []*session) error {
 		}
 		assigned := false
 		for _, group := range groups {
-			rows, e = s.db.SQL.QueryContext(ctx, `SELECT id FROM tasks WHERE state='QUEUED' AND priority=? AND (job_id=? OR (job_id IS NULL AND id=?)) ORDER BY created,id LIMIT 32`, priority, group, group)
+			rows, e = s.db.SQL.QueryContext(ctx, `SELECT id FROM tasks WHERE state='QUEUED' AND priority=? AND retry_after<=? AND (job_id=? OR (job_id IS NULL AND id=?)) ORDER BY created,id LIMIT 32`, priority, store.Now(), group, group)
 			if e != nil {
 				return e
 			}
