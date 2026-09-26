@@ -90,7 +90,10 @@ func redact(b []byte, secrets []string) []byte {
 	return b
 }
 func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
-	ctx, cancel := context.WithDeadline(parent, time.UnixMilli(a.DeadlineMs))
+	// The Server owns the mutable Job/Task deadline. The Worker is bounded by
+	// the renewable execution lease; deadline expiry or an explicit extension
+	// is therefore reflected by lease validity instead of a stale local timer.
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	persistCtx := context.Background()
 	complete := func(c *pb.CompleteRequest) {
