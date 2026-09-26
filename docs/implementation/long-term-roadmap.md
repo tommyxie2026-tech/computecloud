@@ -404,6 +404,21 @@ Workspace 同样进入可靠性内核：
 - cancel/retry/timeout race 有自动测试；
 - fair queue 有 starvation 测试。
 
+### 5.8 v0.3.1 Retry Safety — 当前功能主线
+
+在 v0.3.0 Stage / multi-Attempt / fencing 基础上，v0.3.1 引入保守自动 Retry：
+
+- Execution 显式 `replay_safe`；
+- `max_attempts_per_task=1..3`；
+- cleanup-confirmed 才允许 Retry；
+- Server 固定 retryable error allowlist；
+- `retry_after` 持久 backoff；
+- deadline 不重置；
+- retry scheduled / exhausted events；
+- 独立 GitHub Actions `retry-flow`。
+
+执行状态不确定、非 replay-safe、验证失败、deadline/cancel 等场景均不自动 Retry。
+
 ## 6. v0.4.x — Agent Runtime、Tool 与 Environment 生态
 
 这一阶段扩大“Agent Job 能做什么、能在哪里安全运行、能如何快速准备工作环境”，但不扩大产品领域。产品调研明确要求这一阶段采用 **Adapter / Provider-first** 策略：优先接入现有 Agent 和 Sandbox 生态，而不是自建完整 Harness 或 Sandbox Cloud。
