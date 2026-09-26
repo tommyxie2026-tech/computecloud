@@ -7,6 +7,7 @@
 | [v0.2.1 → v0.3.0 实施计划与跟踪](implementation/v0.2.1-v0.3.0-plan.md) | Production Baseline、Stage、multi-Attempt、Generation Fencing、Artifact gating 与 Release Gate；GitHub Issues #1–#9 跟踪 | v0.3 实现/自动化完成；Production Gate 待 #1 |
 | [v0.3.3 Workspace Lifecycle 实施计划](implementation/v0.3.3-plan.md) | Worker schema v3、Attempt ownership、retention/GC、quota 与 CI workspace-flow | 当前功能主线 |
 | [v0.3.3 Workspace Lifecycle 运行与升级](implementation/v0.3.3-runbook.md) | Workspace 状态、inventory、retention、quota、升级与回退 | v0.3.3 操作依据 |
+| [v0.3.3 Workspace Lifecycle 验证记录](validation/v0.3.3-results.md) | Worker schema v3、ownership/recovery、retention/GC、quota、workspace-flow CI 证据 | fixture 自动化通过；Production Gate 仍待 #1 |
 | [ADR-008：Workspace Lifecycle](adr/0008-workspace-lifecycle.md) | Attempt-owned writable Workspace、restart cleanup proof 与可恢复 GC | Accepted |
 | [v0.3.2 Artifact Lifecycle 实施计划](implementation/v0.3.2-plan.md) | schema v6、immutable refs、ORPHANED GC、两阶段删除与 CI artifact-flow | v0.3.2 已实现 |
 | [v0.3.2 Artifact Lifecycle 运行与升级](implementation/v0.3.2-runbook.md) | Artifact 状态、reference、reconciliation、升级与回退 | v0.3.2 操作依据 |
