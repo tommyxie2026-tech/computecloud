@@ -97,6 +97,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
+	if schema == WorkerSchema && version < 3 {
+		if _, err = tx.Exec(workerV3); err != nil {
+			return err
+		}
+		version = 3
+	}
 	rows, err := tx.Query("PRAGMA foreign_key_check")
 	if err != nil {
 		return err
@@ -422,4 +428,46 @@ SELECT a.id,'job_result',j.id,CAST(strftime('%s','now') AS INTEGER) * 1000
 FROM jobs j, json_each(j.result_json, '$.final_artifacts') item
 JOIN artifacts a ON a.id=json_extract(item.value,'$.artifact_id')
 WHERE a.state='ACCEPTED';
+`
+
+
+const workerV3 = `CREATE TABLE workspaces (
+  attempt TEXT PRIMARY KEY REFERENCES runs(id),
+  task TEXT NOT NULL,
+  generation INTEGER NOT NULL,
+  repository_ref TEXT NOT NULL,
+  base_commit TEXT NOT NULL,
+  path TEXT NOT NULL UNIQUE,
+  state TEXT NOT NULL
+    CHECK (state IN ('PREPARING','READY','IN_USE','RETAINED','DELETING','DELETED','QUARANTINED')),
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  retain_until INTEGER NOT NULL DEFAULT 0,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  deleted_at INTEGER NOT NULL DEFAULT 0,
+  cleanup_error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX workspaces_gc ON workspaces(state,retain_until,attempt);
+CREATE INDEX workspaces_task_generation ON workspaces(task,generation,attempt);
+
+CREATE TRIGGER workspace_identity_immutable
+BEFORE UPDATE OF attempt,task,generation,repository_ref,base_commit,path ON workspaces
+BEGIN
+  SELECT RAISE(ABORT,'workspace ownership is immutable');
+END;
+
+CREATE TRIGGER workspace_state_transition_guard
+BEFORE UPDATE OF state ON workspaces
+FOR EACH ROW
+WHEN NOT (
+  OLD.state=NEW.state
+  OR (OLD.state='PREPARING' AND NEW.state IN ('READY','RETAINED','QUARANTINED','DELETING'))
+  OR (OLD.state='READY' AND NEW.state IN ('IN_USE','RETAINED','QUARANTINED','DELETING'))
+  OR (OLD.state='IN_USE' AND NEW.state IN ('RETAINED','QUARANTINED'))
+  OR (OLD.state='RETAINED' AND NEW.state='DELETING')
+  OR (OLD.state='DELETING' AND NEW.state='DELETED')
+)
+BEGIN
+  SELECT RAISE(ABORT,'invalid workspace lifecycle transition');
+END;
 `
