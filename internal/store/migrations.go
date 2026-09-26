@@ -373,6 +373,12 @@ BEGIN
   SELECT RAISE(ABORT,'artifact references are immutable');
 END;
 
+CREATE TRIGGER artifact_refs_delete_guard
+BEFORE DELETE ON artifact_refs
+BEGIN
+  SELECT RAISE(ABORT,'artifact references are immutable');
+END;
+
 CREATE TRIGGER artifact_state_reference_guard
 BEFORE UPDATE OF state ON artifacts
 FOR EACH ROW
@@ -400,4 +406,20 @@ INSERT INTO artifact_refs(artifact,ref_type,ref_id,created)
 SELECT id,'task_result',task,CAST(strftime('%s','now') AS INTEGER) * 1000
 FROM artifacts
 WHERE state='ACCEPTED';
+
+-- Preserve already-frozen Reduce barriers created before v6. A drained server may
+-- still contain queued Reduce work even when no Attempt is active.
+INSERT OR IGNORE INTO artifact_refs(artifact,ref_type,ref_id,created)
+SELECT a.id,'reduce_input',j.id || ':reduce',CAST(strftime('%s','now') AS INTEGER) * 1000
+FROM jobs j, json_each(j.manifest_json, '$.items') item
+JOIN artifacts a ON a.id=json_extract(item.value,'$.artifact_id')
+WHERE j.manifest_hash<>'' AND a.state='ACCEPTED';
+
+-- Preserve already-published terminal Job results so provenance is complete
+-- immediately after a v5 -> v6 upgrade.
+INSERT OR IGNORE INTO artifact_refs(artifact,ref_type,ref_id,created)
+SELECT a.id,'job_result',j.id,CAST(strftime('%s','now') AS INTEGER) * 1000
+FROM jobs j, json_each(j.result_json, '$.final_artifacts') item
+JOIN artifacts a ON a.id=json_extract(item.value,'$.artifact_id')
+WHERE a.state='ACCEPTED';
 `
