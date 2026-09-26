@@ -214,6 +214,18 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 		if _, e = q.ExecContext(ctx, "UPDATE commands SET acked=1 WHERE attempt=?", r.Attempt.AttemptId); e != nil {
 			return e
 		}
+		if state == "FAILED" {
+			plan, pe := s.planRetry(ctx, q, t.TaskId, code, a.generation)
+			if pe != nil {
+				return pe
+			}
+			if plan.retry {
+				return s.scheduleRetry(ctx, q, t, r.Attempt.AttemptId, a.generation, code, msg, plan)
+			}
+			if pe = appendRetryExhausted(ctx, q, t, r.Attempt.AttemptId, a.generation, code, plan); pe != nil {
+				return pe
+			}
+		}
 		return setState(ctx, q, t.TaskId, state, code, msg)
 	})
 	s.wake()
