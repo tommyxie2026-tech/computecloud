@@ -640,6 +640,11 @@ func (s *Server) createReduce(ctx context.Context, q store.Query, j *Job, childr
 	if n != 1 {
 		return fmt.Errorf("reduce barrier already committed")
 	}
+	for _, item := range manifest.Items {
+		if e = pinArtifactRef(ctx, q, item.ArtifactID, "reduce_input", j.ID+":reduce"); e != nil {
+			return e
+		}
+	}
 	if e := setStageState(ctx, q, j.ID+":map", "SUCCEEDED"); e != nil {
 		return e
 	}
@@ -674,6 +679,9 @@ func (s *Server) finishJob(ctx context.Context, q store.Query, j *Job, children 
 				return fmt.Errorf("missing completed result artifact")
 			}
 			finals = append(finals, selected)
+			if e = pinArtifactRef(ctx, q, selected.ArtifactId, "job_result", j.ID); e != nil {
+				return e
+			}
 			if e = q.QueryRowContext(ctx, "SELECT result FROM tasks WHERE id=?", c.id).Scan(&summary); e != nil {
 				return e
 			}
@@ -854,8 +862,9 @@ func selectedResultArtifact(ctx context.Context, q store.Query, c jobChild) (*pb
 		FROM artifacts ar
 		JOIN tasks t ON t.id=ar.task
 		JOIN attempts x ON x.id=ar.attempt
+		JOIN artifact_refs rr ON rr.artifact=ar.id AND rr.ref_type='task_result' AND rr.ref_id=t.id
 		WHERE ar.id=? AND ar.task=? AND ar.attempt=? AND ar.kind='result-bundle'
-		  AND ar.state='ACCEPTED' AND ar.generation=x.generation
+		  AND ar.state='ACCEPTED' AND ar.deleted_at=0 AND ar.generation=x.generation
 		  AND t.attempt=x.id AND t.current_generation=x.generation`, completion.IDs[0], c.id, c.attempt).Scan(&a.ArtifactId, &a.TaskId, &a.AttemptId, &a.Kind, &a.Sha256, &a.Size)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil, nil
