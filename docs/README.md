@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | [Agent-aware Distributed Job Execution Platform 总体架构](design/agent-job-executor-architecture.md) | Job/Stage/Task/Attempt、Runtime/Tool 分层、Artifact/Workspace 生命周期与 Agent-aware Scheduler | 当前目标架构 |
 | [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性内核、Agent Runtime/Tool、Agent-aware Scheduler、治理与规模化 | 当前长期主路线 |
-| [v0.2.1 → v0.3.0 实施计划与跟踪](implementation/v0.2.1-v0.3.0-plan.md) | Production Baseline、Stage、multi-Attempt、Generation Fencing、Artifact gating 与 Release Gate；GitHub Issues #1–#9 跟踪 | 当前实施中 |
+| [v0.2.1 → v0.3.0 实施计划与跟踪](implementation/v0.2.1-v0.3.0-plan.md) | Production Baseline、Stage、multi-Attempt、Generation Fencing、Artifact gating 与 Release Gate；GitHub Issues #1–#9 跟踪 | v0.3 实现/自动化完成；Production Gate 待 #1 |
 | [v0.3.0 Reliability Kernel 运行与升级](implementation/v0.3-runbook.md) | schema v4、Stage、multi-Attempt、fencing、Artifact gating、升级与回退 | 当前 v0.3 操作依据 |
 | [v0.3.0 验证记录](validation/v0.3.0-results.md) | Stage/multi-Attempt/fencing 自动化证据与真实环境未覆盖项 | 自动化通过；Production Gate 待 #1 |
 | [AI Execution OS 总体架构](design/ai-execution-os-architecture.md) | 早期大平台方向探索 | 历史探索；已被 ADR-003 替代 |
