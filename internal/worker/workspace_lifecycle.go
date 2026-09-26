@@ -20,6 +20,17 @@ func (w *Worker) workspaceRoot() string {
 	return filepath.Join(w.cfg.DataDir, "workspaces")
 }
 
+func (w *Worker) inputRoot() string {
+	return filepath.Join(w.cfg.DataDir, "inputs")
+}
+
+func (w *Worker) cleanupAttemptInputs(attempt string) error {
+	if attempt == "" {
+		return nil
+	}
+	return workspace.Remove(w.inputRoot(), attempt)
+}
+
 func (w *Worker) workspaceRetention() time.Duration {
 	if w.cfg.WorkspaceRetentionMS > 0 {
 		return time.Duration(w.cfg.WorkspaceRetentionMS) * time.Millisecond
@@ -188,6 +199,10 @@ func (w *Worker) deleteWorkspace(ctx context.Context, attempt, reason string) er
 		if state != "DELETING" && state != "DELETED" {
 			return fmt.Errorf("workspace %s cannot be deleted from state %s", attempt, state)
 		}
+	}
+	if err = w.cleanupAttemptInputs(attempt); err != nil {
+		_, _ = w.db.SQL.ExecContext(ctx, "UPDATE workspaces SET cleanup_error=?,updated=? WHERE attempt=? AND state='DELETING'", "input cleanup: "+err.Error(), store.Now(), attempt)
+		return err
 	}
 	if err = workspace.Remove(w.workspaceRoot(), attempt); err != nil {
 		_, _ = w.db.SQL.ExecContext(ctx, "UPDATE workspaces SET cleanup_error=?,updated=? WHERE attempt=? AND state='DELETING'", err.Error(), store.Now(), attempt)
