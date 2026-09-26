@@ -1,5 +1,18 @@
 # 版本记录
 
+## 未发布 — v0.3.4 Long-running Job Reliability
+
+- Server schema 升级到 v7：Attempt 增加 `last_renewed`，Task 增加 `event_floor_seq`，新增紧凑 `event_dedup` replay hash 索引。
+- Worker Renew 成为 Attempt liveness 的事实依据；Runtime 长时间无 stdout/stderr 不再等同于 hung。
+- Worker 不再使用 Assignment 的冻结 deadline 作为本地固定 timer；Server 通过 mutable Job/Task deadline、lease 和 stop command 保持执行权威。
+- 新增 HTTP `POST /v1/jobs/{id}/deadline` 与 MCP `extend_job_deadline`，要求 `jobs:extend` scope，支持 operation-id 幂等、单调延长、单次上限与总运行时长上限。
+- Deadline extension 同步更新未终态 child Task，但不改变 Retry budget、Attempt generation、Artifact 或 Workspace ownership。
+- process group 停止路径记录 SIGTERM/SIGKILL escalation，Worker 产生 `attempt.stop_escalation` 证据；cleanup unknown 继续 fail-closed。
+- Task event payload 按 `max_task_events` 有界保留；压缩后旧 cursor 返回 `EVENT_CURSOR_COMPACTED floor=N`，不产生静默 gap。
+- `event_dedup` 在 payload 压缩后仍保留 worker_seq/hash，使 Worker 断线重放继续可校验。
+- 新增独立 GitHub Actions `long-run-flow`；release package 依赖 verify、task-flow、retry-flow、artifact-flow、workspace-flow、long-run-flow 六个 Gate。
+- 真实 Codex/Claude 24h+、独立主机与真实网络故障仍由 Production Baseline #1 独立验收。
+
 ## 未发布 — v0.3.3 Workspace Lifecycle（实现完成，待版本发布）
 
 - Worker schema 升级到 v3，新增 `workspaces` metadata，把 Workspace 与 Attempt / Task / generation / repository baseline / path 一次性绑定。
