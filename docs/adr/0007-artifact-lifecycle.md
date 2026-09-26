@@ -33,7 +33,7 @@ STAGED
 
 引入 `artifact_refs`，表示不可变的逻辑引用：`task_result`、`reduce_input`、`job_result`。
 
-规则：只有 `ACCEPTED` Artifact 能创建 reference；reference 创建后不可 UPDATE；被 reference 的 `ACCEPTED` Artifact 不允许离开 ACCEPTED；Task 正式结果、Reduce 输入和 Job 最终结果必须由显式 reference 固化；旧 generation 即使文件仍在，也不能通过 reference 进入新执行链路。
+规则：只有 `ACCEPTED` Artifact 能创建 reference；reference 创建后不可 UPDATE/DELETE；被 reference 的 `ACCEPTED` Artifact 不允许离开 ACCEPTED；Task 正式结果、Reduce 输入和 Job 最终结果必须由显式 reference 固化；旧 generation 即使文件仍在，也不能通过 reference 进入新执行链路。
 
 Reference 是生命周期所有权依据，不把 JSON manifest/result 当作唯一 GC 根。
 
