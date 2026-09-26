@@ -559,18 +559,30 @@ func (s *Server) advanceJob(ctx context.Context, id string) error {
 			}
 			return nil
 		}
-		if j.State == "MAPPING" {
-			if len(children) != len(j.frozen.Spec.Map.Partitions) {
-				return fmt.Errorf("map partition set mismatch")
-			}
+		var mapStage, reduceStage string
+		if e = q.QueryRowContext(ctx, "SELECT state FROM stages WHERE job_id=? AND kind='map'", j.ID).Scan(&mapStage); e != nil {
+			return e
+		}
+		if e = q.QueryRowContext(ctx, "SELECT state FROM stages WHERE job_id=? AND kind='reduce'", j.ID).Scan(&reduceStage); e != nil {
+			return e
+		}
+		if mapStage != "SUCCEEDED" {
+			mapCount := 0
 			for _, c := range children {
-				if c.stage != "map" || c.state != "SUCCEEDED" || !c.released {
+				if c.stage != "map" {
+					continue
+				}
+				mapCount++
+				if c.state != "SUCCEEDED" || !c.released {
 					return nil
 				}
 			}
+			if mapCount != len(j.frozen.Spec.Map.Partitions) {
+				return fmt.Errorf("map partition set mismatch")
+			}
 			return s.createReduce(ctx, q, j, children)
 		}
-		if j.State == "REDUCING" {
+		if reduceStage == "READY" || reduceStage == "RUNNING" || reduceStage == "SUCCEEDED" {
 			for _, c := range children {
 				if c.stage == "reduce" && c.state == "SUCCEEDED" && c.released {
 					return s.finishJob(ctx, q, j, children, "SUCCEEDED")
@@ -617,8 +629,16 @@ func (s *Server) createReduce(ctx context.Context, q store.Query, j *Job, childr
 		return jobState(ctx, q, j, "STOPPING", "INPUT_LIMIT", "INPUT_LIMIT")
 	}
 	digest := job.Hash(raw)
-	if _, e := q.ExecContext(ctx, "UPDATE jobs SET manifest_json=?,manifest_hash=? WHERE id=? AND state='MAPPING'", raw, digest, j.ID); e != nil {
+	res, e := q.ExecContext(ctx, "UPDATE jobs SET manifest_json=?,manifest_hash=? WHERE id=? AND manifest_hash=''", raw, digest, j.ID)
+	if e != nil {
 		return e
+	}
+	n, e := res.RowsAffected()
+	if e != nil {
+		return e
+	}
+	if n != 1 {
+		return fmt.Errorf("reduce barrier already committed")
 	}
 	if e := setStageState(ctx, q, j.ID+":map", "SUCCEEDED"); e != nil {
 		return e
