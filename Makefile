@@ -1,7 +1,7 @@
 GO ?= go
-VERSION ?= 0.3.3
+VERSION ?= 0.3.4
 
-.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow capacity capacity-check release-package generate
+.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-long-run-flow capacity capacity-check release-package generate
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w -X main.version=$(VERSION)' -o bin/computecloud ./cmd/computecloud
 test:
@@ -20,6 +20,8 @@ ci-artifact-flow:
 	python3 scripts/ci_artifact_flow.py --output dist/ci-artifact-flow/report.json
 ci-workspace-flow:
 	python3 scripts/ci_workspace_flow.py --output dist/ci-workspace-flow/report.json
+ci-long-run-flow:
+	python3 scripts/ci_long_run_flow.py --output dist/ci-long-run-flow/report.json
 capacity: build
 	python3 scripts/capacity.py --binary bin/computecloud
 capacity-check: build
