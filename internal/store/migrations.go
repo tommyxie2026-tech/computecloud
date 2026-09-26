@@ -82,6 +82,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 4
 	}
+	if schema == ServerSchema && version < 5 {
+		if _, err = tx.Exec(serverV5); err != nil {
+			return err
+		}
+		version = 5
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -300,3 +306,7 @@ UPDATE artifacts
 SET state = 'ORPHANED'
 WHERE state='STAGED' AND attempt IN (SELECT id FROM attempts WHERE released=1);
 `
+
+
+const serverV5 = `ALTER TABLE tasks ADD COLUMN retry_after INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX tasks_retry_queue ON tasks(state,retry_after,priority DESC,created);`
