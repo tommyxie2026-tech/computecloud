@@ -150,20 +150,67 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		}
 		args = append(args, "-")
 	}
-	cwd, e := workspace.Prepare(ctx, filepath.Join(w.cfg.DataDir, "workspaces"), a.AttemptId, w.cfg.Repositories[a.Spec.Workspace.RepositoryRef], a.Spec.Workspace.BaseCommit)
+	cwd, e := w.prepareWorkspace(ctx, a)
 	if e != nil {
+		code := "WORKSPACE_ERROR"
+		if errors.Is(e, workspace.ErrQuotaExceeded) {
+			code = "WORKSPACE_QUOTA_EXCEEDED"
+		}
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: e.Error()})
+		return
+	}
+	if e = w.markWorkspaceInUse(ctx, a); e != nil {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "WORKSPACE_ERROR", ErrorMessage: e.Error()})
 		return
 	}
-	jobRun, e := w.prepareJob(ctx, a, cwd)
+
+	execCtx, execCancel := context.WithCancel(ctx)
+	var quotaMu sync.Mutex
+	var quotaErr error
+	quotaDone := make(chan struct{})
+	go func() {
+		defer close(quotaDone)
+		if qe, ok := <-workspace.WatchQuota(execCtx, cwd, w.cfg.WorkspaceMaxBytes, 2*time.Second); ok {
+			quotaMu.Lock()
+			quotaErr = qe
+			quotaMu.Unlock()
+			execCancel()
+		}
+	}()
+	var quotaOnce sync.Once
+	var finalQuotaErr error
+	stopQuota := func() error {
+		quotaOnce.Do(func() {
+			execCancel()
+			<-quotaDone
+			quotaMu.Lock()
+			finalQuotaErr = quotaErr
+			quotaMu.Unlock()
+			if finalQuotaErr == nil {
+				_, finalQuotaErr = workspace.CheckQuota(cwd, w.cfg.WorkspaceMaxBytes)
+			}
+		})
+		return finalQuotaErr
+	}
+	defer stopQuota()
+
+	jobRun, e := w.prepareJob(execCtx, a, cwd)
 	if e != nil {
-		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: jobInputCode(e), ErrorMessage: e.Error()})
+		if qe := stopQuota(); qe != nil {
+			code := "WORKSPACE_ERROR"
+			if errors.Is(qe, workspace.ErrQuotaExceeded) {
+				code = "WORKSPACE_QUOTA_EXCEEDED"
+			}
+			complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: qe.Error()})
+		} else {
+			complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: jobInputCode(e), ErrorMessage: e.Error()})
+		}
 		return
 	}
 	parser := &adapter.Parser{Profile: a.Spec.RuntimeProfile, Emit: func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) }}
 	lines := &adapter.Lines{Limit: 4 << 20, OnLine: parser.Line, OnError: cancel}
 	stderr := &capped{limit: 1 << 20}
-	run := process.Run(ctx, r.Executable, args, env, cwd, strings.NewReader(jobRun.prompt), lines, stderr, time.Duration(w.cfg.StopGraceMS)*time.Millisecond, func(pid int, id string) error {
+	run := process.Run(execCtx, r.Executable, args, env, cwd, strings.NewReader(jobRun.prompt), lines, stderr, time.Duration(w.cfg.StopGraceMS)*time.Millisecond, func(pid int, id string) error {
 		if _, e := w.db.SQL.ExecContext(persistCtx, "UPDATE runs SET state='RUNNING',pid=?,start_id=? WHERE id=?", pid, id, a.AttemptId); e != nil {
 			return e
 		}
@@ -212,7 +259,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 			break
 		}
 		// Verification uses the trusted operator command, without credential injection.
-		vr := process.Run(ctx, cmd[0], cmd[1:], verificationEnv(), cwd, nil, log, log, time.Duration(w.cfg.StopGraceMS)*time.Millisecond, func(pid int, id string) error {
+		vr := process.Run(execCtx, cmd[0], cmd[1:], verificationEnv(), cwd, nil, log, log, time.Duration(w.cfg.StopGraceMS)*time.Millisecond, func(pid int, id string) error {
 			_, e := w.db.SQL.ExecContext(persistCtx, "UPDATE runs SET state='RUNNING',pid=?,start_id=? WHERE id=?", pid, id, a.AttemptId)
 			return e
 		})
@@ -224,7 +271,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		}
 		run.Cleanup = run.Cleanup && vr.Cleanup
 	}
-	diffCtx, diffCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	diffCtx, diffCancel := context.WithTimeout(execCtx, 30*time.Second)
 	diff, diffErr := workspace.Diff(diffCtx, cwd, a.Spec.Workspace.BaseCommit)
 	diffCancel()
 	if diffErr != nil {
@@ -234,7 +281,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 	}
 	files := map[string][]byte{}
 	if success {
-		extra, je := finishJobOutput(ctx, a, cwd, string(redact([]byte(out.Result), secrets)), diff, jobRun, verification)
+		extra, je := finishJobOutput(execCtx, a, cwd, string(redact([]byte(out.Result), secrets)), diff, jobRun, verification)
 		if je != nil {
 			success = false
 			code = "JOB_OUTPUT_INVALID"
@@ -249,6 +296,14 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		success = false
 		code = "SENSITIVE_PATCH"
 		msg = "patch contained injected credential"
+	}
+	if qe := stopQuota(); qe != nil {
+		success = false
+		code = "WORKSPACE_ERROR"
+		if errors.Is(qe, workspace.ErrQuotaExceeded) {
+			code = "WORKSPACE_QUOTA_EXCEEDED"
+		}
+		msg = qe.Error()
 	}
 	report := config.JSON(map[string]any{"task_id": a.TaskId, "attempt_id": a.AttemptId, "base_commit": a.Spec.Workspace.BaseCommit, "model": a.Spec.Model, "runtime_version": r.Version, "template_digest": a.GetJob().GetTemplateDigest(), "native_final": out.Final, "native_success": out.Success, "exit_code": run.ExitCode, "cleanup_confirmed": run.Cleanup, "verification": verification, "result": string(redact([]byte(out.Result), secrets)), "stderr_truncated": stderr.truncated, "manifest_sha256": a.GetJob().GetInputManifestSha256()})
 	files["report.json"] = report
