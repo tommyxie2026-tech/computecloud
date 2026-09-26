@@ -99,6 +99,15 @@ func (w *Worker) completion(ctx context.Context, a *pb.Assignment, c *pb.Complet
 			c.ErrorMessage = "workspace lifecycle persistence failed"
 		}
 	}
+	if c.CleanupConfirmed {
+		if e := w.cleanupAttemptInputs(a.AttemptId); e != nil {
+			// Input bundles are attempt-scoped and never reused. Keep the
+			// completion deliverable, persist the cleanup error on the retained
+			// workspace, and let lifecycle reconciliation retry it later.
+			_, _ = w.db.SQL.ExecContext(ctx, "UPDATE workspaces SET cleanup_error=?,updated=? WHERE attempt=? AND state='RETAINED'",
+				"input cleanup: "+e.Error(), store.Now(), a.AttemptId)
+		}
+	}
 	return w.db.Tx(ctx, func(q store.Query) error {
 		if e := q.QueryRowContext(ctx, "SELECT seq FROM runs WHERE id=?", a.AttemptId).Scan(&c.FinalWorkerSeq); e != nil {
 			return e
