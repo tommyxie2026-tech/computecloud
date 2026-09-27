@@ -3,15 +3,13 @@ package worker
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
-	"os/exec"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
+	"github.com/tommyxie2026-tech/computecloud/internal/adapter"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
@@ -77,22 +75,15 @@ func (w *Worker) probe(ctx context.Context) error {
 	h := &pb.WorkerHello{WorkerId: w.cfg.ID, Epoch: store.ID(), Slots: int32(w.cfg.Slots)}
 	for _, profile := range keys(w.cfg.Runtimes) {
 		r := w.cfg.Runtimes[profile]
-		if profile != "codex_exec" && profile != "claude_print" {
-			return fmt.Errorf("unsupported profile %s", profile)
+		provider, ok := adapter.Lookup(profile)
+		if !ok {
+			return errors.New("unsupported runtime profile: " + profile)
 		}
 		if r.Version == "" || len(r.Models) == 0 || len(r.Credentials) == 0 {
-			return fmt.Errorf("runtime %s needs pinned version, models and credentials", profile)
+			return errors.New("runtime needs pinned version, models and credentials: " + profile)
 		}
-		probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		cmd := exec.CommandContext(probeCtx, r.Executable, "--version")
-		cmd.WaitDelay = time.Second
-		b, e := cmd.Output()
-		cancel()
-		if e != nil {
-			return fmt.Errorf("probe %s: %w", profile, e)
-		}
-		if strings.TrimSpace(string(b)) != r.Version {
-			return fmt.Errorf("runtime %s version mismatch: configured %q, observed %q", profile, r.Version, strings.TrimSpace(string(b)))
+		if e := provider.Probe(ctx, r); e != nil {
+			return errors.New("probe " + profile + ": " + e.Error())
 		}
 		digests := map[string]string{}
 		for _, tmpl := range config.Templates(w.cfg) {
@@ -100,11 +91,17 @@ func (w *Worker) probe(ctx context.Context) error {
 				digests[tmpl.Key()] = tmpl.Digest
 			}
 		}
-		caps := []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1"}
-		if profile == "codex_exec" {
-			caps = append(caps, "gateway_inference_v1")
-		}
-		h.Runtimes = append(h.Runtimes, &pb.Runtime{Profile: profile, Version: r.Version, Models: r.Models, Credentials: r.Credentials, Capabilities: caps, Repositories: keys(w.cfg.Repositories), Policies: keys(w.cfg.Policies), Verifiers: keys(w.cfg.Verifiers), TemplateDigests: digests})
+		h.Runtimes = append(h.Runtimes, &pb.Runtime{
+			Profile: profile,
+			Version: r.Version,
+			Models: r.Models,
+			Credentials: r.Credentials,
+			Capabilities: provider.Capabilities().Advertised(),
+			Repositories: keys(w.cfg.Repositories),
+			Policies: keys(w.cfg.Policies),
+			Verifiers: keys(w.cfg.Verifiers),
+			TemplateDigests: digests,
+		})
 	}
 	w.hello = h
 	return nil
