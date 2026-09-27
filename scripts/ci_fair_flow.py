@@ -36,6 +36,7 @@ def main():
         "TestFairSchedulerDoesNotBypassRetryAfter",
         "TestQueueBackpressurePreservesIdempotentReplay",
         "TestSpecificConcurrencyBlockers",
+        "TestSpecificReadinessAndCapabilityBlockers",
         "TestJobFairnessTemplateGateDeadlineAndStorageFailure",
     ]
     pattern = "^(" + "|".join(tests) + ")$"
@@ -56,6 +57,7 @@ def main():
             "queue_backpressure": True,
             "idempotent_replay_under_backpressure": True,
             "specific_capacity_blockers": True,
+            "readiness_and_capability_blockers": True,
             "legacy_job_fairness_regression": True,
         },
         "tests": tests,
