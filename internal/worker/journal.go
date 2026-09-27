@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
+	"github.com/tommyxie2026-tech/computecloud/internal/adapter"
 	"github.com/tommyxie2026-tech/computecloud/internal/process"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 )
@@ -121,19 +122,19 @@ func (w *Worker) failUnstarted(ctx context.Context, a *pb.Assignment, code, msg 
 	return w.completion(ctx, a, &pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: msg})
 }
 func (w *Worker) recover(ctx context.Context) error {
-	rows, e := w.db.SQL.QueryContext(ctx, "SELECT assignment,state,pid,start_id,completion FROM runs WHERE completed=0")
+	rows, e := w.db.SQL.QueryContext(ctx, "SELECT assignment,state,pid,start_id,completion,runtime_provider,runtime_ref FROM runs WHERE completed=0")
 	if e != nil {
 		return e
 	}
 	type record struct {
-		b, completion []byte
-		state, id     string
-		pid           int
+		b, completion, runtimeRef []byte
+		state, id, runtimeProvider string
+		pid int
 	}
 	var all []record
 	for rows.Next() {
 		var r record
-		if e = rows.Scan(&r.b, &r.state, &r.pid, &r.id, &r.completion); e != nil {
+		if e = rows.Scan(&r.b, &r.state, &r.pid, &r.id, &r.completion, &r.runtimeProvider, &r.runtimeRef); e != nil {
 			break
 		}
 		all = append(all, r)
@@ -155,13 +156,36 @@ func (w *Worker) recover(ctx context.Context) error {
 			return e
 		}
 		clean := r.state == "ACCEPTED"
-		if r.pid > 1 {
+		if len(r.runtimeRef) > 0 {
+			clean = false
+			ref, refErr := decodeRuntimeRef(r.runtimeProvider, r.runtimeRef)
+			provider, providerOK := adapter.Lookup(r.runtimeProvider)
+			runtimeCfg, runtimeOK := w.cfg.Runtimes[r.runtimeProvider]
+			state := adapter.RuntimeUnknown
+			cleanup := adapter.CleanupUnknown
+			if refErr == nil && providerOK && runtimeOK && a.Spec != nil && a.Spec.RuntimeProfile == r.runtimeProvider {
+				inspection, inspectErr := provider.Inspect(ctx, runtimeCfg, ref)
+				if inspectErr == nil {
+					state, cleanup = inspection.State, inspection.Cleanup
+					if inspection.State == adapter.RuntimeRunning {
+						stopped, stopErr := provider.Stop(ctx, runtimeCfg, ref, time.Duration(w.cfg.StopGraceMS)*time.Millisecond)
+						if stopErr == nil {
+							state, cleanup = stopped.State, stopped.Cleanup
+						}
+					}
+				}
+			}
+			clean = runtimeCleanupConfirmed(cleanup)
+			if _, e = w.db.SQL.ExecContext(ctx, "UPDATE runs SET runtime_state=?,runtime_cleanup=? WHERE id=?", string(state), string(cleanup), a.AttemptId); e != nil {
+				return e
+			}
+		} else if r.pid > 1 {
+			// Legacy v0.4.0/v0.3.x local-process run without a durable Runtime ref.
 			clean = process.Stop(r.pid, r.id, time.Duration(w.cfg.StopGraceMS)*time.Millisecond)
 		} else if r.state == "STARTING" && w.workspacePreSpawnSafe(ctx, a.AttemptId) {
 			// PREPARING/READY is persisted before IN_USE, and IN_USE is
-			// persisted before any Runtime/Verifier spawn. This closes the
-			// historical STARTING+pid=0 ambiguity when the workspace itself
-			// proves that no execution process could have started.
+			// persisted before any Runtime spawn. This closes the historical
+			// STARTING+pid=0 ambiguity only when the workspace proves pre-spawn.
 			clean = true
 		}
 		c := &pb.CompleteRequest{CleanupConfirmed: clean, ErrorCode: "WORKER_RESTARTED", ErrorMessage: "execution interrupted by worker restart"}
