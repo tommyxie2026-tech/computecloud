@@ -8,8 +8,8 @@
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
-- 当前实现依据：[v0.4.0 Runtime API v2](v0.4.0-plan.md)、[ADR-012](../adr/0012-runtime-api-v2.md)
-- 当前实施跟踪：v0.4.0 Runtime API v2 Foundation 已完成；下一小版本继续完善 transport-neutral Start / Inspect / Stop 与 API-backed Runtime 适配；v0.3.x Reliability Kernel 已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实现依据：[v0.4.1 Runtime Execution](v0.4.1-plan.md)、[ADR-013](../adr/0013-runtime-execution.md)
+- 当前实施跟踪：[v0.4.1 Transport-neutral Runtime Execution](v0.4.1-plan.md) / [Issue #27](https://github.com/tommyxie2026-tech/computecloud/issues/27)；v0.4.0 Provider Registry Foundation 已完成；v0.3.x Reliability Kernel 已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -528,6 +528,24 @@ v0.4.0 首版先完成 Registry/Provider foundation，并保持现有 wire schem
 - 独立 CI runtime-contract-flow 作为 package Gate。
 
 Start/Inspect/Stop 的 API-backed/remote Runtime 实现继续在 v0.4.x 后续小版本完善。
+
+#### v0.4.1 Transport-neutral Runtime Execution — 当前功能主线
+
+把 Provider Registry 扩展到真实执行生命周期：
+
+- Provider `Version / Transport / Prepare / Start / Inspect / Stop`；
+- transport-neutral `ExecutionRef`；
+- Runtime state：STARTING / RUNNING / EXITED / UNKNOWN；
+- Cleanup state：PENDING / CONFIRMED / UNKNOWN；
+- Worker schema v4 持久 runtime provider/transport/ref/state/cleanup；
+- Codex/Claude local CLI 通过 Provider bridge 执行；
+- Worker restart 通过 Provider Inspect/Stop 做 recovery；
+- remote/API-backed fixture 不依赖本地 PID；
+- UNKNOWN remote execution fail closed；
+- 独立 `runtime-execution-flow`；
+- package gate 加入 runtime-execution-flow。
+
+v0.4.1 不绑定具体商业 Agent API，也不提前实现 Session resume、Approval、Tool framework、EnvironmentProvider 或 Prepared Workspace。
 
 RuntimeCapability 示例：
 
@@ -1242,18 +1260,19 @@ L4 Real Runtime / Multi-host
 6. ADR-008：客户端控制面采用薄客户端与服务端事实源；
 7. ADR-009：Workspace Lifecycle；
 8. ADR-010：Long-running Job Reliability；
-9. ADR-011：Fair Scheduling。
+9. ADR-011：Fair Scheduling；
+10. ADR-012：Runtime API v2 Provider Registry；
+11. ADR-013：Transport-neutral Runtime Execution。
 
 后续建议：
 
-10. Runtime API v2；
-11. RuntimeCapability / ToolCapability；
-12. EnvironmentProvider / Prepared Workspace；
-13. Agent-aware Scheduling；
-14. Private Worker / Trust Domain；
-15. Multi-tenant / RBAC；
-16. History / GC；
-17. HA Trigger / State Backend（仅需要时）。
+12. RuntimeCapability / ToolCapability；
+13. EnvironmentProvider / Prepared Workspace；
+14. Agent-aware Scheduling；
+15. Private Worker / Trust Domain；
+16. Multi-tenant / RBAC；
+17. History / GC；
+18. HA Trigger / State Backend（仅需要时）。
 
 ## 16. 方向判断规则
 
