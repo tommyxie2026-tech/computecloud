@@ -39,6 +39,7 @@ type Execution struct {
 	AcceptanceProfile string `json:"acceptance_profile"`
 	ReplaySafe        bool     `json:"replay_safe,omitempty"`
 	Tools             []string `json:"tools,omitempty"`
+	Environment       string   `json:"environment,omitempty"`
 }
 type Partition struct {
 	Key        string    `json:"key"`
@@ -95,7 +96,204 @@ type ManifestItem struct {
 }
 
 var keyRE = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
-var toolNameRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
+var toolNameRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}// Package job defines the transport-independent, explicitly partitioned Job contract.
+package job
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"github.com/google/jsonschema-go/jsonschema"
+	jobv1 "github.com/tommyxie2026-tech/computecloud/api/job/v1"
+	"path"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+
+	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
+	"github.com/tommyxie2026-tech/computecloud/internal/jsonutil"
+)
+
+const MaxRequestBytes = 256 << 10
+const MaxManifestBytes = 32 << 10
+const MaxInputBytes = 128 << 20
+const TemplateVersion = "computecloud-job-io-v1"
+
+type Input struct {
+	Text string `json:"text"`
+}
+type Workspace struct {
+	RepositoryRef string `json:"repository_ref"`
+	BaseCommit    string `json:"base_commit"`
+}
+type Execution struct {
+	Engine            string `json:"engine"`
+	RuntimeProfile    string `json:"runtime_profile"`
+	Model             string `json:"model"`
+	CredentialRef     string `json:"credential_ref"`
+	PolicyRef         string `json:"policy_ref"`
+	AcceptanceProfile string `json:"acceptance_profile"`
+	ReplaySafe        bool     `json:"replay_safe,omitempty"`
+	Tools             []string `json:"tools,omitempty"`
+	Environment       string   `json:"environment,omitempty"`
+}
+type Partition struct {
+	Key        string    `json:"key"`
+	ScopePaths []string  `json:"scope_paths"`
+	Input      Input     `json:"input"`
+	Execution  Execution `json:"execution"`
+}
+type Map struct {
+	Parallelism int         `json:"parallelism"`
+	Partitions  []Partition `json:"partitions"`
+}
+type Reduce struct {
+	Strategy  string    `json:"strategy"`
+	Input     Input     `json:"input"`
+	Execution Execution `json:"execution"`
+}
+type Limits struct {
+	TimeoutSeconds     int64 `json:"timeout_seconds"`
+	MaxAttemptsPerTask int   `json:"max_attempts_per_task"`
+	Priority           int32 `json:"priority,omitempty"`
+}
+type Spec struct {
+	SchemaVersion string     `json:"schema_version"`
+	ProjectID     string     `json:"project_id"`
+	Mode          string     `json:"mode"`
+	Workspace     Workspace  `json:"workspace"`
+	Input         Input      `json:"input"`
+	Execution     *Execution `json:"execution,omitempty"`
+	Map           *Map       `json:"map,omitempty"`
+	Reduce        *Reduce    `json:"reduce,omitempty"`
+	Limits        Limits     `json:"limits"`
+}
+type Frozen struct {
+	Spec         Spec              `json:"spec"`
+	Digests      map[string]string `json:"template_digests"`
+	Routes       map[string]string `json:"gateway_routes,omitempty"`
+	RouteDigests map[string]string `json:"gateway_route_digests,omitempty"`
+}
+type Manifest struct {
+	Version    string         `json:"version"`
+	BaseCommit string         `json:"base_commit"`
+	Items      []ManifestItem `json:"items"`
+}
+type ManifestItem struct {
+	PartitionKey   string   `json:"partition_key"`
+	TaskID         string   `json:"task_id"`
+	AttemptID      string   `json:"attempt_id"`
+	Generation     int64    `json:"generation"`
+	TemplateDigest string   `json:"template_digest"`
+	ScopePaths     []string `json:"scope_paths"`
+	ArtifactID     string   `json:"artifact_id"`
+	SHA256         string   `json:"sha256"`
+	Size           int64    `json:"size"`
+}
+
+var keyRE = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+)
+var environmentNameRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}// Package job defines the transport-independent, explicitly partitioned Job contract.
+package job
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"github.com/google/jsonschema-go/jsonschema"
+	jobv1 "github.com/tommyxie2026-tech/computecloud/api/job/v1"
+	"path"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+
+	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
+	"github.com/tommyxie2026-tech/computecloud/internal/jsonutil"
+)
+
+const MaxRequestBytes = 256 << 10
+const MaxManifestBytes = 32 << 10
+const MaxInputBytes = 128 << 20
+const TemplateVersion = "computecloud-job-io-v1"
+
+type Input struct {
+	Text string `json:"text"`
+}
+type Workspace struct {
+	RepositoryRef string `json:"repository_ref"`
+	BaseCommit    string `json:"base_commit"`
+}
+type Execution struct {
+	Engine            string `json:"engine"`
+	RuntimeProfile    string `json:"runtime_profile"`
+	Model             string `json:"model"`
+	CredentialRef     string `json:"credential_ref"`
+	PolicyRef         string `json:"policy_ref"`
+	AcceptanceProfile string `json:"acceptance_profile"`
+	ReplaySafe        bool     `json:"replay_safe,omitempty"`
+	Tools             []string `json:"tools,omitempty"`
+	Environment       string   `json:"environment,omitempty"`
+}
+type Partition struct {
+	Key        string    `json:"key"`
+	ScopePaths []string  `json:"scope_paths"`
+	Input      Input     `json:"input"`
+	Execution  Execution `json:"execution"`
+}
+type Map struct {
+	Parallelism int         `json:"parallelism"`
+	Partitions  []Partition `json:"partitions"`
+}
+type Reduce struct {
+	Strategy  string    `json:"strategy"`
+	Input     Input     `json:"input"`
+	Execution Execution `json:"execution"`
+}
+type Limits struct {
+	TimeoutSeconds     int64 `json:"timeout_seconds"`
+	MaxAttemptsPerTask int   `json:"max_attempts_per_task"`
+	Priority           int32 `json:"priority,omitempty"`
+}
+type Spec struct {
+	SchemaVersion string     `json:"schema_version"`
+	ProjectID     string     `json:"project_id"`
+	Mode          string     `json:"mode"`
+	Workspace     Workspace  `json:"workspace"`
+	Input         Input      `json:"input"`
+	Execution     *Execution `json:"execution,omitempty"`
+	Map           *Map       `json:"map,omitempty"`
+	Reduce        *Reduce    `json:"reduce,omitempty"`
+	Limits        Limits     `json:"limits"`
+}
+type Frozen struct {
+	Spec         Spec              `json:"spec"`
+	Digests      map[string]string `json:"template_digests"`
+	Routes       map[string]string `json:"gateway_routes,omitempty"`
+	RouteDigests map[string]string `json:"gateway_route_digests,omitempty"`
+}
+type Manifest struct {
+	Version    string         `json:"version"`
+	BaseCommit string         `json:"base_commit"`
+	Items      []ManifestItem `json:"items"`
+}
+type ManifestItem struct {
+	PartitionKey   string   `json:"partition_key"`
+	TaskID         string   `json:"task_id"`
+	AttemptID      string   `json:"attempt_id"`
+	Generation     int64    `json:"generation"`
+	TemplateDigest string   `json:"template_digest"`
+	ScopePaths     []string `json:"scope_paths"`
+	ArtifactID     string   `json:"artifact_id"`
+	SHA256         string   `json:"sha256"`
+	Size           int64    `json:"size"`
+}
+
+var keyRE = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+)
 var commitRE = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 var hashRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
@@ -163,7 +361,17 @@ func (e Execution) Validate() error {
 		}
 		seen[name] = true
 	}
+	if e.Environment != "" && !environmentNameRE.MatchString(e.Environment) {
+		return fmt.Errorf("invalid environment: %s", e.Environment)
+	}
 	return nil
+}
+
+func (e Execution) EnvironmentName() string {
+	if e.Environment == "" {
+		return "process"
+	}
+	return e.Environment
 }
 func (s *Spec) Validate(maxParts, maxParallel int) error {
 	if s.SchemaVersion != "v0.2" || !Ref(s.ProjectID) || !Ref(s.Workspace.RepositoryRef) || !commitRE.MatchString(s.Workspace.BaseCommit) {
@@ -308,5 +516,6 @@ func (e Execution) Task(s Spec, key, text string) *pb.TaskSpec {
 	for _, name := range tools {
 		required = append(required, "tool:"+name)
 	}
+	required = append(required, "environment:"+e.EnvironmentName())
 	return &pb.TaskSpec{ProjectId: s.ProjectID, IdempotencyKey: key, Engine: e.Engine, RuntimeProfile: e.RuntimeProfile, Model: e.Model, CredentialRef: e.CredentialRef, Workspace: &pb.Workspace{RepositoryRef: s.Workspace.RepositoryRef, BaseCommit: s.Workspace.BaseCommit, IsolationProfile: "trusted-worktree-process"}, Input: &pb.Input{Text: text}, PolicyRef: e.PolicyRef, AcceptanceProfile: e.AcceptanceProfile, TimeoutSeconds: s.Limits.TimeoutSeconds, Priority: s.Limits.Priority, RequiredCapabilities: required}
 }
