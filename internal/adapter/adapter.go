@@ -69,9 +69,15 @@ func (c CapabilitySet) Advertised() []string {
 
 type Provider interface {
 	Profile() string
+	Version(config.Runtime) string
+	Transport() string
 	Probe(context.Context, config.Runtime) error
 	Args(*pb.TaskSpec, config.Policy) ([]string, error)
 	Parser(func(string, []byte) error) StreamParser
+	Prepare(PrepareRequest) (PreparedExecution, error)
+	Start(context.Context, PreparedExecution, func(ExecutionRef) error) StartResult
+	Inspect(context.Context, config.Runtime, ExecutionRef) (Inspection, error)
+	Stop(context.Context, config.Runtime, ExecutionRef, time.Duration) (StopResult, error)
 	Capabilities() CapabilitySet
 	SupportsGateway() bool
 }
