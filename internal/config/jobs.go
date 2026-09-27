@@ -37,6 +37,9 @@ type Jobs struct {
 	MaxTotalRuntimeSeconds   int64         `yaml:"max_total_runtime_seconds"`
 	MaxDeadlineExtendSeconds int64         `yaml:"max_deadline_extend_seconds"`
 	MaxTaskEvents            int           `yaml:"max_task_events"`
+	SchedulerAgingSeconds    int64         `yaml:"scheduler_aging_seconds"`
+	MaxQueuedTasks           int           `yaml:"max_queued_tasks"`
+	MaxQueuedTasksPerProject int           `yaml:"max_queued_tasks_per_project"`
 	Templates                []JobTemplate `yaml:"templates"`
 }
 type ModelRoute struct {
@@ -90,6 +93,15 @@ func (c *Server) DefaultV02() {
 	if j.MaxTaskEvents == 0 {
 		j.MaxTaskEvents = 2000
 	}
+	if j.SchedulerAgingSeconds == 0 {
+		j.SchedulerAgingSeconds = 300
+	}
+	if j.MaxQueuedTasks == 0 {
+		j.MaxQueuedTasks = 4096
+	}
+	if j.MaxQueuedTasksPerProject == 0 {
+		j.MaxQueuedTasksPerProject = 1024
+	}
 	if c.MCP.Path == "" {
 		c.MCP.Path = "/mcp"
 	}
@@ -122,7 +134,7 @@ func (c *Server) DefaultV02() {
 func (c Server) ValidateV02() error {
 	j := c.Jobs
 	if j.Enabled {
-		if j.MaxPartitions < 1 || j.MaxPartitions > 32 || j.MaxParallelism < 1 || j.MaxParallelism > 8 || j.MaxRequestBytes < 1 || j.MaxRequestBytes > job.MaxRequestBytes || j.MaxManifestBytes < 1 || j.MaxManifestBytes > job.MaxManifestBytes || j.MaxReduceInputBytes < 1 || j.MaxReduceInputBytes > job.MaxInputBytes || j.MaxAttemptsPerTask != 1 || j.MaxTotalRuntimeSeconds < 86400 || j.MaxTotalRuntimeSeconds > 30*24*60*60 || j.MaxDeadlineExtendSeconds < 1 || j.MaxDeadlineExtendSeconds > 24*60*60 || j.MaxDeadlineExtendSeconds > j.MaxTotalRuntimeSeconds || j.MaxTaskEvents < 100 || j.MaxTaskEvents > 100000 {
+		if j.MaxPartitions < 1 || j.MaxPartitions > 32 || j.MaxParallelism < 1 || j.MaxParallelism > 8 || j.MaxRequestBytes < 1 || j.MaxRequestBytes > job.MaxRequestBytes || j.MaxManifestBytes < 1 || j.MaxManifestBytes > job.MaxManifestBytes || j.MaxReduceInputBytes < 1 || j.MaxReduceInputBytes > job.MaxInputBytes || j.MaxAttemptsPerTask != 1 || j.MaxTotalRuntimeSeconds < 86400 || j.MaxTotalRuntimeSeconds > 30*24*60*60 || j.MaxDeadlineExtendSeconds < 1 || j.MaxDeadlineExtendSeconds > 24*60*60 || j.MaxDeadlineExtendSeconds > j.MaxTotalRuntimeSeconds || j.MaxTaskEvents < 100 || j.MaxTaskEvents > 100000 || j.SchedulerAgingSeconds < 1 || j.SchedulerAgingSeconds > 86400 || j.MaxQueuedTasks < 1 || j.MaxQueuedTasks > 100000 || j.MaxQueuedTasksPerProject < 1 || j.MaxQueuedTasksPerProject > j.MaxQueuedTasks {
 			return fmt.Errorf("invalid job limits")
 		}
 		seen := map[string]bool{}
