@@ -172,7 +172,7 @@ func TestGatewayForwardingUsageFailuresAndBinding(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	peer := &session{hello: &pb.WorkerHello{WorkerId: "w", Epoch: "epoch", Slots: 1, Runtimes: []*pb.Runtime{{Profile: "codex_exec", Models: []string{"model-c"}, Credentials: []string{"account"}, Repositories: []string{"repo"}, Policies: []string{"review"}, Verifiers: []string{"check"}, Capabilities: []string{"event_stream", "cancel", "job_io_v1", "gateway_inference_v1"}, TemplateDigests: map[string]string{cfg.Jobs.Templates[0].Key(): cfg.Jobs.Templates[0].Digest}}}}, identity: cfg.Workers[0]}
+	peer := &session{hello: &pb.WorkerHello{WorkerId: "w", Epoch: "epoch", Slots: 1, Runtimes: []*pb.Runtime{{Profile: "codex_exec", Models: []string{"model-c"}, Credentials: []string{"account"}, Repositories: []string{"repo"}, Policies: []string{"review"}, Verifiers: []string{"check"}, Capabilities: []string{"event_stream", "cancel", "job_io_v1", "gateway_inference_v1", "environment:process"}, TemplateDigests: map[string]string{cfg.Jobs.Templates[0].Key(): cfg.Jobs.Templates[0].Digest}}}}, identity: cfg.Workers[0]}
 	if _, e = s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", "w", "epoch", encode(peer.hello), store.Now()); e != nil {
 		t.Fatal(e)
 	}
