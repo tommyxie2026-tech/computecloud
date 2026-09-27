@@ -6,8 +6,9 @@
 | [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性内核、Agent Runtime/Tool、Agent-aware Scheduler、治理与规模化 | 当前长期主路线 |
 | [Control 客户端控制面技术方案](design/client-control-plane.md) | Web/iOS/Android、API、事件同步、设备身份、E2EE、Push、CI 和验收 | C0 设计基线完成；按 C1–C5 实施 |
 | [Agent 客户端控制端方案调研](research/agent-control-client-landscape-2026.md) | Orca、Paseo、Happy、Soromi、Codex/Claude Remote 等比较 | 2026-09-26 快照；已形成 ADR-008 |
-| [v0.4.2 ToolCapability Foundation 实施计划](implementation/v0.4.2-plan.md) | 独立 Tool Registry、Job tool requirement、Policy gate 与 tool-contract-flow | 当前功能主线 |
+| [v0.4.2 ToolCapability Foundation 实施计划](implementation/v0.4.2-plan.md) | 独立 Tool Registry、Job tool requirement、Policy gate 与 tool-contract-flow | 已实现并合并 main |
 | [v0.4.2 ToolCapability 运行与扩展](implementation/v0.4.2-runbook.md) | Tool descriptor、allowed_tools、扩展规则与兼容边界 | v0.4.2 操作依据 |
+| [v0.4.2 ToolCapability 验证记录](validation/v0.4.2-results.md) | Tool registry、policy gate、namespaced requirements 与 tool-contract-flow CI 证据 | PR/main CI 与 package 全通过；Production Gate 仍待 #1 |
 | [ADR-014：ToolCapability](adr/0014-tool-capability.md) | Tool Registry、Runtime compatibility、Worker installation 与 Policy 分层 | Accepted |
 | [v0.4.1 Runtime Execution 实施计划](implementation/v0.4.1-plan.md) | Prepare/Start/Inspect/Stop、durable ExecutionRef、remote fixture 与 runtime-execution-flow | 已实现并合并 main |
 | [v0.4.1 Runtime Execution 运行与升级](implementation/v0.4.1-runbook.md) | Worker schema v4、Runtime ref/state/cleanup、restart recovery 与回退 | v0.4.1 操作依据 |
