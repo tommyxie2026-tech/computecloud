@@ -1,5 +1,16 @@
 # 版本记录
 
+## 未发布 — v0.3.5 Fair Scheduling
+
+- Scheduler 从固定 priority + 单 group cursor 演进为 `effective priority -> Project round-robin -> Job/group round-robin -> Task` 的有界公平队列。
+- 新增 priority aging：`effective=min(10, base+floor(queue_age/scheduler_aging_seconds))`；默认 300 秒提升 1 级，但不改变持久 priority。
+- `retry_after`、deadline 和硬 capability/concurrency 约束先于 aging，低优先级提升不会绕过安全边界。
+- 新增 `max_queued_tasks=4096` 与 `max_queued_tasks_per_project=1024` external admission backpressure；已接受请求的 idempotent replay 不受之后队列饱和影响。
+- Job admission 按初始 Task 数原子检查；已接受 Job 的 internal Reduce Stage 不被 external queue limit 阻断。
+- 容量 blocker 细分为 `JOB_CAPACITY_EXHAUSTED / PROJECT_CONCURRENCY_EXHAUSTED / CREDENTIAL_CONCURRENCY_EXHAUSTED / WORKER_CAPACITY_EXHAUSTED`，并保留 Runtime/template blocker。
+- 单次 Scheduler candidate group scan 上限 512；公平 cursor 只存在内存，Server restart 允许短期顺序重置而不影响 durable correctness。
+- 新增独立 GitHub Actions `fair-flow`；package 依赖 verify、task-flow、retry-flow、artifact-flow、workspace-flow、long-run-flow、fair-flow 七个 Gate。
+- v0.3.5 不引入 preemption、DRF、CPU/GPU placement、Workspace affinity 或 Agent-aware score；这些属于后续 Scheduler 演进。
 ## 未发布 — v0.3.4 Long-running Job Reliability（实现完成，待版本发布）
 
 - Server schema 升级到 v7：Attempt 增加 `last_renewed`，Task 增加 `event_floor_seq`，新增紧凑 `event_dedup` replay hash 索引。
