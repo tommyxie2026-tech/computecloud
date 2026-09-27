@@ -43,7 +43,7 @@ func TestV1UpgradeBackupAndDrainGate(t *testing.T) {
 		t.Fatal(e)
 	}
 	db.SQL.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 6 {
+	if v != 7 {
 		t.Fatalf("version %d", v)
 	}
 	var state, stage string
@@ -109,7 +109,7 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 	}
 	defer db.Close()
 	var v int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 6 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 7 {
 		t.Fatalf("version=%d err=%v", v, e)
 	}
 	// New schema must allow multiple historical attempts for one Task while
@@ -173,7 +173,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 6 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 7 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -368,5 +368,35 @@ func TestWorkerV3WorkspaceLifecycleSchema(t *testing.T) {
 	}
 	if _, e = db.SQL.Exec("UPDATE workspaces SET state='DELETED',deleted_at=3 WHERE attempt='a'"); e != nil {
 		t.Fatal(e)
+	}
+}
+
+
+func TestV7LongRunningSchema(t *testing.T) {
+	dir := t.TempDir()
+	db, e := Open(dir, ServerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+
+	if _, e = db.SQL.Exec("INSERT INTO tasks(id,owner,project,idem,hash,spec,state,created,updated,deadline) VALUES('long','o','p','long','h','{}','RUNNING',1,1,9999999999999)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until,released,last_renewed) VALUES('long-a','long','w','e',1,'tok',100,0,90)"); e != nil {
+		t.Fatal(e)
+	}
+	var renewed, floor int64
+	if e = db.SQL.QueryRow("SELECT last_renewed FROM attempts WHERE id='long-a'").Scan(&renewed); e != nil || renewed != 90 {
+		t.Fatalf("last_renewed=%d err=%v", renewed, e)
+	}
+	if e = db.SQL.QueryRow("SELECT event_floor_seq FROM tasks WHERE id='long'").Scan(&floor); e != nil || floor != 0 {
+		t.Fatalf("event_floor_seq=%d err=%v", floor, e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO event_dedup(attempt,worker_seq,hash) VALUES('long-a',1,'h1')"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO event_dedup(attempt,worker_seq,hash) VALUES('long-a',1,'h2')"); e == nil {
+		t.Fatal("duplicate worker event sequence accepted")
 	}
 }

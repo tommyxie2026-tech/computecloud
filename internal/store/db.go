@@ -53,7 +53,7 @@ func open(dir, schema string, migrate bool) (*DB, error) {
 	db.SetMaxIdleConns(1)
 	target := 1
 	if schema == ServerSchema {
-		target = 6
+		target = 7
 	}
 	if schema == WorkerSchema {
 		target = 3

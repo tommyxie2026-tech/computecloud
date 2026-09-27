@@ -36,7 +36,7 @@ func (s *Server) ReportEvents(ctx context.Context, r *pb.ReportRequest) (*pb.Ack
 			}
 			if ev.WorkerSeq <= through {
 				var hash string
-				if e = q.QueryRowContext(ctx, "SELECT hash FROM events WHERE attempt=? AND worker_seq=?", r.Attempt.AttemptId, ev.WorkerSeq).Scan(&hash); e != nil {
+				if e = q.QueryRowContext(ctx, "SELECT hash FROM event_dedup WHERE attempt=? AND worker_seq=?", r.Attempt.AttemptId, ev.WorkerSeq).Scan(&hash); e != nil {
 					return e
 				}
 				if hash != store.Hash(encode(ev)) {

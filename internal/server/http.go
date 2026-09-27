@@ -40,7 +40,7 @@ func httpError(w http.ResponseWriter, e error) {
 		code = 403
 	case codes.NotFound:
 		code = 404
-	case codes.AlreadyExists:
+	case codes.AlreadyExists, codes.Aborted:
 		code = 409
 	case codes.FailedPrecondition:
 		code = 400
@@ -135,6 +135,28 @@ func (s *Server) HTTPHandler() http.Handler {
 		}
 		jsonResponse(w, code, j)
 	})
+	mux.HandleFunc("POST /v1/jobs/{id}/deadline", func(w http.ResponseWriter, r *http.Request) {
+		b, e := readJSONBody(w, r, 4096)
+		if e != nil {
+			httpError(w, e)
+			return
+		}
+		var in ExtendDeadlineRequest
+		if e = jsonutil.Decode(b, &in); e != nil {
+			httpError(w, status.Error(codes.InvalidArgument, "invalid deadline extension JSON"))
+			return
+		}
+		j, e := s.ExtendJobDeadline(r.Context(), r.PathValue("id"), in)
+		if e != nil {
+			httpError(w, e)
+			return
+		}
+		code := 202
+		if j.Existing {
+			code = 200
+		}
+		jsonResponse(w, code, j)
+	})
 	mux.HandleFunc("GET /v1/jobs/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		limit, e := pageLimit(r, 100, 500)
 		if e != nil {
@@ -169,7 +191,7 @@ func (s *Server) HTTPHandler() http.Handler {
 			httpError(w, e)
 			return
 		}
-		jsonResponse(w, 200, map[string]any{"api_version": "v0.3", "jobs_enabled": s.cfg.Jobs.Enabled, "mcp_enabled": s.cfg.MCP.Enabled, "model_gateway_enabled": s.cfg.ModelGateway.Enabled, "job_modes": []string{"single", "map_reduce"}, "max_partitions": s.cfg.Jobs.MaxPartitions, "max_parallelism": s.cfg.Jobs.MaxParallelism, "recommended_parallelism": s.cfg.Jobs.RecommendedParallelism, "max_attempts_per_task": 3})
+		jsonResponse(w, 200, map[string]any{"api_version": "v0.3", "jobs_enabled": s.cfg.Jobs.Enabled, "mcp_enabled": s.cfg.MCP.Enabled, "model_gateway_enabled": s.cfg.ModelGateway.Enabled, "job_modes": []string{"single", "map_reduce"}, "max_partitions": s.cfg.Jobs.MaxPartitions, "max_parallelism": s.cfg.Jobs.MaxParallelism, "recommended_parallelism": s.cfg.Jobs.RecommendedParallelism, "max_attempts_per_task": 3, "max_total_runtime_seconds": s.cfg.Jobs.MaxTotalRuntimeSeconds, "max_deadline_extend_seconds": s.cfg.Jobs.MaxDeadlineExtendSeconds, "max_task_events": s.cfg.Jobs.MaxTaskEvents})
 	})
 	if s.cfg.MCP.Enabled {
 		mux.Handle("/mcp", s.mcpHandler())
@@ -270,7 +292,10 @@ func (s *Server) httpJobTasks(w http.ResponseWriter, r *http.Request) {
 		httpError(w, e)
 		return
 	}
-	rows, e := s.db.SQL.QueryContext(r.Context(), "SELECT id,state,stage,partition_key,attempt,worker,error_code,blocker FROM tasks WHERE job_id=? AND id>? ORDER BY id LIMIT ?", id, r.URL.Query().Get("after"), limit+1)
+	rows, e := s.db.SQL.QueryContext(r.Context(), `SELECT t.id,t.state,t.stage,t.partition_key,t.attempt,t.worker,t.error_code,t.blocker,
+		coalesce(a.last_renewed,0),coalesce(a.lease_until,0)
+		FROM tasks t LEFT JOIN attempts a ON a.id=t.attempt
+		WHERE t.job_id=? AND t.id>? ORDER BY t.id LIMIT ?`, id, r.URL.Query().Get("after"), limit+1)
 	if e != nil {
 		httpError(w, dbErr(e))
 		return
@@ -279,11 +304,12 @@ func (s *Server) httpJobTasks(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]string{}
 	for rows.Next() {
 		var id, state, stage, key, attempt, worker, code, blocker string
-		if e = rows.Scan(&id, &state, &stage, &key, &attempt, &worker, &code, &blocker); e != nil {
+		var lastRenewed, leaseUntil int64
+		if e = rows.Scan(&id, &state, &stage, &key, &attempt, &worker, &code, &blocker, &lastRenewed, &leaseUntil); e != nil {
 			httpError(w, dbErr(e))
 			return
 		}
-		items = append(items, map[string]string{"task_id": id, "state": state, "stage": stage, "partition_key": key, "attempt_id": attempt, "worker_id": worker, "error_code": code, "scheduling_blocker": blocker})
+		items = append(items, map[string]string{"task_id": id, "state": state, "stage": stage, "partition_key": key, "attempt_id": attempt, "worker_id": worker, "error_code": code, "scheduling_blocker": blocker, "last_renewed_ms": strconv.FormatInt(lastRenewed, 10), "lease_until_ms": strconv.FormatInt(leaseUntil, 10)})
 	}
 	if e = rows.Err(); e != nil {
 		httpError(w, dbErr(e))

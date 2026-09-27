@@ -33,8 +33,11 @@ type Jobs struct {
 	MaxRequestBytes        int64         `yaml:"max_request_bytes"`
 	MaxManifestBytes       int64         `yaml:"max_manifest_bytes"`
 	MaxReduceInputBytes    int64         `yaml:"max_reduce_input_bytes"`
-	MaxAttemptsPerTask     int           `yaml:"max_attempts_per_task"`
-	Templates              []JobTemplate `yaml:"templates"`
+	MaxAttemptsPerTask       int           `yaml:"max_attempts_per_task"`
+	MaxTotalRuntimeSeconds   int64         `yaml:"max_total_runtime_seconds"`
+	MaxDeadlineExtendSeconds int64         `yaml:"max_deadline_extend_seconds"`
+	MaxTaskEvents            int           `yaml:"max_task_events"`
+	Templates                []JobTemplate `yaml:"templates"`
 }
 type ModelRoute struct {
 	BaseURL       string   `yaml:"base_url"`
@@ -78,6 +81,15 @@ func (c *Server) DefaultV02() {
 	if j.MaxAttemptsPerTask == 0 {
 		j.MaxAttemptsPerTask = 1
 	}
+	if j.MaxTotalRuntimeSeconds == 0 {
+		j.MaxTotalRuntimeSeconds = 7 * 24 * 60 * 60
+	}
+	if j.MaxDeadlineExtendSeconds == 0 {
+		j.MaxDeadlineExtendSeconds = 24 * 60 * 60
+	}
+	if j.MaxTaskEvents == 0 {
+		j.MaxTaskEvents = 2000
+	}
 	if c.MCP.Path == "" {
 		c.MCP.Path = "/mcp"
 	}
@@ -110,7 +122,7 @@ func (c *Server) DefaultV02() {
 func (c Server) ValidateV02() error {
 	j := c.Jobs
 	if j.Enabled {
-		if j.MaxPartitions < 1 || j.MaxPartitions > 32 || j.MaxParallelism < 1 || j.MaxParallelism > 8 || j.MaxRequestBytes < 1 || j.MaxRequestBytes > job.MaxRequestBytes || j.MaxManifestBytes < 1 || j.MaxManifestBytes > job.MaxManifestBytes || j.MaxReduceInputBytes < 1 || j.MaxReduceInputBytes > job.MaxInputBytes || j.MaxAttemptsPerTask != 1 {
+		if j.MaxPartitions < 1 || j.MaxPartitions > 32 || j.MaxParallelism < 1 || j.MaxParallelism > 8 || j.MaxRequestBytes < 1 || j.MaxRequestBytes > job.MaxRequestBytes || j.MaxManifestBytes < 1 || j.MaxManifestBytes > job.MaxManifestBytes || j.MaxReduceInputBytes < 1 || j.MaxReduceInputBytes > job.MaxInputBytes || j.MaxAttemptsPerTask != 1 || j.MaxTotalRuntimeSeconds < 86400 || j.MaxTotalRuntimeSeconds > 30*24*60*60 || j.MaxDeadlineExtendSeconds < 1 || j.MaxDeadlineExtendSeconds > 24*60*60 || j.MaxDeadlineExtendSeconds > j.MaxTotalRuntimeSeconds || j.MaxTaskEvents < 100 || j.MaxTaskEvents > 100000 {
 			return fmt.Errorf("invalid job limits")
 		}
 		seen := map[string]bool{}
@@ -154,7 +166,7 @@ func (c Server) ValidateV02() error {
 	}
 	for _, id := range c.Users {
 		for _, scope := range id.Scopes {
-			if !Contains([]string{"jobs:submit", "jobs:read", "jobs:cancel", "models:invoke", "tasks:submit", "tasks:read", "tasks:cancel"}, scope) {
+			if !Contains([]string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:extend", "models:invoke", "tasks:submit", "tasks:read", "tasks:cancel"}, scope) {
 				return fmt.Errorf("unknown identity scope")
 			}
 		}

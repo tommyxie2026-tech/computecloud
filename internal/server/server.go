@@ -39,6 +39,7 @@ type Server struct {
 	queueCursor  map[int32]string
 	modelHandler  http.Handler
 	artifactSweepAt int64
+	eventSweepAt    int64
 }
 
 func New(c config.Server) (*Server, error) {
@@ -320,7 +321,8 @@ func (s *Server) receive(ctx context.Context, p *session, f *pb.WorkerFrame) err
 			if !allowed {
 				return nil
 			}
-			_, e = q.ExecContext(ctx, "UPDATE attempts SET lease_until=? WHERE id=?", store.Now()+grant.TtlMs, ref.AttemptId)
+			now := store.Now()
+			_, e = q.ExecContext(ctx, "UPDATE attempts SET lease_until=?,last_renewed=? WHERE id=?", now+grant.TtlMs, now, ref.AttemptId)
 			grant.Valid = e == nil
 			return e
 		})
@@ -408,6 +410,12 @@ func (s *Server) tick(ctx context.Context) error {
 	if now >= s.artifactSweepAt {
 		s.artifactSweepAt = now + artifactSweepIntervalMS
 		if e := s.reconcileArtifactLifecycle(ctx); e != nil {
+			return e
+		}
+	}
+	if now >= s.eventSweepAt {
+		s.eventSweepAt = now + 30000
+		if e := s.compactTaskEvents(ctx); e != nil {
 			return e
 		}
 	}
@@ -534,7 +542,8 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		}
 		nextGeneration := currentGeneration + 1
 		a := &pb.Assignment{TaskId: id, AttemptId: store.ID(), Generation: nextGeneration, LeaseToken: store.ID() + store.ID(), LeaseTtlMs: int64(s.cfg.LeaseSeconds) * 1000, DeadlineMs: deadline, Spec: t.Spec, Job: jc}
-		if _, e = q.ExecContext(ctx, "INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until) VALUES(?,?,?,?,?,?,?)", a.AttemptId, id, chosen.hello.WorkerId, chosen.hello.Epoch, nextGeneration, a.LeaseToken, store.Now()+a.LeaseTtlMs); e != nil {
+		now = store.Now()
+		if _, e = q.ExecContext(ctx, "INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until,last_renewed) VALUES(?,?,?,?,?,?,?,?)", a.AttemptId, id, chosen.hello.WorkerId, chosen.hello.Epoch, nextGeneration, a.LeaseToken, now+a.LeaseTtlMs, now); e != nil {
 			return e
 		}
 		if e = s.bindGateway(ctx, q, a, j); e != nil {

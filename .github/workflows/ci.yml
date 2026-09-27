@@ -100,9 +100,28 @@ jobs:
           path: dist/ci-workspace-flow
           if-no-files-found: error
           retention-days: 30
+  long-run-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - run: go mod verify
+      - name: Exercise long-running Job reliability flow
+        run: make ci-long-run-flow
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-long-run-flow-${{ github.run_id }}
+          path: dist/ci-long-run-flow
+          if-no-files-found: error
+          retention-days: 30
   package:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [verify, task-flow, retry-flow, artifact-flow, workspace-flow]
+    needs: [verify, task-flow, retry-flow, artifact-flow, workspace-flow, long-run-flow]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:

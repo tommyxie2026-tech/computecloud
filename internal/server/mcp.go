@@ -11,6 +11,8 @@ import (
 	jobv1 "github.com/tommyxie2026-tech/computecloud/api/job/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/jsonutil"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func (s *Server) mcpHandler() http.Handler {
@@ -87,6 +89,21 @@ func (s *Server) mcpHandler() http.Handler {
 			return nil, bad(e)
 		}
 		return s.CancelJob(ctx, in.ID, CancelJobRequest{ControlID: in.ControlID, Reason: in.Reason})
+	})
+	add("extend_job_deadline", "Explicitly extend a running Job deadline. The operation is idempotent and bounded by Server policy.", schema(map[string]any{"job_id": str, "operation_id": str, "new_deadline_ms": map[string]any{"type": "string", "pattern": "^[1-9][0-9]*$"}}, "job_id", "operation_id", "new_deadline_ms"), func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var in struct {
+			ID            string `json:"job_id"`
+			OperationID   string `json:"operation_id"`
+			NewDeadlineMS string `json:"new_deadline_ms"`
+		}
+		if e := jsonutil.Decode(raw, &in); e != nil {
+			return nil, bad(e)
+		}
+		deadline, e := strconv.ParseInt(in.NewDeadlineMS, 10, 64)
+		if e != nil || deadline <= 0 {
+			return nil, bad(status.Error(codes.InvalidArgument, "invalid new_deadline_ms"))
+		}
+		return s.ExtendJobDeadline(ctx, in.ID, ExtendDeadlineRequest{OperationID: in.OperationID, NewDeadlineMS: deadline})
 	})
 	add("get_result", "Read terminal Job result and artifact references. Unfinished jobs return JOB_NOT_FINISHED.", schema(map[string]any{"job_id": str}, "job_id"), func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var in struct {
