@@ -179,7 +179,7 @@ func (codexProvider) Parser(emit func(string, []byte) error) StreamParser {
 }
 func (codexProvider) Capabilities() CapabilitySet {
 	return CapabilitySet{
-		Runtime:     []string{"event_stream", "cancel", "gateway_inference_v1"},
+		Runtime:     []string{"event_stream", "cancel", "gateway_inference_v1", "local_cli"},
 		Tools:       []string{"job_io_v1", "artifact_inputs_v1"},
 		Environment: []string{"process"},
 		Legacy:      []string{"event_stream", "cancel", "gateway_inference_v1", "job_io_v1", "artifact_inputs_v1"},
@@ -206,7 +206,7 @@ func (claudeProvider) Parser(emit func(string, []byte) error) StreamParser {
 }
 func (claudeProvider) Capabilities() CapabilitySet {
 	return CapabilitySet{
-		Runtime:     []string{"event_stream", "cancel"},
+		Runtime:     []string{"event_stream", "cancel", "local_cli"},
 		Tools:       []string{"job_io_v1", "artifact_inputs_v1"},
 		Environment: []string{"process"},
 		Legacy:      []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1"},
