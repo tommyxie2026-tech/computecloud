@@ -150,21 +150,7 @@ func (s *Server) dispatchGroup(ctx context.Context, g queueGroup, peers []*sessi
 	return false, nil
 }
 
-// scheduleQueued performs bounded hierarchical fair queuing:
-//
-//   effective priority (base priority + age boost)
-//       -> round-robin project
-//           -> round-robin Job/group
-//               -> oldest runnable Task
-//
-// Hard execution constraints remain inside assign(). Aging affects ordering only;
-// it never bypasses retry_after, deadline, permissions, capabilities or quotas.
-func (s *Server) scheduleQueued(ctx context.Context, peers []*session) error {
-	now := store.Now()
-	groups, err := s.queuedGroups(ctx, now)
-	if err != nil {
-		return err
-	}
+func fairGroupOrder(groups []queueGroup, projectCursor map[int32]string, groupCursor map[string]string) []queueGroup {
 	buckets := map[int32]map[string][]queueGroup{}
 	for _, g := range groups {
 		if buckets[g.effective] == nil {
@@ -172,6 +158,7 @@ func (s *Server) scheduleQueued(ctx context.Context, peers []*session) error {
 		}
 		buckets[g.effective][g.project] = append(buckets[g.effective][g.project], g)
 	}
+	var ordered []queueGroup
 	for priority := int32(10); priority >= 0; priority-- {
 		projects := buckets[priority]
 		if len(projects) == 0 {
@@ -187,11 +174,10 @@ func (s *Server) scheduleQueued(ctx context.Context, peers []*session) error {
 				return projects[project][i].group < projects[project][j].group
 			})
 			key := fmt.Sprintf("%d:%s", priority, project)
-			projects[project] = rotateGroups(projects[project], s.groupCursor[key])
+			projects[project] = rotateGroups(projects[project], groupCursor[key])
 		}
 		sort.Strings(names)
-		names = rotateStrings(names, s.projectCursor[priority])
-
+		names = rotateStrings(names, projectCursor[priority])
 		remaining := true
 		for remaining {
 			remaining = false
@@ -201,16 +187,36 @@ func (s *Server) scheduleQueued(ctx context.Context, peers []*session) error {
 					continue
 				}
 				remaining = true
-				g := queue[0]
+				ordered = append(ordered, queue[0])
 				projects[project] = queue[1:]
-				assigned, err := s.dispatchGroup(ctx, g, peers)
-				if err != nil {
-					return err
-				}
-				if assigned {
-					s.projectCursor[priority] = project
-				}
 			}
+		}
+	}
+	return ordered
+}
+
+// scheduleQueued performs bounded hierarchical fair queuing:
+//
+//   effective priority (base priority + age boost)
+//       -> round-robin project
+//           -> round-robin Job/group
+//               -> oldest runnable Task
+//
+// Hard execution constraints remain inside assign(). Aging affects ordering only;
+// it never bypasses retry_after, deadline, permissions, capabilities or quotas.
+func (s *Server) scheduleQueued(ctx context.Context, peers []*session) error {
+	now := store.Now()
+	groups, err := s.queuedGroups(ctx, now)
+	if err != nil {
+		return err
+	}
+	for _, g := range fairGroupOrder(groups, s.projectCursor, s.groupCursor) {
+		assigned, err := s.dispatchGroup(ctx, g, peers)
+		if err != nil {
+			return err
+		}
+		if assigned {
+			s.projectCursor[g.effective] = g.project
 		}
 	}
 	return nil
