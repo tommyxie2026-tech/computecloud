@@ -60,6 +60,40 @@ func TestSchedulerAgingIsBoundedAndMonotonic(t *testing.T) {
 	}
 }
 
+func TestJobPriorityPropagatesToManagedTasks(t *testing.T) {
+	s, uc, _, _ := offlineJobServer(t)
+	defer s.Close()
+
+	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("report_merge_v1")
+	spec.Limits.Priority = 7
+	j, err := s.SubmitJob(uc, "job-priority", job.JSON(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.db.SQL.Query("SELECT priority FROM tasks WHERE job_id=? ORDER BY id", j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var priority int32
+		if err = rows.Scan(&priority); err != nil {
+			t.Fatal(err)
+		}
+		if priority != 7 {
+			t.Fatalf("managed task priority=%d want=7", priority)
+		}
+		count++
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("map task count=%d want=2", count)
+	}
+}
+
 func TestFairSchedulerDoesNotBypassRetryAfter(t *testing.T) {
 	s, uc, _, _ := offlineJobServer(t)
 	defer s.Close()
