@@ -1,6 +1,6 @@
 # 版本记录
 
-## 未发布 — v0.4.0 Runtime API v2
+## 未发布 — v0.4.0 Runtime API v2（实现完成，待版本发布）
 
 - Runtime 接入从 Worker profile 特例改为注册式 Provider Registry；内置 `codex_exec` 与 `claude_print` 作为 Provider。
 - Provider contract 统一 `Profile / Probe / Args / Parser / Capabilities / SupportsGateway`，新增 Runtime 不需要修改 Scheduler profile 分支。
