@@ -81,11 +81,37 @@ var registry = struct {
 	providers map[string]Provider
 }{providers: map[string]Provider{}}
 
+func validateCapabilitySet(c CapabilitySet) error {
+	for namespace, values := range map[string][]string{
+		"runtime": c.Runtime,
+		"tool": c.Tools,
+		"environment": c.Environment,
+	} {
+		seen := map[string]bool{}
+		for _, value := range values {
+			if value == "" || strings.Contains(value, ":") {
+				return fmt.Errorf("%s capability must be an unqualified non-empty name: %q", namespace, value)
+			}
+			if seen[value] {
+				return fmt.Errorf("duplicate %s capability: %s", namespace, value)
+			}
+			seen[value] = true
+		}
+	}
+	return nil
+}
+
 func Register(p Provider) error {
 	if p == nil || strings.TrimSpace(p.Profile()) == "" {
 		return errors.New("runtime provider profile required")
 	}
 	profile := strings.TrimSpace(p.Profile())
+	if strings.Contains(profile, ":") {
+		return errors.New("runtime provider profile must not contain ':'")
+	}
+	if err := validateCapabilitySet(p.Capabilities()); err != nil {
+		return err
+	}
 	registry.Lock()
 	defer registry.Unlock()
 	if _, exists := registry.providers[profile]; exists {
