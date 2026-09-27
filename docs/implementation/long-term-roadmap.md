@@ -2,14 +2,14 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 当前稳定发布基线：v0.3.2；main 功能基线：v0.4.0 Runtime API v2 Foundation
+- 当前稳定发布基线：v0.3.2；main 功能基线：v0.4.1 Transport-neutral Runtime Execution
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 - 当前实现依据：[v0.4.1 Runtime Execution](v0.4.1-plan.md)、[ADR-013](../adr/0013-runtime-execution.md)
-- 当前实施跟踪：[v0.4.1 Transport-neutral Runtime Execution](v0.4.1-plan.md) / [Issue #27](https://github.com/tommyxie2026-tech/computecloud/issues/27)；v0.4.0 Provider Registry Foundation 已完成；v0.3.x Reliability Kernel 已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实施跟踪：v0.4.1 Transport-neutral Runtime Execution 已完成；下一主线进入 ToolCapability execution / Runtime ecosystem 扩展；v0.3.x Reliability Kernel 已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -546,6 +546,23 @@ Start/Inspect/Stop 的 API-backed/remote Runtime 实现继续在 v0.4.x 后续�
 - package gate 加入 runtime-execution-flow。
 
 v0.4.1 不绑定具体商业 Agent API，也不提前实现 Session resume、Approval、Tool framework、EnvironmentProvider 或 Prepared Workspace。
+
+### 6.1.1 v0.4.1 Transport-neutral Runtime Execution — 已完成
+
+在 v0.4.0 Provider Registry Foundation 之后，把 Runtime API v2 扩展为真正 transport-neutral 的执行契约：
+
+- Provider-owned Prepare / Start / Inspect / Stop；
+- durable ExecutionRef / RuntimeState / CleanupState；
+- Worker schema v4 持久 runtime provider / transport / ref / state / cleanup；
+- Codex/Claude 保持 local_cli 行为但通过 Provider bridge 启动；
+- remote/API-backed fixture 可在 pid=0 下完成 Worker execution；
+- Worker restart 通过 Inspect/Stop 做 fail-closed reconciliation；
+- UNKNOWN cleanup 不自动 resume、不释放 Workspace；
+- `runtime:local_cli` / `runtime:remote_api` transport capability；
+- 独立 `runtime-execution-flow`；
+- package 同时依赖九个功能 Gate。
+
+完成证据：PR #28 已合并为 `b11c3385923b92d439fd539b29270c99eb3b3c3d`；PR-head CI `36336150699` 与 main CI `36336466934` 全部通过，main package Gate 通过。
 
 RuntimeCapability 示例：
 
