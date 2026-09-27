@@ -196,7 +196,7 @@ func (p codexProvider) Start(ctx context.Context, prepared PreparedExecution, st
 func (p codexProvider) Inspect(_ context.Context, _ config.Runtime, ref ExecutionRef) (Inspection, error) {
 	return inspectLocal(ref), nil
 }
-func (p codexProvider) Stop(_ context.Context, _ config.Runtime, ref ExecutionRef, grace time.Duration) StopResult {
+func (p codexProvider) Stop(_ context.Context, _ config.Runtime, ref ExecutionRef, grace time.Duration) (StopResult, error) {
 	return stopLocal(ref, grace), nil
 }
 
@@ -214,7 +214,7 @@ func (p claudeProvider) Start(ctx context.Context, prepared PreparedExecution, s
 func (p claudeProvider) Inspect(_ context.Context, _ config.Runtime, ref ExecutionRef) (Inspection, error) {
 	return inspectLocal(ref), nil
 }
-func (p claudeProvider) Stop(_ context.Context, _ config.Runtime, ref ExecutionRef, grace time.Duration) StopResult {
+func (p claudeProvider) Stop(_ context.Context, _ config.Runtime, ref ExecutionRef, grace time.Duration) (StopResult, error) {
 	return stopLocal(ref, grace), nil
 }
 
