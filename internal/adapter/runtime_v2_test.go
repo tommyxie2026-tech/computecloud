@@ -132,3 +132,21 @@ func TestRuntimeV2CompatibilityArgs(t *testing.T) {
 		}
 	}
 }
+
+
+type invalidCapabilityProvider struct{}
+
+func (invalidCapabilityProvider) Profile() string { return "invalid_capability_fixture" }
+func (invalidCapabilityProvider) Probe(context.Context, config.Runtime) error { return nil }
+func (invalidCapabilityProvider) Args(*pb.TaskSpec, config.Policy) ([]string, error) { return nil, nil }
+func (invalidCapabilityProvider) Parser(func(string, []byte) error) StreamParser { return fixtureParser{} }
+func (invalidCapabilityProvider) Capabilities() CapabilitySet {
+	return CapabilitySet{Runtime: []string{"runtime:already-qualified"}}
+}
+func (invalidCapabilityProvider) SupportsGateway() bool { return false }
+
+func TestRuntimeV2RejectsMalformedCapabilityNamespace(t *testing.T) {
+	if err := Register(invalidCapabilityProvider{}); err == nil {
+		t.Fatal("provider with pre-qualified runtime capability was accepted")
+	}
+}
