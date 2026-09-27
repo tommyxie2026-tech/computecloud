@@ -151,6 +151,9 @@ func (s *Server) SubmitTask(ctx context.Context, in *pb.TaskSpec) (*pb.Task, err
 		if !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
+		if e = s.checkQueueAdmission(ctx, q, spec.ProjectId, 1); e != nil {
+			return e
+		}
 		now := store.Now()
 		_, e = q.ExecContext(ctx, `INSERT INTO tasks(id,owner,project,idem,hash,spec,state,created,updated,priority,deadline) VALUES(?,?,?,?,?,?,'QUEUED',?,?,?,?)`, id, p.Identity.Owner, spec.ProjectId, spec.IdempotencyKey, hash, raw, now, now, spec.Priority, now+spec.TimeoutSeconds*1000)
 		if e != nil {

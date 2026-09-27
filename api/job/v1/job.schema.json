@@ -47,7 +47,8 @@
       "required": ["timeout_seconds", "max_attempts_per_task"],
       "properties": {
         "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 86400},
-        "max_attempts_per_task": {"type": "integer", "minimum": 1, "maximum": 3}
+        "max_attempts_per_task": {"type": "integer", "minimum": 1, "maximum": 3},
+        "priority": {"type": "integer", "minimum": 0, "maximum": 10}
       }
     }
   },
