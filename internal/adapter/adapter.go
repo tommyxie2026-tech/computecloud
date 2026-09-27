@@ -301,7 +301,7 @@ func (l *Lines) Write(b []byte) (int, error) {
 	}
 	total := len(b)
 	for len(b) > 0 {
-		at := bytes.IndexByte(b, '\\n')
+		at := bytes.IndexByte(b, '\n')
 		n := len(b)
 		if at >= 0 {
 			n = at
