@@ -39,6 +39,12 @@ assign hard constraints
 
 assign() 继续是最终硬约束事实源：Runtime/capability、Job parallelism、Credential、Project concurrency、Worker health/slots 等都不能被公平排序绕过。
 
+### 2.2 Job priority contract
+
+JobSpec 增加向后兼容的可选 `limits.priority`（0..10，省略等价 0）。Server 创建 managed Task 时必须把该值同时写入 TaskSpec 与 tasks.priority，保证 Job 提交与 standalone Task 使用同一个基础优先级语义。
+
+这不是新的调度领域对象，也不改变 Job/Stage/Task/Attempt 状态机。
+
 ### 2.2 Priority aging
 
 ~~~text
