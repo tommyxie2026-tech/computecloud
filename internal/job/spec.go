@@ -37,7 +37,8 @@ type Execution struct {
 	CredentialRef     string `json:"credential_ref"`
 	PolicyRef         string `json:"policy_ref"`
 	AcceptanceProfile string `json:"acceptance_profile"`
-	ReplaySafe        bool   `json:"replay_safe,omitempty"`
+	ReplaySafe        bool     `json:"replay_safe,omitempty"`
+	Tools             []string `json:"tools,omitempty"`
 }
 type Partition struct {
 	Key        string    `json:"key"`
@@ -94,6 +95,7 @@ type ManifestItem struct {
 }
 
 var keyRE = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+var toolNameRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
 var commitRE = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 var hashRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
@@ -150,6 +152,16 @@ func (e Execution) Validate() error {
 		if !Ref(v) {
 			return fmt.Errorf("explicit model, credential, policy and acceptance references required")
 		}
+	}
+	if len(e.Tools) > 16 {
+		return fmt.Errorf("too many tools")
+	}
+	seen := map[string]bool{}
+	for _, name := range e.Tools {
+		if !toolNameRE.MatchString(name) || seen[name] {
+			return fmt.Errorf("invalid or duplicate tool: %s", name)
+		}
+		seen[name] = true
 	}
 	return nil
 }
@@ -290,5 +302,11 @@ func (s Spec) Executions() []Execution {
 	return append(out, s.Reduce.Execution)
 }
 func (e Execution) Task(s Spec, key, text string) *pb.TaskSpec {
-	return &pb.TaskSpec{ProjectId: s.ProjectID, IdempotencyKey: key, Engine: e.Engine, RuntimeProfile: e.RuntimeProfile, Model: e.Model, CredentialRef: e.CredentialRef, Workspace: &pb.Workspace{RepositoryRef: s.Workspace.RepositoryRef, BaseCommit: s.Workspace.BaseCommit, IsolationProfile: "trusted-worktree-process"}, Input: &pb.Input{Text: text}, PolicyRef: e.PolicyRef, AcceptanceProfile: e.AcceptanceProfile, TimeoutSeconds: s.Limits.TimeoutSeconds, Priority: s.Limits.Priority, RequiredCapabilities: []string{"event_stream", "cancel", "job_io_v1"}}
+	required := []string{"event_stream", "cancel", "job_io_v1"}
+	tools := append([]string(nil), e.Tools...)
+	sort.Strings(tools)
+	for _, name := range tools {
+		required = append(required, "tool:"+name)
+	}
+	return &pb.TaskSpec{ProjectId: s.ProjectID, IdempotencyKey: key, Engine: e.Engine, RuntimeProfile: e.RuntimeProfile, Model: e.Model, CredentialRef: e.CredentialRef, Workspace: &pb.Workspace{RepositoryRef: s.Workspace.RepositoryRef, BaseCommit: s.Workspace.BaseCommit, IsolationProfile: "trusted-worktree-process"}, Input: &pb.Input{Text: text}, PolicyRef: e.PolicyRef, AcceptanceProfile: e.AcceptanceProfile, TimeoutSeconds: s.Limits.TimeoutSeconds, Priority: s.Limits.Priority, RequiredCapabilities: required}
 }

@@ -77,6 +77,18 @@ func (s *Server) authorizedOwner(ctx context.Context, id string) (*pb.Task, erro
 }
 
 var commitRE = regexp.MustCompile(`^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$`)
+var capabilityNameRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
+
+func validRequiredCapability(value string) bool {
+	if value == "event_stream" || value == "cancel" {
+		return true
+	}
+	namespace, name, ok := strings.Cut(value, ":")
+	if !ok || !capabilityNameRE.MatchString(name) {
+		return false
+	}
+	return namespace == "runtime" || namespace == "tool" || namespace == "environment"
+}
 
 func (s *Server) SubmitTask(ctx context.Context, in *pb.TaskSpec) (*pb.Task, error) {
 	p, e := rpcutil.Require(ctx, "tasks:submit", true)
@@ -105,10 +117,15 @@ func (s *Server) SubmitTask(ctx context.Context, in *pb.TaskSpec) (*pb.Task, err
 	if spec.SessionRef != "" || spec.ProviderRef != "" {
 		return nil, status.Error(codes.FailedPrecondition, "session resume and provider override not enabled in v0.1")
 	}
-	for _, c := range spec.RequiredCapabilities {
-		if c != "event_stream" && c != "cancel" {
-			return nil, status.Error(codes.FailedPrecondition, "unsupported capability: "+c)
+	if len(spec.RequiredCapabilities) > 32 {
+		return nil, status.Error(codes.InvalidArgument, "too many required capabilities")
+	}
+	seenCapabilities := map[string]bool{}
+	for _, capability := range spec.RequiredCapabilities {
+		if !validRequiredCapability(capability) || seenCapabilities[capability] {
+			return nil, status.Error(codes.FailedPrecondition, "unsupported or duplicate capability: "+capability)
 		}
+		seenCapabilities[capability] = true
 	}
 	if spec.Workspace.IsolationProfile == "" {
 		spec.Workspace.IsolationProfile = "trusted-worktree-process"

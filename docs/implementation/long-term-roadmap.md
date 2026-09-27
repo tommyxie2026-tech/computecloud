@@ -9,7 +9,7 @@
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 - 当前实现依据：[v0.4.1 Runtime Execution](v0.4.1-plan.md)、[ADR-013](../adr/0013-runtime-execution.md)
-- 当前实施跟踪：v0.4.1 Transport-neutral Runtime Execution 已完成；下一主线进入 ToolCapability execution / Runtime ecosystem 扩展；v0.3.x Reliability Kernel 已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实施跟踪：[v0.4.2 ToolCapability Foundation](v0.4.2-plan.md) / [Issue #29](https://github.com/tommyxie2026-tech/computecloud/issues/29)；v0.4.1 Transport-neutral Runtime Execution 已完成；v0.3.x Reliability Kernel 已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -563,6 +563,24 @@ v0.4.1 不绑定具体商业 Agent API，也不提前实现 Session resume、App
 - package 同时依赖九个功能 Gate。
 
 完成证据：PR #28 已合并为 `b11c3385923b92d439fd539b29270c99eb3b3c3d`；PR-head CI `36336150699` 与 main CI `36336466934` 全部通过，main package Gate 通过。
+
+### 6.1.2 v0.4.2 ToolCapability Foundation — 当前功能主线
+
+在 Runtime execution transport 解耦之后，继续把 Tool 从 Runtime Provider 的附属字符串拆成独立能力层：
+
+- 独立 Tool Registry / Descriptor；
+- Tool version / side_effect / legacy_default；
+- Worker advertisement = Runtime compatible ∩ installed Tool；
+- Job Execution 可选 `tools[]`；
+- Tool requirement 冻结为 `tool:<name>`；
+- Worker Policy `allowed_tools`；
+- Tool policy gate 在 Runtime Prepare/Start 之前；
+- Tool-specific capability 不进入 Scheduler 名称分支；
+- 非空 Tool Policy 进入 TemplateDigest；
+- 独立 `tool-contract-flow` CI Gate。
+
+v0.4.2 只稳定 capability 与 policy contract，不提前实现通用 Shell/Browser/HTTP/MCP Tool execution proxy。具体 Tool execution、credential、network/isolation 与 approval 按后续能力分别设计。
+
 
 RuntimeCapability 示例：
 

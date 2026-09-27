@@ -13,6 +13,7 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
+	toolreg "github.com/tommyxie2026-tech/computecloud/internal/tool"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -63,6 +64,12 @@ func New(c config.Worker) (*Worker, error) {
 	return &Worker{cfg: c, db: d, conn: conn, client: pb.NewRuntimeServiceClient(conn), runs: map[string]*active{}}, nil
 }
 func (w *Worker) Close() error { return errors.Join(w.conn.Close(), w.db.Close()) }
+func advertisedRuntimeCapabilities(provider adapter.Provider) []string {
+	caps := provider.Capabilities()
+	caps.Tools = toolreg.InstalledCompatible(caps.Tools)
+	return caps.Advertised()
+}
+
 func keys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -96,7 +103,7 @@ func (w *Worker) probe(ctx context.Context) error {
 			Version: r.Version,
 			Models: r.Models,
 			Credentials: r.Credentials,
-			Capabilities: provider.Capabilities().Advertised(),
+			Capabilities: advertisedRuntimeCapabilities(provider),
 			Repositories: keys(w.cfg.Repositories),
 			Policies: keys(w.cfg.Policies),
 			Verifiers: keys(w.cfg.Verifiers),

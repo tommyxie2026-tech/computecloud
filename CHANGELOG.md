@@ -1,5 +1,18 @@
 # 版本记录
 
+## 未发布 — v0.4.2 ToolCapability Foundation
+
+- 新增独立 `internal/tool` Registry，Tool descriptor 包含 name / version / side_effect / legacy_default；Tool existence 不再只由 Runtime Provider 声明。
+- 首批内建 platform ToolCapability 为 `artifact_inputs_v1` 与 `job_io_v1`；本版本不增加通用外部 Tool execution proxy。
+- Worker 广告改为 Runtime-compatible Tools 与实际 Tool Registry 的交集；未注册 Tool 不进入 WorkerHello。
+- Job Execution 新增可选 `tools[]`，接受后冻结为 `tool:<name>` Task required capability，继续复用 generic Scheduler capability matching。
+- Worker Policy 新增 `allowed_tools`；Tool 注册/兼容/Policy 校验在 Runtime Prepare/Start 前 fail closed，Policy 拒绝返回 `TOOL_POLICY_DENIED`。
+- Standalone Task 支持有界 `runtime:* / tool:* / environment:*` namespaced capability，同时保留 legacy event_stream/cancel compatibility。
+- 非空 `allowed_tools` 自动进入既有 TemplateDigest，Policy 改动继续受 Server/Worker template digest fencing 保护。
+- 新增独立 GitHub Actions `tool-contract-flow`，并要求 release package 依赖既有九个 Gate + tool-contract-flow。
+- Tool side_effect 目前只做描述，不自动推断 replay_safe、Retry 或审批决策。
+- 真实外部 Tool invocation、interactive approval、EnvironmentProvider、Prepared Workspace、v0.5 scoring 不属于 v0.4.2。
+
 ## 未发布 — v0.4.1 Transport-neutral Runtime Execution（实现完成，待版本发布）
 
 - Runtime Provider contract 增加 Version / Transport / Prepare / Start / Inspect / Stop，使 Agent execution transport 不再由 Worker 按 profile 或 PID 模型决定。

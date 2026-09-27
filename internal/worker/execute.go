@@ -21,6 +21,7 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/process"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
+	toolreg "github.com/tommyxie2026-tech/computecloud/internal/tool"
 	"github.com/tommyxie2026-tech/computecloud/internal/workspace"
 )
 
@@ -119,6 +120,14 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 	verify, verifyOK := w.cfg.Verifiers[a.Spec.AcceptanceProfile]
 	if !ok || !providerOK || !policyOK || !verifyOK || !config.Contains(r.Models, a.Spec.Model) || !config.Contains(r.Credentials, a.Spec.CredentialRef) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE"})
+		return
+	}
+	if te := toolreg.AuthorizeRequired(a.Spec.RequiredCapabilities, provider.Capabilities().Tools, policy.AllowedTools); te != nil {
+		code := "CAPABILITY_UNAVAILABLE"
+		if errors.Is(te, toolreg.ErrPolicyDenied) {
+			code = "TOOL_POLICY_DENIED"
+		}
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: te.Error()})
 		return
 	}
 	runtimeConfig := r
