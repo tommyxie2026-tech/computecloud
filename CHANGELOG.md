@@ -1,6 +1,6 @@
 # 版本记录
 
-## 未发布 — v0.3.4 Long-running Job Reliability
+## 未发布 — v0.3.4 Long-running Job Reliability（实现完成，待版本发布）
 
 - Server schema 升级到 v7：Attempt 增加 `last_renewed`，Task 增加 `event_floor_seq`，新增紧凑 `event_dedup` replay hash 索引。
 - Worker Renew 成为 Attempt liveness 的事实依据；Runtime 长时间无 stdout/stderr 不再等同于 hung。
