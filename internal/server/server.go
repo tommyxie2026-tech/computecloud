@@ -506,14 +506,9 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		} else if projects >= s.cfg.MaxProjectTasks {
 			blocker = "PROJECT_CONCURRENCY_EXHAUSTED"
 		} else {
+			sawReadyWorker := false
+			sawCompatibleWorker := false
 			for _, p := range peers {
-				if !fits(p, t) {
-					continue
-				}
-				if jc != nil && !fitsJob(p, t, jc) {
-					blocker = "TEMPLATE_OR_CAPABILITY_MISMATCH"
-					continue
-				}
 				var active int
 				var seen int64
 				if e = q.QueryRowContext(ctx, "SELECT seen FROM workers WHERE id=?", p.hello.WorkerId).Scan(&seen); e != nil {
@@ -522,16 +517,29 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 				if store.Now()-seen > int64(s.cfg.LeaseSeconds)*1000 {
 					continue
 				}
+				sawReadyWorker = true
+				if !fits(p, t) || (jc != nil && !fitsJob(p, t, jc)) {
+					continue
+				}
+				sawCompatibleWorker = true
 				if e = q.QueryRowContext(ctx, "SELECT count(*) FROM attempts WHERE worker=? AND released=0", p.hello.WorkerId).Scan(&active); e != nil {
 					return e
 				}
 				if active >= int(p.hello.Slots) {
-					blocker = "WORKER_CAPACITY_EXHAUSTED"
 					continue
 				}
 				if active < load {
 					chosen = p
 					load = active
+				}
+			}
+			if chosen == nil {
+				if !sawReadyWorker {
+					blocker = "NO_READY_WORKER"
+				} else if !sawCompatibleWorker {
+					blocker = "TEMPLATE_OR_CAPABILITY_MISMATCH"
+				} else {
+					blocker = "WORKER_CAPACITY_EXHAUSTED"
 				}
 			}
 		}
