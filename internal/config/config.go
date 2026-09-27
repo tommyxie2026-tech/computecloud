@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tommyxie2026-tech/computecloud/internal/tool"
 	"gopkg.in/yaml.v3"
 )
 
@@ -57,6 +58,7 @@ type Policy struct {
 	CodexSandbox         string   `yaml:"codex_sandbox"`
 	ClaudeAllowedTools   []string `yaml:"claude_allowed_tools"`
 	ClaudePermissionMode string   `yaml:"claude_permission_mode"`
+	AllowedTools         []string `yaml:"allowed_tools" json:"AllowedTools,omitempty"`
 }
 type Worker struct {
 	ID           string                `yaml:"id"`
@@ -206,6 +208,15 @@ func (c Worker) Validate() error {
 	for ref, path := range c.Repositories {
 		if ref == "" || !filepath.IsAbs(path) {
 			return fmt.Errorf("invalid repository %q", ref)
+		}
+	}
+	for ref, policy := range c.Policies {
+		seen := map[string]bool{}
+		for _, name := range policy.AllowedTools {
+			if !tool.ValidName(name) || seen[name] {
+				return fmt.Errorf("invalid or duplicate allowed tool %q in policy %q", name, ref)
+			}
+			seen[name] = true
 		}
 	}
 	return nil
