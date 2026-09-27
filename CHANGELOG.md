@@ -1,5 +1,17 @@
 # 版本记录
 
+## 未发布 — v0.4.1 Transport-neutral Runtime Execution
+
+- Runtime Provider contract 增加 Version / Transport / Prepare / Start / Inspect / Stop，使 Agent execution transport 不再由 Worker 按 profile 或 PID 模型决定。
+- 新增 transport-neutral ExecutionRef、RuntimeState 与 CleanupState；remote/API-backed Runtime 可使用稳定远端 ID 而无需本地 PID。
+- Worker schema 升级到 v4，持久化 runtime_provider / runtime_transport / runtime_ref / runtime_state / runtime_cleanup。
+- Codex/Claude 保持 local_cli 行为，但 Agent process launch、parser 和 cleanup semantics 通过 Provider bridge 封装；可信 Verifier 仍是独立 Worker local process。
+- Codex Gateway CLI/env mutation 移入 Codex Provider Prepare，Worker 不再拼接 Codex-specific model-provider 参数。
+- Worker restart 对有 durable runtime_ref 的记录执行 Provider Inspect/Stop；UNKNOWN cleanup fail closed，不自动 resume。
+- 增加 remote/API-backed fixture，证明 Worker 可以在没有本地 Agent PID 的情况下完成 Runtime execution contract。
+- Built-in CLI Runtime 新增 `runtime:local_cli` capability；remote fixture 使用 `runtime:remote_api`。
+- 新增独立 GitHub Actions `runtime-execution-flow`；release package 依赖既有八个 Gate + runtime-execution-flow。
+- Session resume、Approval、Tool execution framework、EnvironmentProvider、Prepared Workspace 和 v0.5 scheduling 不属于 v0.4.1。
 ## 未发布 — v0.4.0 Runtime API v2（实现完成，待版本发布）
 
 - Runtime 接入从 Worker profile 特例改为注册式 Provider Registry；内置 `codex_exec` 与 `claude_print` 作为 Provider。
