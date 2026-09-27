@@ -69,16 +69,19 @@ func rotateGroups(values []queueGroup, after string) []queueGroup {
 	if len(values) < 2 || after == "" {
 		return values
 	}
-	i := sort.Search(len(values), func(i int) bool { return values[i].group > after })
-	if i <= 0 || i >= len(values) {
-		if i >= len(values) {
-			return append([]queueGroup(nil), values...)
+	for i, v := range values {
+		if v.group != after {
+			continue
 		}
-		return values
+		next := (i + 1) % len(values)
+		if next == 0 {
+			return values
+		}
+		out := append([]queueGroup(nil), values[next:]...)
+		out = append(out, values[:next]...)
+		return out
 	}
-	out := append([]queueGroup(nil), values[i:]...)
-	out = append(out, values[:i]...)
-	return out
+	return values
 }
 
 func (s *Server) queuedGroups(ctx context.Context, now int64) ([]queueGroup, error) {
