@@ -502,8 +502,10 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		blocker := "NO_READY_WORKER"
 		var chosen *session
 		load := int(^uint(0) >> 1)
-		if creds >= s.cfg.Credentials[t.Spec.CredentialRef] || projects >= s.cfg.MaxProjectTasks {
-			blocker = "CAPACITY_EXHAUSTED"
+		if creds >= s.cfg.Credentials[t.Spec.CredentialRef] {
+			blocker = "CREDENTIAL_CONCURRENCY_EXHAUSTED"
+		} else if projects >= s.cfg.MaxProjectTasks {
+			blocker = "PROJECT_CONCURRENCY_EXHAUSTED"
 		} else {
 			for _, p := range peers {
 				if !fits(p, t) {
@@ -525,7 +527,7 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 					return e
 				}
 				if active >= int(p.hello.Slots) {
-					blocker = "CAPACITY_EXHAUSTED"
+					blocker = "WORKER_CAPACITY_EXHAUSTED"
 					continue
 				}
 				if active < load {
