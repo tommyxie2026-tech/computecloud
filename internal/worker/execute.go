@@ -202,7 +202,11 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		StopGrace: time.Duration(w.cfg.StopGraceMS) * time.Millisecond,
 	})
 	if e != nil {
-		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "INVALID_POLICY", ErrorMessage: e.Error()})
+		code := "INVALID_POLICY"
+		if a.Gateway != nil {
+			code = "INVALID_GATEWAY"
+		}
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: e.Error()})
 		return
 	}
 	secrets = append(secrets, prepared.Sensitive...)
