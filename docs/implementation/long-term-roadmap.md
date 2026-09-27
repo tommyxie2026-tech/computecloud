@@ -2,14 +2,14 @@
 
 - 项目：computecloud
 - 日期：2026-09-27
-- 当前稳定发布基线：v0.3.2；main 功能基线：v0.3.3
+- 当前稳定发布基线：v0.3.2；main 功能基线：v0.3.4
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
-- 当前实现依据：[v0.3.3 Workspace Lifecycle](v0.3.3-plan.md)、[v0.3.3 验证记录](../validation/v0.3.3-results.md)
-- 当前实施跟踪：[v0.3.4 Long-running Job Reliability](v0.3.4-plan.md) / [Issue #21](https://github.com/tommyxie2026-tech/computecloud/issues/21)；v0.3.0–v0.3.3 代码与自动化已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实现依据：[v0.3.4 Long-running Job Reliability](v0.3.4-plan.md)、[v0.3.4 验证记录](../validation/v0.3.4-results.md)
+- 当前实施跟踪：v0.3.0–v0.3.4 代码与自动化已完成；Long-running Job [Issue #21](https://github.com/tommyxie2026-tech/computecloud/issues/21) 完成；下一功能主线为 v0.3.5 Fair Scheduling；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -389,7 +389,7 @@ Workspace 同样进入可靠性内核：
 
 > 新旧 Attempt 不允许无约束共享同一个可写 Workspace。
 
-### 5.5 v0.3.4 — Long-running Job
+### 5.5 v0.3.4 — Long-running Job（已完成）
 
 支持：
 
@@ -401,6 +401,8 @@ Workspace 同样进入可靠性内核：
 - long lease renewal；
 - explicit deadline extension policy；
 - long-running event compaction / bounded retention。
+
+完成证据：PR #22 已合并为 `ba3ea0b0abb1cdea5982c90acae9bd1d1b5afd27`；PR-head CI `36255471310` 与 main CI `36328612397` 均通过，main package Gate 通过。
 
 ### 5.6 v0.3.5 — Fair Scheduling
 
