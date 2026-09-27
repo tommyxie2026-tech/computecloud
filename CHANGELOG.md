@@ -1,6 +1,6 @@
 # 版本记录
 
-## 未发布 — v0.4.1 Transport-neutral Runtime Execution
+## 未发布 — v0.4.1 Transport-neutral Runtime Execution（实现完成，待版本发布）
 
 - Runtime Provider contract 增加 Version / Transport / Prepare / Start / Inspect / Stop，使 Agent execution transport 不再由 Worker 按 profile 或 PID 模型决定。
 - 新增 transport-neutral ExecutionRef、RuntimeState 与 CleanupState；remote/API-backed Runtime 可使用稳定远端 ID 而无需本地 PID。
