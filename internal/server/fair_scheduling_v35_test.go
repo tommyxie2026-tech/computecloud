@@ -205,3 +205,57 @@ func TestSpecificConcurrencyBlockers(t *testing.T) {
 		})
 	}
 }
+
+
+func TestSpecificReadinessAndCapabilityBlockers(t *testing.T) {
+	t.Run("no-ready-worker", func(t *testing.T) {
+		s, uc, _, _ := offlineJobServer(t)
+		defer s.Close()
+		s.cfg.Credentials["account"] = 8
+		spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
+		j, err := s.SubmitJob(uc, "no-ready", job.JSON(spec))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var task string
+		if err = s.db.SQL.QueryRow("SELECT id FROM tasks WHERE job_id=?", j.ID).Scan(&task); err != nil {
+			t.Fatal(err)
+		}
+		if err = s.assign(uc, task, nil); err != nil {
+			t.Fatal(err)
+		}
+		var blocker string
+		if err = s.db.SQL.QueryRow("SELECT blocker FROM tasks WHERE id=?", task).Scan(&blocker); err != nil {
+			t.Fatal(err)
+		}
+		if blocker != "NO_READY_WORKER" {
+			t.Fatalf("blocker=%s want=NO_READY_WORKER", blocker)
+		}
+	})
+
+	t.Run("capability-mismatch", func(t *testing.T) {
+		s, uc, _, peer := offlineJobServer(t)
+		defer s.Close()
+		s.cfg.Credentials["account"] = 8
+		peer.hello.Runtimes = nil
+		spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
+		j, err := s.SubmitJob(uc, "capability-mismatch", job.JSON(spec))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var task string
+		if err = s.db.SQL.QueryRow("SELECT id FROM tasks WHERE job_id=?", j.ID).Scan(&task); err != nil {
+			t.Fatal(err)
+		}
+		if err = s.assign(uc, task, []*session{peer}); err != nil {
+			t.Fatal(err)
+		}
+		var blocker string
+		if err = s.db.SQL.QueryRow("SELECT blocker FROM tasks WHERE id=?", task).Scan(&blocker); err != nil {
+			t.Fatal(err)
+		}
+		if blocker != "TEMPLATE_OR_CAPABILITY_MISMATCH" {
+			t.Fatalf("blocker=%s want=TEMPLATE_OR_CAPABILITY_MISMATCH", blocker)
+		}
+	})
+}
