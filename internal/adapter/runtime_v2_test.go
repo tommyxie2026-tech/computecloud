@@ -45,7 +45,7 @@ func (f fixtureProvider) Stop(context.Context, config.Runtime, ExecutionRef, tim
 }
 func (f fixtureProvider) Capabilities() CapabilitySet {
 	return CapabilitySet{
-		Runtime:     []string{"event_stream"},
+		Runtime:     []string{"event_stream", "remote_api"},
 		Tools:       []string{"shell"},
 		Environment: []string{"process"},
 	}
@@ -77,6 +77,7 @@ func TestRuntimeV2BuiltinsAndCapabilityNamespaces(t *testing.T) {
 		"runtime:event_stream",
 		"runtime:cancel",
 		"runtime:gateway_inference_v1",
+		"runtime:local_cli",
 		"tool:job_io_v1",
 		"tool:artifact_inputs_v1",
 		"environment:process",
@@ -175,5 +176,47 @@ func (invalidCapabilityProvider) SupportsGateway() bool { return false }
 func TestRuntimeV2RejectsMalformedCapabilityNamespace(t *testing.T) {
 	if err := Register(invalidCapabilityProvider{}); err == nil {
 		t.Fatal("provider with pre-qualified runtime capability was accepted")
+	}
+}
+
+
+func TestRuntimeExecutionRefRoundTrip(t *testing.T) {
+	ref := ExecutionRef{Provider: "fixture", Transport: "remote_api", ID: "run-123"}
+	b, err := EncodeExecutionRef(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeExecutionRef(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, ref) {
+		t.Fatalf("ref=%+v want=%+v", got, ref)
+	}
+	if _, err = DecodeExecutionRef([]byte(`{"provider":"","transport":"remote_api","id":"x"}`)); err == nil {
+		t.Fatal("incomplete runtime ref accepted")
+	}
+}
+
+func TestRemoteFixtureExecutionContractUsesNoLocalPID(t *testing.T) {
+	p := fixtureProvider{profile: "transport_fixture"}
+	prepared, err := p.Prepare(PrepareRequest{Runtime: config.Runtime{Version: "v1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted ExecutionRef
+	result := p.Start(context.Background(), prepared, func(ref ExecutionRef) error {
+		persisted = ref
+		return nil
+	})
+	if result.Err != nil || !result.Outcome.Final || !result.Outcome.Success {
+		t.Fatalf("remote start failed: %+v", result)
+	}
+	if persisted.Transport != "remote_api" || persisted.PID != 0 || persisted.StartID != "" {
+		t.Fatalf("remote provider leaked local process identity: %+v", persisted)
+	}
+	inspection, err := p.Inspect(context.Background(), config.Runtime{}, persisted)
+	if err != nil || inspection.State != RuntimeExited || inspection.Cleanup != CleanupConfirmed {
+		t.Fatalf("remote inspect=%+v err=%v", inspection, err)
 	}
 }
