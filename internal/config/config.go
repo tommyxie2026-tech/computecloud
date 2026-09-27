@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	envreg "github.com/tommyxie2026-tech/computecloud/internal/environment"
 	"github.com/tommyxie2026-tech/computecloud/internal/tool"
 	"gopkg.in/yaml.v3"
 )
@@ -59,6 +60,7 @@ type Policy struct {
 	ClaudeAllowedTools   []string `yaml:"claude_allowed_tools"`
 	ClaudePermissionMode string   `yaml:"claude_permission_mode"`
 	AllowedTools         []string `yaml:"allowed_tools" json:"AllowedTools,omitempty"`
+	AllowedEnvironments  []string `yaml:"allowed_environments" json:"AllowedEnvironments,omitempty"`
 }
 type Worker struct {
 	ID           string                `yaml:"id"`
@@ -217,6 +219,13 @@ func (c Worker) Validate() error {
 				return fmt.Errorf("invalid or duplicate allowed tool %q in policy %q", name, ref)
 			}
 			seen[name] = true
+		}
+		seenEnvironment := map[string]bool{}
+		for _, name := range policy.AllowedEnvironments {
+			if !envreg.ValidName(name) || seenEnvironment[name] {
+				return fmt.Errorf("invalid or duplicate allowed environment %q in policy %q", name, ref)
+			}
+			seenEnvironment[name] = true
 		}
 	}
 	return nil

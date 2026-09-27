@@ -37,7 +37,7 @@ func offlineJobServer(t *testing.T) (*Server, context.Context, context.Context, 
 		for _, template := range cfg.Jobs.Templates {
 			digests[template.Key()] = template.Digest
 		}
-		hello.Runtimes = append(hello.Runtimes, &pb.Runtime{Profile: profile, Models: []string{"model-c", "model-a"}, Credentials: []string{"account"}, Repositories: []string{"repo"}, Policies: []string{"review"}, Verifiers: []string{"check"}, Capabilities: []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1"}, TemplateDigests: digests})
+		hello.Runtimes = append(hello.Runtimes, &pb.Runtime{Profile: profile, Models: []string{"model-c", "model-a"}, Credentials: []string{"account"}, Repositories: []string{"repo"}, Policies: []string{"review"}, Verifiers: []string{"check"}, Capabilities: []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1", "environment:process"}, TemplateDigests: digests})
 	}
 	if _, e = s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", "w", "e", encode(hello), store.Now()); e != nil {
 		t.Fatal(e)

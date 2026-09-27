@@ -19,6 +19,7 @@ import (
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/adapter"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	envreg "github.com/tommyxie2026-tech/computecloud/internal/environment"
 	"github.com/tommyxie2026-tech/computecloud/internal/process"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	toolreg "github.com/tommyxie2026-tech/computecloud/internal/tool"
@@ -128,6 +129,14 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 			code = "TOOL_POLICY_DENIED"
 		}
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: te.Error()})
+		return
+	}
+	if ee := envreg.AuthorizeRequired(a.Spec.RequiredCapabilities, provider.Capabilities().Environment, policy.AllowedEnvironments); ee != nil {
+		code := "CAPABILITY_UNAVAILABLE"
+		if errors.Is(ee, envreg.ErrPolicyDenied) {
+			code = "ENVIRONMENT_POLICY_DENIED"
+		}
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: ee.Error()})
 		return
 	}
 	runtimeConfig := r

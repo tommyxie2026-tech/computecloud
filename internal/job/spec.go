@@ -39,6 +39,7 @@ type Execution struct {
 	AcceptanceProfile string `json:"acceptance_profile"`
 	ReplaySafe        bool     `json:"replay_safe,omitempty"`
 	Tools             []string `json:"tools,omitempty"`
+	Environment       string   `json:"environment,omitempty"`
 }
 type Partition struct {
 	Key        string    `json:"key"`
@@ -96,6 +97,7 @@ type ManifestItem struct {
 
 var keyRE = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 var toolNameRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
+var environmentNameRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
 var commitRE = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 var hashRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
@@ -163,7 +165,17 @@ func (e Execution) Validate() error {
 		}
 		seen[name] = true
 	}
+	if e.Environment != "" && !environmentNameRE.MatchString(e.Environment) {
+		return fmt.Errorf("invalid environment: %s", e.Environment)
+	}
 	return nil
+}
+
+func (e Execution) EnvironmentName() string {
+	if e.Environment == "" {
+		return "process"
+	}
+	return e.Environment
 }
 func (s *Spec) Validate(maxParts, maxParallel int) error {
 	if s.SchemaVersion != "v0.2" || !Ref(s.ProjectID) || !Ref(s.Workspace.RepositoryRef) || !commitRE.MatchString(s.Workspace.BaseCommit) {
@@ -308,5 +320,6 @@ func (e Execution) Task(s Spec, key, text string) *pb.TaskSpec {
 	for _, name := range tools {
 		required = append(required, "tool:"+name)
 	}
+	required = append(required, "environment:"+e.EnvironmentName())
 	return &pb.TaskSpec{ProjectId: s.ProjectID, IdempotencyKey: key, Engine: e.Engine, RuntimeProfile: e.RuntimeProfile, Model: e.Model, CredentialRef: e.CredentialRef, Workspace: &pb.Workspace{RepositoryRef: s.Workspace.RepositoryRef, BaseCommit: s.Workspace.BaseCommit, IsolationProfile: "trusted-worktree-process"}, Input: &pb.Input{Text: text}, PolicyRef: e.PolicyRef, AcceptanceProfile: e.AcceptanceProfile, TimeoutSeconds: s.Limits.TimeoutSeconds, Priority: s.Limits.Priority, RequiredCapabilities: required}
 }

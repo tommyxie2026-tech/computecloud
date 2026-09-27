@@ -21,7 +21,7 @@ func TestExecutionToolsValidationAndTaskRequirements(t *testing.T) {
 	}
 	s := Spec{ProjectID: "project", Workspace: Workspace{RepositoryRef: "repo", BaseCommit: strings.Repeat("a", 40)}, Limits: Limits{TimeoutSeconds: 10}}
 	task := e.Task(s, "task-key", "input")
-	want := []string{"event_stream", "cancel", "job_io_v1", "tool:artifact_inputs_v1", "tool:job_io_v1"}
+	want := []string{"event_stream", "cancel", "job_io_v1", "tool:artifact_inputs_v1", "tool:job_io_v1", "environment:process"}
 	if !reflect.DeepEqual(task.RequiredCapabilities, want) {
 		t.Fatalf("required=%v want=%v", task.RequiredCapabilities, want)
 	}
