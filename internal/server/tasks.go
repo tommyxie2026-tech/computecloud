@@ -76,7 +76,175 @@ func (s *Server) authorizedOwner(ctx context.Context, id string) (*pb.Task, erro
 	return t, nil
 }
 
-var commitRE = regexp.MustCompile(`^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$`)
+var commitRE = regexp.MustCompile(`^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?package server
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"regexp"
+	"strings"
+
+	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
+	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
+	"github.com/tommyxie2026-tech/computecloud/internal/store"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+)
+
+func encode(m proto.Message) []byte {
+	b, e := protojson.MarshalOptions{UseProtoNames: true}.Marshal(m)
+	if e != nil {
+		panic(e)
+	}
+	return b
+}
+func decode(b []byte, m proto.Message) error { return protojson.Unmarshal(b, m) }
+func terminal(s string) bool                 { return s == "SUCCEEDED" || s == "FAILED" || s == "CANCELED" }
+func dbErr(e error) error {
+	if e == nil {
+		return nil
+	}
+	if _, ok := status.FromError(e); ok {
+		return e
+	}
+	if errors.Is(e, sql.ErrNoRows) {
+		return status.Error(codes.NotFound, "not found")
+	}
+	return status.Error(codes.Unavailable, "storage operation failed")
+}
+func readTask(ctx context.Context, q store.Query, id string) (*pb.Task, string, error) {
+	t := new(pb.Task)
+	var b []byte
+	var owner string
+	e := q.QueryRowContext(ctx, `SELECT id,owner,state,attempt,spec,seq,error_code,error_message,result,native_session,worker,created,updated,blocker FROM tasks WHERE id=?`, id).Scan(&t.TaskId, &owner, &t.State, &t.AttemptId, &b, &t.LastSeq, &t.ErrorCode, &t.ErrorMessage, &t.Result, &t.SessionRef, &t.WorkerId, &t.CreatedAtMs, &t.UpdatedAtMs, &t.SchedulingBlocker)
+	if e != nil {
+		return nil, "", e
+	}
+	t.Spec = new(pb.TaskSpec)
+	e = decode(b, t.Spec)
+	return t, owner, e
+}
+func (s *Server) authorized(ctx context.Context, id string) (*pb.Task, error) {
+	t, e := s.authorizedOwner(ctx, id)
+	if e != nil {
+		return nil, e
+	}
+	if e = taskJobReadScope(ctx, s.db.SQL, id); e != nil {
+		return nil, e
+	}
+	return t, nil
+}
+func (s *Server) authorizedOwner(ctx context.Context, id string) (*pb.Task, error) {
+	p, e := rpcutil.User(ctx)
+	if e != nil {
+		return nil, e
+	}
+	t, owner, e := readTask(ctx, s.db.SQL, id)
+	if e != nil {
+		return nil, dbErr(e)
+	}
+	if owner != p.Identity.Owner || !config.Contains(p.Identity.Projects, t.Spec.ProjectId) {
+		return nil, status.Error(codes.NotFound, "not found")
+	}
+	return t, nil
+}
+
+)
+var capabilityNameRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}package server
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"regexp"
+	"strings"
+
+	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
+	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
+	"github.com/tommyxie2026-tech/computecloud/internal/store"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+)
+
+func encode(m proto.Message) []byte {
+	b, e := protojson.MarshalOptions{UseProtoNames: true}.Marshal(m)
+	if e != nil {
+		panic(e)
+	}
+	return b
+}
+func decode(b []byte, m proto.Message) error { return protojson.Unmarshal(b, m) }
+func terminal(s string) bool                 { return s == "SUCCEEDED" || s == "FAILED" || s == "CANCELED" }
+func dbErr(e error) error {
+	if e == nil {
+		return nil
+	}
+	if _, ok := status.FromError(e); ok {
+		return e
+	}
+	if errors.Is(e, sql.ErrNoRows) {
+		return status.Error(codes.NotFound, "not found")
+	}
+	return status.Error(codes.Unavailable, "storage operation failed")
+}
+func readTask(ctx context.Context, q store.Query, id string) (*pb.Task, string, error) {
+	t := new(pb.Task)
+	var b []byte
+	var owner string
+	e := q.QueryRowContext(ctx, `SELECT id,owner,state,attempt,spec,seq,error_code,error_message,result,native_session,worker,created,updated,blocker FROM tasks WHERE id=?`, id).Scan(&t.TaskId, &owner, &t.State, &t.AttemptId, &b, &t.LastSeq, &t.ErrorCode, &t.ErrorMessage, &t.Result, &t.SessionRef, &t.WorkerId, &t.CreatedAtMs, &t.UpdatedAtMs, &t.SchedulingBlocker)
+	if e != nil {
+		return nil, "", e
+	}
+	t.Spec = new(pb.TaskSpec)
+	e = decode(b, t.Spec)
+	return t, owner, e
+}
+func (s *Server) authorized(ctx context.Context, id string) (*pb.Task, error) {
+	t, e := s.authorizedOwner(ctx, id)
+	if e != nil {
+		return nil, e
+	}
+	if e = taskJobReadScope(ctx, s.db.SQL, id); e != nil {
+		return nil, e
+	}
+	return t, nil
+}
+func (s *Server) authorizedOwner(ctx context.Context, id string) (*pb.Task, error) {
+	p, e := rpcutil.User(ctx)
+	if e != nil {
+		return nil, e
+	}
+	t, owner, e := readTask(ctx, s.db.SQL, id)
+	if e != nil {
+		return nil, dbErr(e)
+	}
+	if owner != p.Identity.Owner || !config.Contains(p.Identity.Projects, t.Spec.ProjectId) {
+		return nil, status.Error(codes.NotFound, "not found")
+	}
+	return t, nil
+}
+
+)
+
+func validRequiredCapability(value string) bool {
+	if value == "event_stream" || value == "cancel" {
+		return true
+	}
+	namespace, name, ok := strings.Cut(value, ":")
+	if !ok || !capabilityNameRE.MatchString(name) {
+		return false
+	}
+	return namespace == "runtime" || namespace == "tool" || namespace == "environment"
+}
 
 func (s *Server) SubmitTask(ctx context.Context, in *pb.TaskSpec) (*pb.Task, error) {
 	p, e := rpcutil.Require(ctx, "tasks:submit", true)
@@ -105,10 +273,15 @@ func (s *Server) SubmitTask(ctx context.Context, in *pb.TaskSpec) (*pb.Task, err
 	if spec.SessionRef != "" || spec.ProviderRef != "" {
 		return nil, status.Error(codes.FailedPrecondition, "session resume and provider override not enabled in v0.1")
 	}
-	for _, c := range spec.RequiredCapabilities {
-		if c != "event_stream" && c != "cancel" {
-			return nil, status.Error(codes.FailedPrecondition, "unsupported capability: "+c)
+	if len(spec.RequiredCapabilities) > 32 {
+		return nil, status.Error(codes.InvalidArgument, "too many required capabilities")
+	}
+	seenCapabilities := map[string]bool{}
+	for _, capability := range spec.RequiredCapabilities {
+		if !validRequiredCapability(capability) || seenCapabilities[capability] {
+			return nil, status.Error(codes.FailedPrecondition, "unsupported or duplicate capability: "+capability)
 		}
+		seenCapabilities[capability] = true
 	}
 	if spec.Workspace.IsolationProfile == "" {
 		spec.Workspace.IsolationProfile = "trusted-worktree-process"
