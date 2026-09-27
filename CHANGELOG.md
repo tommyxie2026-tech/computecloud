@@ -1,5 +1,16 @@
 # 版本记录
 
+## 未发布 — v0.4.3 EnvironmentCapability Foundation
+
+- 新增独立 `internal/environment` Registry，Descriptor 包含 name / version / isolation_class / filesystem_mode / network_mode / legacy_default。
+- 首个内建 Environment 为 `process`，保持当前可信 Worker process + workspace 执行模式。
+- Worker 广告改为 Runtime-compatible Environment 与已注册 Environment 的交集；未注册 Environment 不进入 WorkerHello。
+- Job Execution 新增可选 `environment`；省略时等价 `process`，接受后冻结为 `environment:<name>` Task required capability。
+- Worker Policy 新增 `allowed_environments`；Environment 注册/兼容/Policy 校验在 Workspace prepare 与 Runtime Prepare/Start 前 fail closed。
+- `allowed_environments` 进入既有 TemplateDigest，Policy 改动继续受 template mismatch fencing 保护。
+- Scheduler 继续只处理 generic `required_capabilities`，不增加 Environment 名称特例。
+- 新增独立 `environment-contract-flow`；release package 增加该 Gate 依赖。
+- container/VM/external sandbox execution、Prepared Workspace、network isolation 与 v0.5 scoring 不属于 v0.4.3。
 ## 未发布 — v0.4.2 ToolCapability Foundation
 
 - 新增独立 `internal/tool` Registry，Tool descriptor 包含 name / version / side_effect / legacy_default；Tool existence 不再只由 Runtime Provider 声明。
