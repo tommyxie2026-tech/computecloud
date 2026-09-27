@@ -219,10 +219,12 @@ func (p claudeProvider) Stop(_ context.Context, _ config.Runtime, ref ExecutionR
 }
 
 func startLocalCLI(ctx context.Context, p Provider, prepared PreparedExecution, started func(ExecutionRef) error) StartResult {
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	parser := p.Parser(prepared.Emit)
-	lines := &Lines{Limit: 4 << 20, OnLine: parser.Line}
+	lines := &Lines{Limit: 4 << 20, OnLine: parser.Line, OnError: cancel}
 	var ref ExecutionRef
-	run := process.Run(ctx, prepared.Runtime.Executable, prepared.Args, prepared.Env, prepared.CWD,
+	run := process.Run(runCtx, prepared.Runtime.Executable, prepared.Args, prepared.Env, prepared.CWD,
 		strings.NewReader(prepared.Input), lines, prepared.Stderr, prepared.StopGrace,
 		func(pid int, startID string) error {
 			ref = ExecutionRef{
