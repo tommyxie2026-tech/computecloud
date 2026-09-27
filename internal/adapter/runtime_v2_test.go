@@ -2,7 +2,6 @@ package adapter
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"testing"
 
@@ -107,9 +106,6 @@ func TestRuntimeV2RegistryAllowsProviderWithoutCoreChanges(t *testing.T) {
 	}
 	if _, ok := Lookup("missing-runtime"); ok {
 		t.Fatal("unknown runtime lookup succeeded")
-	}
-	if err := fixtureProvider{profile: ""}.Probe(context.Background(), config.Runtime{}); err != nil && !errors.Is(err, context.Canceled) {
-		// Probe behavior is provider-owned; empty profile validation belongs to Register.
 	}
 }
 
