@@ -204,6 +204,13 @@ func (s *Server) SubmitJob(ctx context.Context, key string, b []byte) (*Job, err
 				frozen.RouteDigests[route] = config.RouteDigest(s.cfg.ModelGateway.Routes[route])
 			}
 		}
+		additional := 1
+		if spec.Map != nil {
+			additional = len(spec.Map.Partitions)
+		}
+		if e = s.checkQueueAdmission(ctx, q, spec.ProjectID, additional); e != nil {
+			return e
+		}
 		now := store.Now()
 		deadline := now + spec.Limits.TimeoutSeconds*1000
 		parallel := 1
