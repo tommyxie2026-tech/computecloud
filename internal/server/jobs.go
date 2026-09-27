@@ -274,7 +274,7 @@ func (s *Server) insertJobTask(ctx context.Context, q store.Query, jid, owner st
 	if e := q.QueryRowContext(ctx, "SELECT id FROM stages WHERE job_id=? AND kind=?", jid, stage).Scan(&stageID); e != nil {
 		return e
 	}
-	if _, e := q.ExecContext(ctx, `INSERT INTO tasks(id,owner,project,idem,hash,spec,state,created,updated,deadline,job_id,stage,stage_id,partition_key) VALUES(?,?,?,?,?,?,'QUEUED',?,?,?,?,?,?,?)`, id, owner, spec.ProjectID, t.IdempotencyKey, store.Hash(raw), raw, now, now, deadline, jid, stage, stageID, key); e != nil {
+	if _, e := q.ExecContext(ctx, `INSERT INTO tasks(id,owner,project,idem,hash,spec,state,created,updated,priority,deadline,job_id,stage,stage_id,partition_key) VALUES(?,?,?,?,?,?,'QUEUED',?,?,?,?,?,?,?,?)`, id, owner, spec.ProjectID, t.IdempotencyKey, store.Hash(raw), raw, now, now, t.Priority, deadline, jid, stage, stageID, key); e != nil {
 		return e
 	}
 	return appendEvent(ctx, q, &pb.Event{TaskId: id, Type: "task.state_changed", PayloadJson: job.JSON(map[string]string{"to": "QUEUED"})}, nil)
