@@ -32,6 +32,7 @@ def main():
     tests = [
         "TestFairGroupOrderRoundRobinsProjectsAndGroups",
         "TestSchedulerAgingIsBoundedAndMonotonic",
+        "TestJobPriorityPropagatesToManagedTasks",
         "TestFairSchedulerDoesNotBypassRetryAfter",
         "TestQueueBackpressurePreservesIdempotentReplay",
         "TestSpecificConcurrencyBlockers",
@@ -50,6 +51,7 @@ def main():
             "project_round_robin": True,
             "group_rotation": True,
             "priority_aging": True,
+            "job_priority_propagation": True,
             "retry_after_precedes_aging": True,
             "queue_backpressure": True,
             "idempotent_replay_under_backpressure": True,
