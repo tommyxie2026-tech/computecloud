@@ -28,6 +28,39 @@ type StopResult struct {
 	KillSent bool
 }
 
+type InspectResult struct {
+	Running bool
+	Exited  bool
+	Unknown bool
+	Cleanup bool
+}
+
+func Inspect(pid int, identity string) InspectResult {
+	if pid <= 1 || identity == "" {
+		return InspectResult{Unknown: true}
+	}
+	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		return InspectResult{Unknown: true}
+	}
+	if !strings.HasPrefix(identity, strings.TrimSpace(string(boot))+":") {
+		// A process identity from another boot cannot still be running.
+		return InspectResult{Exited: true, Cleanup: true}
+	}
+	current, err := Identity(pid)
+	if errors.Is(err, os.ErrNotExist) {
+		return InspectResult{Exited: true, Cleanup: true}
+	}
+	if err != nil || current != identity {
+		// PID reuse or unreadable process identity is intentionally fail-closed.
+		return InspectResult{Unknown: true}
+	}
+	if groupAlive(pid) {
+		return InspectResult{Running: true}
+	}
+	return InspectResult{Exited: true, Cleanup: true}
+}
+
 func Identity(pid int) (string, error) {
 	b, e := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if e != nil {
