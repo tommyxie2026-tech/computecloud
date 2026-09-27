@@ -2,14 +2,14 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 当前稳定发布基线：v0.3.2；main 功能基线：v0.4.1 Transport-neutral Runtime Execution
+- 当前稳定发布基线：v0.3.2；main 功能基线：v0.4.2 ToolCapability Foundation
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
-- 当前实现依据：[v0.4.1 Runtime Execution](v0.4.1-plan.md)、[ADR-013](../adr/0013-runtime-execution.md)
-- 当前实施跟踪：[v0.4.2 ToolCapability Foundation](v0.4.2-plan.md) / [Issue #29](https://github.com/tommyxie2026-tech/computecloud/issues/29)；v0.4.1 Transport-neutral Runtime Execution 已完成；v0.3.x Reliability Kernel 已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实现依据：[v0.4.2 ToolCapability](v0.4.2-plan.md)、[ADR-014](../adr/0014-tool-capability.md)
+- 当前实施跟踪：[v0.4.3 EnvironmentCapability Foundation](v0.4.3-plan.md) / [Issue #31](https://github.com/tommyxie2026-tech/computecloud/issues/31)；v0.4.2 ToolCapability 已完成；v0.3.x Reliability Kernel 已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -564,7 +564,7 @@ v0.4.1 不绑定具体商业 Agent API，也不提前实现 Session resume、App
 
 完成证据：PR #28 已合并为 `b11c3385923b92d439fd539b29270c99eb3b3c3d`；PR-head CI `36336150699` 与 main CI `36336466934` 全部通过，main package Gate 通过。
 
-### 6.1.2 v0.4.2 ToolCapability Foundation — 当前功能主线
+### 6.1.2 v0.4.2 ToolCapability Foundation — 已完成
 
 在 Runtime execution transport 解耦之后，继续把 Tool 从 Runtime Provider 的附属字符串拆成独立能力层：
 
@@ -580,6 +580,23 @@ v0.4.1 不绑定具体商业 Agent API，也不提前实现 Session resume、App
 - 独立 `tool-contract-flow` CI Gate。
 
 v0.4.2 只稳定 capability 与 policy contract，不提前实现通用 Shell/Browser/HTTP/MCP Tool execution proxy。具体 Tool execution、credential、network/isolation 与 approval 按后续能力分别设计。
+
+### 6.1.3 v0.4.3 EnvironmentCapability Foundation — 当前功能主线
+
+把 Environment 从 Runtime Provider 附属字符串拆成独立 capability/policy contract：
+
+- 独立 Environment Registry / Descriptor；
+- builtin `process`；
+- Runtime-compatible ∩ registered Environment 才能广告；
+- Job Execution 可选 `environment`，省略默认 `process`；
+- 冻结为 `environment:<name>` Task requirement；
+- Worker Policy `allowed_environments`；
+- Environment policy gate 在 Workspace prepare / Runtime Prepare/Start 前；
+- Policy 进入 TemplateDigest；
+- Scheduler 保持 generic capability matching；
+- 独立 `environment-contract-flow` CI Gate。
+
+v0.4.3 只稳定 Environment capability/policy foundation。container/VM/external sandbox 的真实执行生命周期在后续 EnvironmentProvider 小版本实现。
 
 
 RuntimeCapability 示例：
@@ -1297,17 +1314,18 @@ L4 Real Runtime / Multi-host
 8. ADR-010：Long-running Job Reliability；
 9. ADR-011：Fair Scheduling；
 10. ADR-012：Runtime API v2 Provider Registry；
-11. ADR-013：Transport-neutral Runtime Execution。
+11. ADR-013：Transport-neutral Runtime Execution；
+12. ADR-014：ToolCapability Registry / Policy；
+13. ADR-015：EnvironmentCapability Registry / Policy。
 
 后续建议：
 
-12. RuntimeCapability / ToolCapability；
-13. EnvironmentProvider / Prepared Workspace；
-14. Agent-aware Scheduling；
-15. Private Worker / Trust Domain；
-16. Multi-tenant / RBAC；
-17. History / GC；
-18. HA Trigger / State Backend（仅需要时）。
+14. EnvironmentProvider / Prepared Workspace；
+15. Agent-aware Scheduling；
+16. Private Worker / Trust Domain；
+17. Multi-tenant / RBAC；
+18. History / GC；
+19. HA Trigger / State Backend（仅需要时）。
 
 ## 16. 方向判断规则
 
