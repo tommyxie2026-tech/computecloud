@@ -3,102 +3,289 @@
   "title": "computecloud v0.2 JobSpec",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "project_id", "mode", "workspace", "input", "limits"],
+  "required": [
+    "schema_version",
+    "project_id",
+    "mode",
+    "workspace",
+    "input",
+    "limits"
+  ],
   "properties": {
-    "schema_version": {"const": "v0.2"},
-    "project_id": {"$ref": "#/$defs/ref"},
-    "mode": {"enum": ["single", "map_reduce"]},
+    "schema_version": {
+      "const": "v0.2"
+    },
+    "project_id": {
+      "$ref": "#/$defs/ref"
+    },
+    "mode": {
+      "enum": [
+        "single",
+        "map_reduce"
+      ]
+    },
     "workspace": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repository_ref", "base_commit"],
+      "required": [
+        "repository_ref",
+        "base_commit"
+      ],
       "properties": {
-        "repository_ref": {"$ref": "#/$defs/ref"},
-        "base_commit": {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"}
+        "repository_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "base_commit": {
+          "type": "string",
+          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+        }
       }
     },
-    "input": {"$ref": "#/$defs/input"},
-    "execution": {"$ref": "#/$defs/execution"},
+    "input": {
+      "$ref": "#/$defs/input"
+    },
+    "execution": {
+      "$ref": "#/$defs/execution"
+    },
     "map": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["parallelism", "partitions"],
+      "required": [
+        "parallelism",
+        "partitions"
+      ],
       "properties": {
-        "parallelism": {"type": "integer", "minimum": 1, "maximum": 8},
+        "parallelism": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
         "partitions": {
-          "type": "array", "minItems": 1, "maxItems": 32,
-          "items": {"$ref": "#/$defs/partition"}
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/partition"
+          }
         }
       }
     },
     "reduce": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["strategy", "input", "execution"],
+      "required": [
+        "strategy",
+        "input",
+        "execution"
+      ],
       "properties": {
-        "strategy": {"enum": ["report_merge_v1", "patch_merge_v1"]},
-        "input": {"$ref": "#/$defs/input"},
-        "execution": {"$ref": "#/$defs/execution"}
+        "strategy": {
+          "enum": [
+            "report_merge_v1",
+            "patch_merge_v1"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "execution": {
+          "$ref": "#/$defs/execution"
+        }
       }
     },
     "limits": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["timeout_seconds", "max_attempts_per_task"],
+      "required": [
+        "timeout_seconds",
+        "max_attempts_per_task"
+      ],
       "properties": {
-        "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 86400},
-        "max_attempts_per_task": {"type": "integer", "minimum": 1, "maximum": 3},
-        "priority": {"type": "integer", "minimum": 0, "maximum": 10}
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        },
+        "max_attempts_per_task": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        }
       }
     }
   },
   "allOf": [
     {
-      "if": {"properties": {"mode": {"const": "single"}}},
-      "then": {
-        "required": ["execution"],
-        "not": {"anyOf": [{"required": ["map"]}, {"required": ["reduce"]}]}
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "single"
+          }
+        }
       },
-      "else": {"required": ["map", "reduce"], "not": {"required": ["execution"]}}
+      "then": {
+        "required": [
+          "execution"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "map"
+              ]
+            },
+            {
+              "required": [
+                "reduce"
+              ]
+            }
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "map",
+          "reduce"
+        ],
+        "not": {
+          "required": [
+            "execution"
+          ]
+        }
+      }
     }
   ],
   "$defs": {
-    "ref": {"type": "string", "minLength": 1, "maxLength": 128},
+    "ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
     "input": {
-      "type": "object", "additionalProperties": false, "required": ["text"],
-      "properties": {"text": {"type": "string", "minLength": 1, "maxLength": 65536}}
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        }
+      }
     },
     "execution": {
-      "type": "object", "additionalProperties": false,
-      "required": ["engine", "runtime_profile", "model", "credential_ref", "policy_ref", "acceptance_profile"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "engine",
+        "runtime_profile",
+        "model",
+        "credential_ref",
+        "policy_ref",
+        "acceptance_profile"
+      ],
       "properties": {
-        "engine": {"enum": ["codex", "claude"]},
-        "runtime_profile": {"enum": ["codex_exec", "claude_print"]},
-        "model": {"$ref": "#/$defs/ref"},
-        "credential_ref": {"$ref": "#/$defs/ref"},
-        "policy_ref": {"$ref": "#/$defs/ref"},
-        "acceptance_profile": {"$ref": "#/$defs/ref"},
-        "replay_safe": {"type": "boolean"}
+        "engine": {
+          "enum": [
+            "codex",
+            "claude"
+          ]
+        },
+        "runtime_profile": {
+          "enum": [
+            "codex_exec",
+            "claude_print"
+          ]
+        },
+        "model": {
+          "$ref": "#/$defs/ref"
+        },
+        "credential_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "policy_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "acceptance_profile": {
+          "$ref": "#/$defs/ref"
+        },
+        "replay_safe": {
+          "type": "boolean"
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,63}$"
+          }
+        }
       },
       "allOf": [
         {
-          "if": {"properties": {"engine": {"const": "codex"}}},
-          "then": {"properties": {"runtime_profile": {"const": "codex_exec"}}},
-          "else": {"properties": {"runtime_profile": {"const": "claude_print"}}}
+          "if": {
+            "properties": {
+              "engine": {
+                "const": "codex"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "runtime_profile": {
+                "const": "codex_exec"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "runtime_profile": {
+                "const": "claude_print"
+              }
+            }
+          }
         }
       ]
     },
     "partition": {
-      "type": "object", "additionalProperties": false,
-      "required": ["key", "scope_paths", "input", "execution"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "scope_paths",
+        "input",
+        "execution"
+      ],
       "properties": {
-        "key": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
-        "scope_paths": {
-          "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true,
-          "items": {"type": "string", "minLength": 1, "maxLength": 1024}
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
         },
-        "input": {"$ref": "#/$defs/input"},
-        "execution": {"$ref": "#/$defs/execution"}
+        "scope_paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "execution": {
+          "$ref": "#/$defs/execution"
+        }
       }
     }
   }
