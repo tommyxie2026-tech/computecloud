@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
@@ -17,11 +18,31 @@ func (fixtureParser) Outcome() Outcome  { return Outcome{Final: true, Success: t
 type fixtureProvider struct{ profile string }
 
 func (f fixtureProvider) Profile() string { return f.profile }
+func (f fixtureProvider) Version(r config.Runtime) string { return r.Version }
+func (f fixtureProvider) Transport() string { return "remote_api" }
 func (f fixtureProvider) Probe(context.Context, config.Runtime) error { return nil }
 func (f fixtureProvider) Args(*pb.TaskSpec, config.Policy) ([]string, error) {
 	return []string{"fixture"}, nil
 }
 func (f fixtureProvider) Parser(func(string, []byte) error) StreamParser { return fixtureParser{} }
+func (f fixtureProvider) Prepare(req PrepareRequest) (PreparedExecution, error) {
+	return PreparedExecution{Profile: f.profile, Runtime: req.Runtime, CWD: req.CWD, Input: req.Input, Emit: req.Emit, Stderr: req.Stderr, StopGrace: req.StopGrace}, nil
+}
+func (f fixtureProvider) Start(_ context.Context, _ PreparedExecution, started func(ExecutionRef) error) StartResult {
+	ref := ExecutionRef{Provider: f.profile, Transport: "remote_api", ID: "fixture-ref"}
+	if started != nil {
+		if err := started(ref); err != nil {
+			return StartResult{Ref: ref, State: RuntimeUnknown, Cleanup: CleanupUnknown, Err: err}
+		}
+	}
+	return StartResult{Ref: ref, State: RuntimeExited, Cleanup: CleanupConfirmed, ExitCode: 0, Outcome: Outcome{Final: true, Success: true}}
+}
+func (f fixtureProvider) Inspect(context.Context, config.Runtime, ExecutionRef) (Inspection, error) {
+	return Inspection{State: RuntimeExited, Cleanup: CleanupConfirmed}, nil
+}
+func (f fixtureProvider) Stop(context.Context, config.Runtime, ExecutionRef, time.Duration) (StopResult, error) {
+	return StopResult{State: RuntimeExited, Cleanup: CleanupConfirmed}, nil
+}
 func (f fixtureProvider) Capabilities() CapabilitySet {
 	return CapabilitySet{
 		Runtime:     []string{"event_stream"},
@@ -137,9 +158,15 @@ func TestRuntimeV2CompatibilityArgs(t *testing.T) {
 type invalidCapabilityProvider struct{}
 
 func (invalidCapabilityProvider) Profile() string { return "invalid_capability_fixture" }
+func (invalidCapabilityProvider) Version(r config.Runtime) string { return r.Version }
+func (invalidCapabilityProvider) Transport() string { return "remote_api" }
 func (invalidCapabilityProvider) Probe(context.Context, config.Runtime) error { return nil }
 func (invalidCapabilityProvider) Args(*pb.TaskSpec, config.Policy) ([]string, error) { return nil, nil }
 func (invalidCapabilityProvider) Parser(func(string, []byte) error) StreamParser { return fixtureParser{} }
+func (invalidCapabilityProvider) Prepare(req PrepareRequest) (PreparedExecution, error) { return PreparedExecution{Profile: "invalid_capability_fixture", Runtime: req.Runtime}, nil }
+func (invalidCapabilityProvider) Start(context.Context, PreparedExecution, func(ExecutionRef) error) StartResult { return StartResult{} }
+func (invalidCapabilityProvider) Inspect(context.Context, config.Runtime, ExecutionRef) (Inspection, error) { return Inspection{State: RuntimeUnknown, Cleanup: CleanupUnknown}, nil }
+func (invalidCapabilityProvider) Stop(context.Context, config.Runtime, ExecutionRef, time.Duration) (StopResult, error) { return StopResult{State: RuntimeUnknown, Cleanup: CleanupUnknown}, nil }
 func (invalidCapabilityProvider) Capabilities() CapabilitySet {
 	return CapabilitySet{Runtime: []string{"runtime:already-qualified"}}
 }
