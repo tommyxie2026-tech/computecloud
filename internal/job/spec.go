@@ -57,6 +57,7 @@ type Reduce struct {
 type Limits struct {
 	TimeoutSeconds     int64 `json:"timeout_seconds"`
 	MaxAttemptsPerTask int   `json:"max_attempts_per_task"`
+	Priority           int32 `json:"priority,omitempty"`
 }
 type Spec struct {
 	SchemaVersion string     `json:"schema_version"`
@@ -156,7 +157,7 @@ func (s *Spec) Validate(maxParts, maxParallel int) error {
 	if s.SchemaVersion != "v0.2" || !Ref(s.ProjectID) || !Ref(s.Workspace.RepositoryRef) || !commitRE.MatchString(s.Workspace.BaseCommit) {
 		return fmt.Errorf("version, project and fixed repository commit required")
 	}
-	if s.Limits.TimeoutSeconds < 1 || s.Limits.TimeoutSeconds > 86400 || s.Limits.MaxAttemptsPerTask < 1 || s.Limits.MaxAttemptsPerTask > 3 {
+	if s.Limits.TimeoutSeconds < 1 || s.Limits.TimeoutSeconds > 86400 || s.Limits.MaxAttemptsPerTask < 1 || s.Limits.MaxAttemptsPerTask > 3 || s.Limits.Priority < 0 || s.Limits.Priority > 10 {
 		return fmt.Errorf("invalid deadline or max_attempts_per_task")
 	}
 	validInput := func(i Input) bool { return len(i.Text) > 0 && len(i.Text) <= 64<<10 }
@@ -289,5 +290,5 @@ func (s Spec) Executions() []Execution {
 	return append(out, s.Reduce.Execution)
 }
 func (e Execution) Task(s Spec, key, text string) *pb.TaskSpec {
-	return &pb.TaskSpec{ProjectId: s.ProjectID, IdempotencyKey: key, Engine: e.Engine, RuntimeProfile: e.RuntimeProfile, Model: e.Model, CredentialRef: e.CredentialRef, Workspace: &pb.Workspace{RepositoryRef: s.Workspace.RepositoryRef, BaseCommit: s.Workspace.BaseCommit, IsolationProfile: "trusted-worktree-process"}, Input: &pb.Input{Text: text}, PolicyRef: e.PolicyRef, AcceptanceProfile: e.AcceptanceProfile, TimeoutSeconds: s.Limits.TimeoutSeconds, RequiredCapabilities: []string{"event_stream", "cancel", "job_io_v1"}}
+	return &pb.TaskSpec{ProjectId: s.ProjectID, IdempotencyKey: key, Engine: e.Engine, RuntimeProfile: e.RuntimeProfile, Model: e.Model, CredentialRef: e.CredentialRef, Workspace: &pb.Workspace{RepositoryRef: s.Workspace.RepositoryRef, BaseCommit: s.Workspace.BaseCommit, IsolationProfile: "trusted-worktree-process"}, Input: &pb.Input{Text: text}, PolicyRef: e.PolicyRef, AcceptanceProfile: e.AcceptanceProfile, TimeoutSeconds: s.Limits.TimeoutSeconds, Priority: s.Limits.Priority, RequiredCapabilities: []string{"event_stream", "cancel", "job_io_v1"}}
 }
