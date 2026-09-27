@@ -8,6 +8,7 @@
 | [Agent 客户端控制端方案调研](research/agent-control-client-landscape-2026.md) | Orca、Paseo、Happy、Soromi、Codex/Claude Remote 等比较 | 2026-09-26 快照；已形成 ADR-008 |
 | [v0.4.1 Runtime Execution 实施计划](implementation/v0.4.1-plan.md) | Prepare/Start/Inspect/Stop、durable ExecutionRef、remote fixture 与 runtime-execution-flow | 当前功能主线 |
 | [v0.4.1 Runtime Execution 运行与升级](implementation/v0.4.1-runbook.md) | Worker schema v4、Runtime ref/state/cleanup、restart recovery 与回退 | v0.4.1 操作依据 |
+| [v0.4.1 Runtime Execution 验证记录](validation/v0.4.1-results.md) | remote no-PID、Inspect/Stop recovery、Worker schema v4 与 runtime-execution-flow 证据 | 功能 Gate 已通过一轮；待最终 PR/main CI |
 | [ADR-013：Transport-neutral Runtime Execution](adr/0013-runtime-execution.md) | Provider-owned execution transport、remote no-PID 与 fail-closed recovery | Accepted |
 | [v0.4.0 Runtime API v2 实施计划](implementation/v0.4.0-plan.md) | Provider Registry、capability namespace、Gateway provider ownership 与 CI runtime-contract-flow | 当前功能主线 |
 | [v0.4.0 Runtime API v2 运行与扩展](implementation/v0.4.0-runbook.md) | Runtime Provider、capability、扩展方式与回退 | v0.4.0 操作依据 |
