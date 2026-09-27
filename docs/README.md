@@ -6,6 +6,10 @@
 | [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性内核、Agent Runtime/Tool、Agent-aware Scheduler、治理与规模化 | 当前长期主路线 |
 | [Control 客户端控制面技术方案](design/client-control-plane.md) | Web/iOS/Android、API、事件同步、设备身份、E2EE、Push、CI 和验收 | C0 设计基线完成；按 C1–C5 实施 |
 | [Agent 客户端控制端方案调研](research/agent-control-client-landscape-2026.md) | Orca、Paseo、Happy、Soromi、Codex/Claude Remote 等比较 | 2026-09-26 快照；已形成 ADR-008 |
+| [v0.4.0 Runtime API v2 实施计划](implementation/v0.4.0-plan.md) | Provider Registry、capability namespace、Gateway provider ownership 与 CI runtime-contract-flow | 当前功能主线 |
+| [v0.4.0 Runtime API v2 运行与扩展](implementation/v0.4.0-runbook.md) | Runtime Provider、capability、扩展方式与回退 | v0.4.0 操作依据 |
+| [v0.4.0 Runtime API v2 验证记录](validation/v0.4.0-results.md) | Provider Registry、capability namespace、Gateway ownership 与 runtime-contract-flow CI 证据 | PR-head CI 通过；待 main merge Gate |
+| [ADR-012：Runtime API v2](adr/0012-runtime-api-v2.md) | 注册式 Provider、wire compatibility、Runtime/Tool/Environment 命名空间 | Accepted |
 | [v0.3.5 Fair Scheduling 实施计划](implementation/v0.3.5-plan.md) | Project/group fairness、priority aging、queue backpressure、specific blockers 与 CI fair-flow | 已实现并合并 main |
 | [v0.3.5 Fair Scheduling 运行与调优](implementation/v0.3.5-runbook.md) | aging、queue limits、blocker 与公平调度调优 | v0.3.5 操作依据 |
 | [v0.3.5 Fair Scheduling 验证记录](validation/v0.3.5-results.md) | Project/group fairness、aging、backpressure、blocker taxonomy 与 fair-flow CI 证据 | PR/main CI 与 package 通过；Production Gate 仍待 #1 |

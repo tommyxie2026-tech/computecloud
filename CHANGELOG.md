@@ -1,5 +1,16 @@
 # 版本记录
 
+## 未发布 — v0.4.0 Runtime API v2
+
+- Runtime 接入从 Worker profile 特例改为注册式 Provider Registry；内置 `codex_exec` 与 `claude_print` 作为 Provider。
+- Provider contract 统一 `Profile / Probe / Args / Parser / Capabilities / SupportsGateway`，新增 Runtime 不需要修改 Scheduler profile 分支。
+- Worker probe 与 execute 路径通过 Registry 发现 Provider；unknown Runtime 在执行前 fail closed。
+- Capability 开始使用 `runtime:* / tool:* / environment:*` 命名空间，同时继续广告 legacy capability 以保持 v0.3.x JobSpec 兼容。
+- Model Gateway eligibility 由 Provider 声明，不再通过 `runtime_profile == codex_exec` 判断。
+- 新增 Runtime contract 测试，覆盖第三方 fixture Provider 注册、deterministic capability、namespaced Scheduler match 与 legacy compatibility。
+- 新增独立 GitHub Actions `runtime-contract-flow`，并静态检查 Worker/Server 核心文件不重新引入 Codex/Claude profile 特例。
+- Release package 依赖 verify、task-flow、retry-flow、artifact-flow、workspace-flow、long-run-flow、fair-flow、runtime-contract-flow 八个 Gate。
+- v0.4.0 不实现 API-backed Runtime、EnvironmentProvider、Prepared Workspace、interactive approval 或 breaking protobuf migration。
 ## 未发布 — v0.3.5 Fair Scheduling（实现完成，待版本发布）
 
 - Scheduler 从固定 priority + 单 group cursor 演进为 `effective priority -> Project round-robin -> Job/group round-robin -> Task` 的有界公平队列。

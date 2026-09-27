@@ -2,11 +2,15 @@ package adapter
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os/exec"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
@@ -19,6 +23,199 @@ type Outcome struct {
 	Session string
 	Code    string
 }
+
+type StreamParser interface {
+	Line([]byte) error
+	Outcome() Outcome
+}
+
+type CapabilitySet struct {
+	Runtime     []string
+	Tools       []string
+	Environment []string
+	Legacy      []string
+}
+
+func namespaced(prefix string, values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if v != "" {
+			out = append(out, prefix+":"+v)
+		}
+	}
+	return out
+}
+
+func (c CapabilitySet) Advertised() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, group := range [][]string{
+		namespaced("runtime", c.Runtime),
+		namespaced("tool", c.Tools),
+		namespaced("environment", c.Environment),
+		c.Legacy,
+	} {
+		for _, v := range group {
+			if v == "" || seen[v] {
+				continue
+			}
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+type Provider interface {
+	Profile() string
+	Probe(context.Context, config.Runtime) error
+	Args(*pb.TaskSpec, config.Policy) ([]string, error)
+	Parser(func(string, []byte) error) StreamParser
+	Capabilities() CapabilitySet
+	SupportsGateway() bool
+}
+
+var registry = struct {
+	sync.RWMutex
+	providers map[string]Provider
+}{providers: map[string]Provider{}}
+
+func validateCapabilitySet(c CapabilitySet) error {
+	for namespace, values := range map[string][]string{
+		"runtime": c.Runtime,
+		"tool": c.Tools,
+		"environment": c.Environment,
+	} {
+		seen := map[string]bool{}
+		for _, value := range values {
+			if value == "" || strings.Contains(value, ":") {
+				return fmt.Errorf("%s capability must be an unqualified non-empty name: %q", namespace, value)
+			}
+			if seen[value] {
+				return fmt.Errorf("duplicate %s capability: %s", namespace, value)
+			}
+			seen[value] = true
+		}
+	}
+	return nil
+}
+
+func Register(p Provider) error {
+	if p == nil || strings.TrimSpace(p.Profile()) == "" {
+		return errors.New("runtime provider profile required")
+	}
+	profile := strings.TrimSpace(p.Profile())
+	if strings.Contains(profile, ":") {
+		return errors.New("runtime provider profile must not contain ':'")
+	}
+	if err := validateCapabilitySet(p.Capabilities()); err != nil {
+		return err
+	}
+	registry.Lock()
+	defer registry.Unlock()
+	if _, exists := registry.providers[profile]; exists {
+		return fmt.Errorf("runtime provider already registered: %s", profile)
+	}
+	registry.providers[profile] = p
+	return nil
+}
+
+func Lookup(profile string) (Provider, bool) {
+	registry.RLock()
+	defer registry.RUnlock()
+	p, ok := registry.providers[profile]
+	return p, ok
+}
+
+func Profiles() []string {
+	registry.RLock()
+	defer registry.RUnlock()
+	out := make([]string, 0, len(registry.providers))
+	for profile := range registry.providers {
+		out = append(out, profile)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func probeCLI(ctx context.Context, r config.Runtime) error {
+	if r.Executable == "" || r.Version == "" {
+		return errors.New("runtime executable/version required")
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(probeCtx, r.Executable, "--version")
+	cmd.WaitDelay = time.Second
+	b, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+	observed := strings.TrimSpace(string(b))
+	if observed != r.Version {
+		return fmt.Errorf("version mismatch: configured %q, observed %q", r.Version, observed)
+	}
+	return nil
+}
+
+type codexProvider struct{}
+
+func (codexProvider) Profile() string { return "codex_exec" }
+func (codexProvider) Probe(ctx context.Context, r config.Runtime) error { return probeCLI(ctx, r) }
+func (codexProvider) Args(spec *pb.TaskSpec, policy config.Policy) ([]string, error) {
+	if policy.CodexSandbox != "read-only" && policy.CodexSandbox != "workspace-write" {
+		return nil, errors.New("policy must set read-only or workspace-write sandbox")
+	}
+	return []string{"exec", "--json", "--sandbox", policy.CodexSandbox, "--model", spec.Model, "-"}, nil
+}
+func (codexProvider) Parser(emit func(string, []byte) error) StreamParser {
+	return &Parser{Profile: "codex_exec", Emit: emit}
+}
+func (codexProvider) Capabilities() CapabilitySet {
+	return CapabilitySet{
+		Runtime:     []string{"event_stream", "cancel", "gateway_inference_v1"},
+		Tools:       []string{"job_io_v1", "artifact_inputs_v1"},
+		Environment: []string{"process"},
+		Legacy:      []string{"event_stream", "cancel", "gateway_inference_v1", "job_io_v1", "artifact_inputs_v1"},
+	}
+}
+func (codexProvider) SupportsGateway() bool { return true }
+
+type claudeProvider struct{}
+
+func (claudeProvider) Profile() string { return "claude_print" }
+func (claudeProvider) Probe(ctx context.Context, r config.Runtime) error { return probeCLI(ctx, r) }
+func (claudeProvider) Args(spec *pb.TaskSpec, policy config.Policy) ([]string, error) {
+	if policy.ClaudePermissionMode != "dontAsk" {
+		return nil, errors.New("batch policy requires claude_permission_mode: dontAsk")
+	}
+	args := []string{"-p", "--input-format", "text", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-mode", "dontAsk", "--model", spec.Model}
+	if len(policy.ClaudeAllowedTools) > 0 {
+		args = append(args, "--allowedTools", strings.Join(policy.ClaudeAllowedTools, ","))
+	}
+	return args, nil
+}
+func (claudeProvider) Parser(emit func(string, []byte) error) StreamParser {
+	return &Parser{Profile: "claude_print", Emit: emit}
+}
+func (claudeProvider) Capabilities() CapabilitySet {
+	return CapabilitySet{
+		Runtime:     []string{"event_stream", "cancel"},
+		Tools:       []string{"job_io_v1", "artifact_inputs_v1"},
+		Environment: []string{"process"},
+		Legacy:      []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1"},
+	}
+}
+func (claudeProvider) SupportsGateway() bool { return false }
+
+func init() {
+	for _, p := range []Provider{codexProvider{}, claudeProvider{}} {
+		if err := Register(p); err != nil {
+			panic(err)
+		}
+	}
+}
+
 type Parser struct {
 	Profile string
 	outcome Outcome
@@ -90,27 +287,26 @@ func (p *Parser) Line(line []byte) error {
 	if len(p.outcome.Result) > 1<<20 {
 		return errors.New("PROTOCOL_LIMIT: result exceeds 1 MiB")
 	}
+	if p.Emit == nil {
+		return nil
+	}
 	return p.Emit(typ, line)
 }
+
 func Args(spec *pb.TaskSpec, policy config.Policy) ([]string, error) {
-	switch spec.RuntimeProfile {
-	case "codex_exec":
-		if policy.CodexSandbox != "read-only" && policy.CodexSandbox != "workspace-write" {
-			return nil, errors.New("policy must set read-only or workspace-write sandbox")
-		}
-		return []string{"exec", "--json", "--sandbox", policy.CodexSandbox, "--model", spec.Model, "-"}, nil
-	case "claude_print":
-		if policy.ClaudePermissionMode != "dontAsk" {
-			return nil, errors.New("batch policy requires claude_permission_mode: dontAsk")
-		}
-		a := []string{"-p", "--input-format", "text", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-mode", "dontAsk", "--model", spec.Model}
-		if len(policy.ClaudeAllowedTools) > 0 {
-			a = append(a, "--allowedTools", strings.Join(policy.ClaudeAllowedTools, ","))
-		}
-		return a, nil
-	default:
+	p, ok := Lookup(spec.RuntimeProfile)
+	if !ok {
 		return nil, errors.New("unsupported runtime profile")
 	}
+	return p.Args(spec, policy)
+}
+
+func NewParser(profile string, emit func(string, []byte) error) (StreamParser, error) {
+	p, ok := Lookup(profile)
+	if !ok {
+		return nil, errors.New("unsupported runtime profile")
+	}
+	return p.Parser(emit), nil
 }
 
 // Lines bounds an individual protocol frame and propagates errors to os/exec.

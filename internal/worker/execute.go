@@ -115,13 +115,14 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		return
 	}
 	r, ok := w.cfg.Runtimes[a.Spec.RuntimeProfile]
+	provider, providerOK := adapter.Lookup(a.Spec.RuntimeProfile)
 	policy, policyOK := w.cfg.Policies[a.Spec.PolicyRef]
 	verify, verifyOK := w.cfg.Verifiers[a.Spec.AcceptanceProfile]
-	if !ok || !policyOK || !verifyOK || !config.Contains(r.Models, a.Spec.Model) || !config.Contains(r.Credentials, a.Spec.CredentialRef) {
+	if !ok || !providerOK || !policyOK || !verifyOK || !config.Contains(r.Models, a.Spec.Model) || !config.Contains(r.Credentials, a.Spec.CredentialRef) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE"})
 		return
 	}
-	args, e := adapter.Args(a.Spec, policy)
+	args, e := provider.Args(a.Spec, policy)
 	if e != nil {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "INVALID_POLICY", ErrorMessage: e.Error()})
 		return
@@ -136,7 +137,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		return
 	}
 	if a.Gateway != nil {
-		if a.Spec.RuntimeProfile != "codex_exec" || a.Gateway.Token == "" || a.Gateway.BaseUrl == "" {
+		if !provider.SupportsGateway() || a.Gateway.Token == "" || a.Gateway.BaseUrl == "" {
 			complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "INVALID_GATEWAY"})
 			return
 		}
@@ -209,7 +210,11 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "WORKSPACE_ERROR", ErrorMessage: e.Error()})
 		return
 	}
-	parser := &adapter.Parser{Profile: a.Spec.RuntimeProfile, Emit: func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) }}
+	parser, e := adapter.NewParser(a.Spec.RuntimeProfile, func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) })
+	if e != nil {
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE", ErrorMessage: e.Error()})
+		return
+	}
 	lines := &adapter.Lines{Limit: 4 << 20, OnLine: parser.Line, OnError: cancel}
 	stderr := &capped{limit: 1 << 20}
 	run := process.Run(execCtx, r.Executable, args, env, cwd, strings.NewReader(jobRun.prompt), lines, stderr, time.Duration(w.cfg.StopGraceMS)*time.Millisecond, func(pid int, id string) error {
