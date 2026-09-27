@@ -38,6 +38,7 @@ type Server struct {
 	jobCursor    string
 	queueCursor   map[int32]string
 	projectCursor map[int32]string
+	groupCursor   map[string]string
 	modelHandler  http.Handler
 	artifactSweepAt int64
 	eventSweepAt    int64
@@ -56,7 +57,7 @@ func New(c config.Server) (*Server, error) {
 	if e != nil {
 		return nil, e
 	}
-	s := &Server{cfg: c, db: d, auth: a, peers: map[string]*session{}, notify: make(chan struct{}, 1), queueCursor: map[int32]string{}, projectCursor: map[int32]string{}}
+	s := &Server{cfg: c, db: d, auth: a, peers: map[string]*session{}, notify: make(chan struct{}, 1), queueCursor: map[int32]string{}, projectCursor: map[int32]string{}, groupCursor: map[string]string{}}
 	if c.ModelGateway.Enabled {
 		g, e := newModelGateway(s)
 		if e != nil {
