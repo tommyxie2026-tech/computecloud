@@ -2,14 +2,14 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 当前稳定发布基线：v0.3.2；main 功能基线：v0.3.5
+- 当前稳定发布基线：v0.3.2；main 功能基线：v0.3.5；当前开发主线：v0.4.0 Runtime API v2
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
-- 当前实现依据：[v0.3.5 Fair Scheduling](v0.3.5-plan.md)、[v0.3.5 验证记录](../validation/v0.3.5-results.md)
-- 当前实施跟踪：v0.3.0–v0.3.5 Reliability Kernel 代码与自动化已完成；下一功能阶段进入 v0.4.x Runtime / Tool / Environment 规划；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实现依据：[v0.4.0 Runtime API v2](v0.4.0-plan.md)、[ADR-012](../adr/0012-runtime-api-v2.md)
+- 当前实施跟踪：[v0.4.0 Runtime API v2](v0.4.0-plan.md) / [Issue #25](https://github.com/tommyxie2026-tech/computecloud/issues/25)；v0.3.x Reliability Kernel 已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -495,7 +495,7 @@ v0.3.3 仍坚持每个 Attempt 独占 writable Workspace；Prepared/warm Workspa
 
 这一阶段扩大“Agent Job 能做什么、能在哪里安全运行、能如何快速准备工作环境”，但不扩大产品领域。产品调研明确要求这一阶段采用 **Adapter / Provider-first** 策略：优先接入现有 Agent 和 Sandbox 生态，而不是自建完整 Harness 或 Sandbox Cloud。
 
-### 6.1 Runtime API v2
+### 6.1 Runtime API v2 — 当前功能主线
 
 Runtime 是 Agent 执行载体：
 
@@ -517,6 +517,17 @@ Inspect
 Stop
 RuntimeCapabilities
 ~~~
+
+v0.4.0 首版先完成 Registry/Provider foundation，并保持现有 wire schema 兼容：
+
+- Codex/Claude 从 Worker 特例迁移为 Provider；
+- Provider 拥有 Probe / Args / Parser / Gateway eligibility；
+- capability 使用 runtime/tool/environment 命名空间；
+- legacy capability 在兼容窗口继续广告；
+- 新 Runtime 不修改 Worker/Scheduler profile-specific 分支；
+- 独立 CI runtime-contract-flow 作为 package Gate。
+
+Start/Inspect/Stop 的 API-backed/remote Runtime 实现继续在 v0.4.x 后续小版本完善。
 
 RuntimeCapability 示例：
 
