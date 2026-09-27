@@ -12,6 +12,7 @@ import (
 	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
+	"github.com/tommyxie2026-tech/computecloud/internal/adapter"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/process"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
@@ -151,5 +152,132 @@ func TestRejectedArtifactFailsTaskWithoutHoldingCleanedExecution(t *testing.T) {
 	}
 	if client.completed == nil || client.completed.Success || !client.completed.CleanupConfirmed || client.completed.ErrorCode != "ARTIFACT_ERROR" || len(client.completed.ArtifactIds) != 0 {
 		t.Fatalf("bad completion: %v", client.completed)
+	}
+}
+
+
+type recoveryRemoteParser struct{}
+
+func (recoveryRemoteParser) Line([]byte) error { return nil }
+func (recoveryRemoteParser) Outcome() adapter.Outcome {
+	return adapter.Outcome{Final: true, Success: true}
+}
+
+type recoveryRemoteProvider struct{}
+
+func (recoveryRemoteProvider) Profile() string { return "recovery_remote_fixture" }
+func (recoveryRemoteProvider) Version(r config.Runtime) string { return r.Version }
+func (recoveryRemoteProvider) Transport() string { return "remote_api" }
+func (recoveryRemoteProvider) Probe(context.Context, config.Runtime) error { return nil }
+func (recoveryRemoteProvider) Args(*pb.TaskSpec, config.Policy) ([]string, error) { return nil, nil }
+func (recoveryRemoteProvider) Parser(func(string, []byte) error) adapter.StreamParser { return recoveryRemoteParser{} }
+func (recoveryRemoteProvider) Prepare(req adapter.PrepareRequest) (adapter.PreparedExecution, error) {
+	return adapter.PreparedExecution{Profile: "recovery_remote_fixture", Runtime: req.Runtime}, nil
+}
+func (recoveryRemoteProvider) Start(_ context.Context, _ adapter.PreparedExecution, started func(adapter.ExecutionRef) error) adapter.StartResult {
+	ref := adapter.ExecutionRef{Provider: "recovery_remote_fixture", Transport: "remote_api", ID: "exited"}
+	if started != nil {
+		if err := started(ref); err != nil {
+			return adapter.StartResult{Ref: ref, State: adapter.RuntimeUnknown, Cleanup: adapter.CleanupUnknown, Err: err}
+		}
+	}
+	return adapter.StartResult{Ref: ref, State: adapter.RuntimeExited, Cleanup: adapter.CleanupConfirmed, Outcome: adapter.Outcome{Final: true, Success: true}}
+}
+func (recoveryRemoteProvider) Inspect(_ context.Context, _ config.Runtime, ref adapter.ExecutionRef) (adapter.Inspection, error) {
+	switch ref.ID {
+	case "running":
+		return adapter.Inspection{State: adapter.RuntimeRunning, Cleanup: adapter.CleanupPending}, nil
+	case "exited":
+		return adapter.Inspection{State: adapter.RuntimeExited, Cleanup: adapter.CleanupConfirmed}, nil
+	default:
+		return adapter.Inspection{State: adapter.RuntimeUnknown, Cleanup: adapter.CleanupUnknown}, nil
+	}
+}
+func (recoveryRemoteProvider) Stop(_ context.Context, _ config.Runtime, ref adapter.ExecutionRef, _ time.Duration) (adapter.StopResult, error) {
+	if ref.ID == "running" {
+		return adapter.StopResult{State: adapter.RuntimeExited, Cleanup: adapter.CleanupConfirmed}, nil
+	}
+	return adapter.StopResult{State: adapter.RuntimeUnknown, Cleanup: adapter.CleanupUnknown}, nil
+}
+func (recoveryRemoteProvider) Capabilities() adapter.CapabilitySet {
+	return adapter.CapabilitySet{Runtime: []string{"remote_api"}}
+}
+func (recoveryRemoteProvider) SupportsGateway() bool { return false }
+
+func TestRecoveryUsesRuntimeProviderInspectAndStop(t *testing.T) {
+	if _, ok := adapter.Lookup("recovery_remote_fixture"); !ok {
+		if err := adapter.Register(recoveryRemoteProvider{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d, err := store.Open(t.TempDir(), store.WorkerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	w := &Worker{
+		db: d,
+		cfg: config.Worker{
+			StopGraceMS: 50,
+			Runtimes: map[string]config.Runtime{
+				"recovery_remote_fixture": {Version: "fixture-v1"},
+			},
+		},
+	}
+	for _, tc := range []struct {
+		id      string
+		cleanup bool
+	}{
+		{"running", true},
+		{"unknown", false},
+	} {
+		a := &pb.Assignment{
+			TaskId: tc.id, AttemptId: tc.id, Generation: 1, LeaseToken: "token",
+			Spec: &pb.TaskSpec{RuntimeProfile: "recovery_remote_fixture"},
+		}
+		refBytes, err := adapter.EncodeExecutionRef(adapter.ExecutionRef{
+			Provider: "recovery_remote_fixture", Transport: "remote_api", ID: tc.id,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = d.SQL.Exec(`INSERT INTO runs(
+			id,assignment,state,runtime_provider,runtime_transport,runtime_ref,runtime_state,runtime_cleanup
+		) VALUES(?,?,?,?,?,?,?,?)`,
+			tc.id, enc(a), "RUNNING", "recovery_remote_fixture", "remote_api", refBytes,
+			string(adapter.RuntimeRunning), string(adapter.CleanupPending)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = w.recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		id      string
+		cleanup bool
+	}{
+		{"running", true},
+		{"unknown", false},
+	} {
+		var b []byte
+		var state, cleanup string
+		if err = d.SQL.QueryRow("SELECT completion,runtime_state,runtime_cleanup FROM runs WHERE id=?", tc.id).
+			Scan(&b, &state, &cleanup); err != nil {
+			t.Fatal(err)
+		}
+		done := new(pb.CompleteRequest)
+		if err = dec(b, done); err != nil {
+			t.Fatal(err)
+		}
+		if done.CleanupConfirmed != tc.cleanup {
+			t.Fatalf("%s cleanup=%v want=%v state=%s runtime_cleanup=%s", tc.id, done.CleanupConfirmed, tc.cleanup, state, cleanup)
+		}
+		if tc.cleanup {
+			if state != string(adapter.RuntimeExited) || cleanup != string(adapter.CleanupConfirmed) {
+				t.Fatalf("%s runtime state=%s cleanup=%s", tc.id, state, cleanup)
+			}
+		} else if state != string(adapter.RuntimeUnknown) || cleanup != string(adapter.CleanupUnknown) {
+			t.Fatalf("%s unknown runtime was not fail-closed: state=%s cleanup=%s", tc.id, state, cleanup)
+		}
 	}
 }

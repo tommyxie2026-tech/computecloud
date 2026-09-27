@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
@@ -17,14 +18,34 @@ func (fixtureParser) Outcome() Outcome  { return Outcome{Final: true, Success: t
 type fixtureProvider struct{ profile string }
 
 func (f fixtureProvider) Profile() string { return f.profile }
+func (f fixtureProvider) Version(r config.Runtime) string { return r.Version }
+func (f fixtureProvider) Transport() string { return "remote_api" }
 func (f fixtureProvider) Probe(context.Context, config.Runtime) error { return nil }
 func (f fixtureProvider) Args(*pb.TaskSpec, config.Policy) ([]string, error) {
 	return []string{"fixture"}, nil
 }
 func (f fixtureProvider) Parser(func(string, []byte) error) StreamParser { return fixtureParser{} }
+func (f fixtureProvider) Prepare(req PrepareRequest) (PreparedExecution, error) {
+	return PreparedExecution{Profile: f.profile, Runtime: req.Runtime, CWD: req.CWD, Input: req.Input, Emit: req.Emit, Stderr: req.Stderr, StopGrace: req.StopGrace}, nil
+}
+func (f fixtureProvider) Start(_ context.Context, _ PreparedExecution, started func(ExecutionRef) error) StartResult {
+	ref := ExecutionRef{Provider: f.profile, Transport: "remote_api", ID: "fixture-ref"}
+	if started != nil {
+		if err := started(ref); err != nil {
+			return StartResult{Ref: ref, State: RuntimeUnknown, Cleanup: CleanupUnknown, Err: err}
+		}
+	}
+	return StartResult{Ref: ref, State: RuntimeExited, Cleanup: CleanupConfirmed, ExitCode: 0, Outcome: Outcome{Final: true, Success: true}}
+}
+func (f fixtureProvider) Inspect(context.Context, config.Runtime, ExecutionRef) (Inspection, error) {
+	return Inspection{State: RuntimeExited, Cleanup: CleanupConfirmed}, nil
+}
+func (f fixtureProvider) Stop(context.Context, config.Runtime, ExecutionRef, time.Duration) (StopResult, error) {
+	return StopResult{State: RuntimeExited, Cleanup: CleanupConfirmed}, nil
+}
 func (f fixtureProvider) Capabilities() CapabilitySet {
 	return CapabilitySet{
-		Runtime:     []string{"event_stream"},
+		Runtime:     []string{"event_stream", "remote_api"},
 		Tools:       []string{"shell"},
 		Environment: []string{"process"},
 	}
@@ -56,6 +77,7 @@ func TestRuntimeV2BuiltinsAndCapabilityNamespaces(t *testing.T) {
 		"runtime:event_stream",
 		"runtime:cancel",
 		"runtime:gateway_inference_v1",
+		"runtime:local_cli",
 		"tool:job_io_v1",
 		"tool:artifact_inputs_v1",
 		"environment:process",
@@ -137,9 +159,15 @@ func TestRuntimeV2CompatibilityArgs(t *testing.T) {
 type invalidCapabilityProvider struct{}
 
 func (invalidCapabilityProvider) Profile() string { return "invalid_capability_fixture" }
+func (invalidCapabilityProvider) Version(r config.Runtime) string { return r.Version }
+func (invalidCapabilityProvider) Transport() string { return "remote_api" }
 func (invalidCapabilityProvider) Probe(context.Context, config.Runtime) error { return nil }
 func (invalidCapabilityProvider) Args(*pb.TaskSpec, config.Policy) ([]string, error) { return nil, nil }
 func (invalidCapabilityProvider) Parser(func(string, []byte) error) StreamParser { return fixtureParser{} }
+func (invalidCapabilityProvider) Prepare(req PrepareRequest) (PreparedExecution, error) { return PreparedExecution{Profile: "invalid_capability_fixture", Runtime: req.Runtime}, nil }
+func (invalidCapabilityProvider) Start(context.Context, PreparedExecution, func(ExecutionRef) error) StartResult { return StartResult{} }
+func (invalidCapabilityProvider) Inspect(context.Context, config.Runtime, ExecutionRef) (Inspection, error) { return Inspection{State: RuntimeUnknown, Cleanup: CleanupUnknown}, nil }
+func (invalidCapabilityProvider) Stop(context.Context, config.Runtime, ExecutionRef, time.Duration) (StopResult, error) { return StopResult{State: RuntimeUnknown, Cleanup: CleanupUnknown}, nil }
 func (invalidCapabilityProvider) Capabilities() CapabilitySet {
 	return CapabilitySet{Runtime: []string{"runtime:already-qualified"}}
 }
@@ -148,5 +176,47 @@ func (invalidCapabilityProvider) SupportsGateway() bool { return false }
 func TestRuntimeV2RejectsMalformedCapabilityNamespace(t *testing.T) {
 	if err := Register(invalidCapabilityProvider{}); err == nil {
 		t.Fatal("provider with pre-qualified runtime capability was accepted")
+	}
+}
+
+
+func TestRuntimeExecutionRefRoundTrip(t *testing.T) {
+	ref := ExecutionRef{Provider: "fixture", Transport: "remote_api", ID: "run-123"}
+	b, err := EncodeExecutionRef(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeExecutionRef(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, ref) {
+		t.Fatalf("ref=%+v want=%+v", got, ref)
+	}
+	if _, err = DecodeExecutionRef([]byte(`{"provider":"","transport":"remote_api","id":"x"}`)); err == nil {
+		t.Fatal("incomplete runtime ref accepted")
+	}
+}
+
+func TestRemoteFixtureExecutionContractUsesNoLocalPID(t *testing.T) {
+	p := fixtureProvider{profile: "transport_fixture"}
+	prepared, err := p.Prepare(PrepareRequest{Runtime: config.Runtime{Version: "v1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted ExecutionRef
+	result := p.Start(context.Background(), prepared, func(ref ExecutionRef) error {
+		persisted = ref
+		return nil
+	})
+	if result.Err != nil || !result.Outcome.Final || !result.Outcome.Success {
+		t.Fatalf("remote start failed: %+v", result)
+	}
+	if persisted.Transport != "remote_api" || persisted.PID != 0 || persisted.StartID != "" {
+		t.Fatalf("remote provider leaked local process identity: %+v", persisted)
+	}
+	inspection, err := p.Inspect(context.Background(), config.Runtime{}, persisted)
+	if err != nil || inspection.State != RuntimeExited || inspection.Cleanup != CleanupConfirmed {
+		t.Fatalf("remote inspect=%+v err=%v", inspection, err)
 	}
 }

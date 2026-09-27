@@ -109,6 +109,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 3
 	}
+	if schema == WorkerSchema && version < 4 {
+		if _, err = tx.Exec(workerV4); err != nil {
+			return err
+		}
+		version = 4
+	}
 	rows, err := tx.Query("PRAGMA foreign_key_check")
 	if err != nil {
 		return err
@@ -496,4 +502,15 @@ FROM events
 WHERE worker_seq IS NOT NULL;
 
 CREATE INDEX event_dedup_attempt_seq ON event_dedup(attempt,worker_seq);
+`
+
+
+const workerV4 = `ALTER TABLE runs ADD COLUMN runtime_provider TEXT NOT NULL DEFAULT '';
+ALTER TABLE runs ADD COLUMN runtime_transport TEXT NOT NULL DEFAULT '';
+ALTER TABLE runs ADD COLUMN runtime_ref BLOB;
+ALTER TABLE runs ADD COLUMN runtime_state TEXT NOT NULL DEFAULT '';
+ALTER TABLE runs ADD COLUMN runtime_cleanup TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX runs_runtime_recovery
+  ON runs(completed,runtime_provider,runtime_state,id);
 `

@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -122,37 +121,16 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE"})
 		return
 	}
-	args, e := provider.Args(a.Spec, policy)
-	if e != nil {
-		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "INVALID_POLICY", ErrorMessage: e.Error()})
-		return
-	}
 	runtimeConfig := r
 	if a.Gateway != nil {
+		// Model Gateway credentials are Provider-owned. Do not inject the
+		// configured direct credential when a gateway access envelope exists.
 		runtimeConfig.CredentialEnv = nil
 	}
 	env, secrets, e := runtimeEnv(runtimeConfig, a.Spec.CredentialRef)
 	if e != nil {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "AUTHENTICATION_REQUIRED", ErrorMessage: "credential file unavailable"})
 		return
-	}
-	if a.Gateway != nil {
-		if !provider.SupportsGateway() || a.Gateway.Token == "" || a.Gateway.BaseUrl == "" {
-			complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "INVALID_GATEWAY"})
-			return
-		}
-		for i := len(env) - 1; i >= 0; i-- {
-			if strings.HasPrefix(env[i], "COMPUTECLOUD_MODEL_TOKEN=") || strings.HasPrefix(env[i], "OPENAI_API_KEY=") {
-				env = append(env[:i], env[i+1:]...)
-			}
-		}
-		env = append(env, "COMPUTECLOUD_MODEL_TOKEN="+a.Gateway.Token)
-		secrets = append(secrets, a.Gateway.Token)
-		args = args[:len(args)-1]
-		for _, setting := range []string{`model_provider="computecloud"`, `model_providers.computecloud.name="computecloud"`, "model_providers.computecloud.base_url=" + strconv.Quote(a.Gateway.BaseUrl), `model_providers.computecloud.env_key="COMPUTECLOUD_MODEL_TOKEN"`, `model_providers.computecloud.wire_api="responses"`, `model_providers.computecloud.requires_openai_auth=false`, `model_providers.computecloud.request_max_retries=0`, `model_providers.computecloud.stream_max_retries=0`} {
-			args = append(args, "-c", setting)
-		}
-		args = append(args, "-")
 	}
 	cwd, e := w.prepareWorkspace(ctx, a)
 	if e != nil {
@@ -210,25 +188,43 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "WORKSPACE_ERROR", ErrorMessage: e.Error()})
 		return
 	}
-	parser, e := adapter.NewParser(a.Spec.RuntimeProfile, func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) })
+	stderr := &capped{limit: 1 << 20}
+	prepared, e := provider.Prepare(adapter.PrepareRequest{
+		Runtime: runtimeConfig,
+		Spec: a.Spec,
+		Policy: policy,
+		Gateway: a.Gateway,
+		Env: env,
+		CWD: cwd,
+		Input: jobRun.prompt,
+		Emit: func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) },
+		Stderr: stderr,
+		StopGrace: time.Duration(w.cfg.StopGraceMS) * time.Millisecond,
+	})
 	if e != nil {
-		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE", ErrorMessage: e.Error()})
+		code := "INVALID_POLICY"
+		if a.Gateway != nil {
+			code = "INVALID_GATEWAY"
+		}
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: e.Error()})
 		return
 	}
-	lines := &adapter.Lines{Limit: 4 << 20, OnLine: parser.Line, OnError: cancel}
-	stderr := &capped{limit: 1 << 20}
-	run := process.Run(execCtx, r.Executable, args, env, cwd, strings.NewReader(jobRun.prompt), lines, stderr, time.Duration(w.cfg.StopGraceMS)*time.Millisecond, func(pid int, id string) error {
-		if _, e := w.db.SQL.ExecContext(persistCtx, "UPDATE runs SET state='RUNNING',pid=?,start_id=? WHERE id=?", pid, id, a.AttemptId); e != nil {
-			return e
-		}
-		return w.emit(persistCtx, a, "attempt.started", config.JSON(map[string]any{"runtime_version": r.Version, "workspace": a.AttemptId, "model": a.Spec.Model}))
+	secrets = append(secrets, prepared.Sensitive...)
+	run := provider.Start(execCtx, prepared, func(ref adapter.ExecutionRef) error {
+		return w.recordRuntimeStarted(persistCtx, a, ref, provider.Version(r))
 	})
-	if run.TermSent || run.KillSent {
-		_ = w.emit(persistCtx, a, "attempt.stop_escalation", config.JSON(map[string]any{"phase": "runtime", "term_sent": run.TermSent, "kill_sent": run.KillSent, "cleanup_confirmed": run.Cleanup}))
+	if e = w.recordRuntimeTerminal(persistCtx, a.AttemptId, run); e != nil {
+		run.Err = errors.Join(run.Err, e)
+		run.Cleanup = adapter.CleanupUnknown
 	}
-	parseErr := lines.Flush()
-	out := parser.Outcome()
-	success := run.Err == nil && run.ExitCode == 0 && run.Cleanup && parseErr == nil && out.Final && out.Success
+	if run.TermSent || run.KillSent {
+		_ = w.emit(persistCtx, a, "attempt.stop_escalation", config.JSON(map[string]any{
+			"phase": "runtime", "term_sent": run.TermSent, "kill_sent": run.KillSent,
+			"cleanup_confirmed": runtimeCleanupConfirmed(run.Cleanup),
+		}))
+	}
+	out := run.Outcome
+	success := run.Err == nil && run.ExitCode == 0 && runtimeCleanupConfirmed(run.Cleanup) && run.ProtocolErr == nil && out.Final && out.Success
 	code, msg := "", ""
 	if !success {
 		code = choose(out.Code, "RUNTIME_FAILED")
@@ -236,9 +232,9 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		if !out.Final {
 			code = "MISSING_FINAL"
 		}
-		if parseErr != nil {
+		if run.ProtocolErr != nil {
 			code = "PROTOCOL_ERROR"
-			msg = parseErr.Error()
+			msg = run.ProtocolErr.Error()
 		}
 		if ctx.Err() != nil {
 			code = "CANCELED"
@@ -247,7 +243,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 				code = "DEADLINE_EXCEEDED"
 			}
 		}
-		if !run.Cleanup {
+		if !runtimeCleanupConfirmed(run.Cleanup) {
 			code = "CLEANUP_UNCONFIRMED"
 		}
 	}
@@ -282,7 +278,9 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 			code = "VERIFICATION_FAILED"
 			msg = "trusted verification failed"
 		}
-		run.Cleanup = run.Cleanup && vr.Cleanup
+		if !vr.Cleanup {
+			run.Cleanup = adapter.CleanupUnknown
+		}
 	}
 	diffCtx, diffCancel := context.WithTimeout(execCtx, 30*time.Second)
 	diff, diffErr := workspace.Diff(diffCtx, cwd, a.Spec.Workspace.BaseCommit)
@@ -318,7 +316,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		}
 		msg = qe.Error()
 	}
-	report := config.JSON(map[string]any{"task_id": a.TaskId, "attempt_id": a.AttemptId, "base_commit": a.Spec.Workspace.BaseCommit, "model": a.Spec.Model, "runtime_version": r.Version, "template_digest": a.GetJob().GetTemplateDigest(), "native_final": out.Final, "native_success": out.Success, "exit_code": run.ExitCode, "cleanup_confirmed": run.Cleanup, "verification": verification, "result": string(redact([]byte(out.Result), secrets)), "stderr_truncated": stderr.truncated, "manifest_sha256": a.GetJob().GetInputManifestSha256()})
+	report := config.JSON(map[string]any{"task_id": a.TaskId, "attempt_id": a.AttemptId, "base_commit": a.Spec.Workspace.BaseCommit, "model": a.Spec.Model, "runtime_version": provider.Version(r), "template_digest": a.GetJob().GetTemplateDigest(), "native_final": out.Final, "native_success": out.Success, "exit_code": run.ExitCode, "cleanup_confirmed": runtimeCleanupConfirmed(run.Cleanup), "verification": verification, "result": string(redact([]byte(out.Result), secrets)), "stderr_truncated": stderr.truncated, "manifest_sha256": a.GetJob().GetInputManifestSha256()})
 	files["report.json"] = report
 	files["changes.patch"] = redact(diff, secrets)
 	files["stderr.log"] = redact(stderr.Bytes(), secrets)
@@ -331,7 +329,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 	} else {
 		ids = []string{artifact.ArtifactId}
 	}
-	complete(&pb.CompleteRequest{Success: success, CleanupConfirmed: run.Cleanup, ErrorCode: code, ErrorMessage: msg, Result: string(redact([]byte(out.Result), secrets)), NativeSessionId: out.Session, ArtifactIds: ids})
+	complete(&pb.CompleteRequest{Success: success, CleanupConfirmed: runtimeCleanupConfirmed(run.Cleanup), ErrorCode: code, ErrorMessage: msg, Result: string(redact([]byte(out.Result), secrets)), NativeSessionId: out.Session, ArtifactIds: ids})
 }
 func choose(a, b string) string {
 	if a != "" {

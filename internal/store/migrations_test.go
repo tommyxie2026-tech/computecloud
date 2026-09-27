@@ -338,7 +338,7 @@ func TestWorkerV3WorkspaceLifecycleSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 3 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 4 {
 		t.Fatalf("worker version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO runs(id,assignment,state) VALUES('a','{}','DONE')"); e != nil {
@@ -398,5 +398,50 @@ func TestV7LongRunningSchema(t *testing.T) {
 	}
 	if _, e = db.SQL.Exec("INSERT INTO event_dedup(attempt,worker_seq,hash) VALUES('long-a',1,'h2')"); e == nil {
 		t.Fatal("duplicate worker event sequence accepted")
+	}
+}
+
+
+func TestWorkerV4RuntimeExecutionSchema(t *testing.T) {
+	dir := t.TempDir()
+	raw, e := sql.Open("sqlite", filepath.Join(dir, "state.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(WorkerSchema); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(workerV3); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("PRAGMA user_version=3"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("INSERT INTO runs(id,assignment,state) VALUES('legacy','{}','STARTING')"); e != nil {
+		t.Fatal(e)
+	}
+	if e = raw.Close(); e != nil {
+		t.Fatal(e)
+	}
+
+	db, e := Open(dir, WorkerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+
+	var version int
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 4 {
+		t.Fatalf("worker version=%d err=%v", version, e)
+	}
+	var provider, transport, state, cleanup string
+	var ref []byte
+	if e = db.SQL.QueryRow("SELECT runtime_provider,runtime_transport,runtime_ref,runtime_state,runtime_cleanup FROM runs WHERE id='legacy'").
+		Scan(&provider, &transport, &ref, &state, &cleanup); e != nil {
+		t.Fatal(e)
+	}
+	if provider != "" || transport != "" || len(ref) != 0 || state != "" || cleanup != "" {
+		t.Fatalf("legacy runtime metadata changed provider=%q transport=%q ref=%q state=%q cleanup=%q",
+			provider, transport, ref, state, cleanup)
 	}
 }
