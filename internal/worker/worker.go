@@ -11,6 +11,7 @@ import (
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/adapter"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	envreg "github.com/tommyxie2026-tech/computecloud/internal/environment"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	toolreg "github.com/tommyxie2026-tech/computecloud/internal/tool"
@@ -67,6 +68,7 @@ func (w *Worker) Close() error { return errors.Join(w.conn.Close(), w.db.Close()
 func advertisedRuntimeCapabilities(provider adapter.Provider) []string {
 	caps := provider.Capabilities()
 	caps.Tools = toolreg.InstalledCompatible(caps.Tools)
+	caps.Environment = envreg.InstalledCompatible(caps.Environment)
 	return caps.Advertised()
 }
 
