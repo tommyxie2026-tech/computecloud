@@ -1,15 +1,15 @@
 # computecloud Agent-aware Distributed Job Execution Platform 长期路线图
 
 - 项目：computecloud
-- 日期：2026-09-27
-- 当前稳定发布基线：v0.3.2；main 功能基线：v0.3.4
+- 日期：2026-09-28
+- 当前稳定发布基线：v0.3.2；main 功能基线：v0.3.5
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
-- 当前实现依据：[v0.3.4 Long-running Job Reliability](v0.3.4-plan.md)、[v0.3.4 验证记录](../validation/v0.3.4-results.md)
-- 当前实施跟踪：[v0.3.5 Fair Scheduling](v0.3.5-plan.md) / [Issue #23](https://github.com/tommyxie2026-tech/computecloud/issues/23)；v0.3.0–v0.3.4 代码与自动化已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实现依据：[v0.3.5 Fair Scheduling](v0.3.5-plan.md)、[v0.3.5 验证记录](../validation/v0.3.5-results.md)
+- 当前实施跟踪：v0.3.0–v0.3.5 Reliability Kernel 代码与自动化已完成；下一功能阶段进入 v0.4.x Runtime / Tool / Environment 规划；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -404,7 +404,7 @@ Workspace 同样进入可靠性内核：
 
 完成证据：PR #22 已合并为 `ba3ea0b0abb1cdea5982c90acae9bd1d1b5afd27`；PR-head CI `36255471310` 与 main CI `36328612397` 均通过，main package Gate 通过。
 
-### 5.6 v0.3.5 — Fair Scheduling（当前功能主线）
+### 5.6 v0.3.5 — Fair Scheduling（已完成）
 
 在 v0.3.4 长任务控制语义稳定后，完成 Reliability Kernel 的排队公平与过载保护：
 
@@ -424,6 +424,8 @@ Workspace 同样进入可靠性内核：
 - 独立 GitHub Actions `fair-flow`。
 
 Aging 只改变候选顺序，不绕过 `retry_after`、deadline、capability、permission 或 concurrency constraints。v0.3.5 不提前实现 v0.5 的 Agent-aware score、Workspace affinity 或资源 bin-packing。
+
+完成证据：PR #24 已合并为 `fde85cd227a00c5868c948fd2c0f5dd87cd62a44`；PR-head CI `36330899850` 与 main CI `36331233854` 全部通过，main package Gate 通过。至此 v0.3.x Reliability Kernel 的 Stage/Fencing、Retry、Artifact、Workspace、Long-running 与 Fair Scheduling 六条主线均完成仓库实现与自动化验收。
 
 ### 5.7 v0.3 退出门槛
 
@@ -486,6 +488,8 @@ v0.3.2 只解决 Agent Job Artifact 正确性，不提前实现通用 Storage Pr
 v0.3.3 仍坚持每个 Attempt 独占 writable Workspace；Prepared/warm Workspace 和跨 Attempt 复用留给 v0.4 的受控优化，不允许破坏 generation isolation。
 
 完成证据：PR #20 已合并为 `fa48c199829ad322a2976d0f6354c92368e9406a`；PR-head CI `36252887159` 与 main CI `36253102444` 均通过，main package Gate 通过。
+
+> **v0.3.x 仓库级 Reliability Kernel 已完成。** 其中真实 Codex/Claude、独立多机、真实网络故障与 24h+ 墙钟验证仍属于 Production Baseline #1，不能由 fixture CI 替代。
 
 ## 6. v0.4.x — Agent Runtime、Tool 与 Environment 生态
 
