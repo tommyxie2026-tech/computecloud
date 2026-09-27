@@ -58,9 +58,6 @@ func rotateStrings(values []string, after string) []string {
 		i++
 	}
 	if i == 0 || i >= len(values) {
-		if i >= len(values) {
-			return append(append([]string(nil), values...), nil...)
-		}
 		return values
 	}
 	out := append([]string(nil), values[i:]...)
