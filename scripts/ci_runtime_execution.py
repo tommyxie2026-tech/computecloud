@@ -34,6 +34,7 @@ def main():
         "RemoteFixtureExecutionContractUsesNoLocalPID|"
         "ProcessInspectTracksIdentity|"
         "RecoveryUsesRuntimeProviderInspectAndStop|"
+        "RemoteRuntimeExecutesWithoutLocalAgentProcess|"
         "WorkerV4RuntimeExecutionSchema|"
         "RuntimeV2"
     )
@@ -69,6 +70,7 @@ def main():
             "transport_neutral_ref": True,
             "local_process_identity_inspection": True,
             "remote_api_fixture_without_local_pid": True,
+            "remote_api_worker_completion_without_local_process": True,
             "provider_owned_start": "provider.Start(" in execute_text,
             "provider_owned_recovery_inspect_stop": "provider.Inspect(" in recovery_text and "provider.Stop(" in recovery_text,
             "worker_schema_v4_runtime_metadata": True,
