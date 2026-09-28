@@ -519,11 +519,11 @@ func TestV8ControlOperationsSchema(t *testing.T) {
 	if _, e = db.SQL.Exec("INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until,released,last_renewed) VALUES('a','t','w','e',1,'tok',9999999999999,0,1)"); e != nil {
 		t.Fatal(e)
 	}
-	insert := "INSERT INTO control_operations(principal_id,operation_id,operation_type,job_id,session_id,task_id,attempt_id,generation,request_hash,state,receipt,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
-	if _, e = db.SQL.Exec(insert, "o", "op1", "cancel", "j", "a", "t", "a", 1, "hash", "ACCEPTED", "{}", 1, 1); e != nil {
+	insert := "INSERT INTO control_operations(principal_id,operation_id,operation_type,resource_type,resource_id,job_id,resource_version,request_hash,state,receipt,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
+	if _, e = db.SQL.Exec(insert, "o", "op1", "cancel", "job", "j", "j", 1, "hash", "ACCEPTED", "{}", 1, 1); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.SQL.Exec(insert, "o", "op1", "cancel", "j", "a", "t", "a", 1, "hash", "ACCEPTED", "{}", 1, 1); e == nil {
+	if _, e = db.SQL.Exec(insert, "o", "op1", "cancel", "job", "j", "j", 1, "hash", "ACCEPTED", "{}", 1, 1); e == nil {
 		t.Fatal("duplicate principal/operation accepted")
 	}
 }
