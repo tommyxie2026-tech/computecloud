@@ -28,8 +28,8 @@ def main():
 
     result = run([
         "go", "test",
-        "./internal/server", "./internal/worker",
-        "-run", "AgentControlDispatchResume|AgentControlWorkerResumesSession|AgentControlWorkerRejectsResume",
+        "./internal/server", "./internal/worker", "./internal/adapter",
+        "-run", "AgentControlDispatchResume|AgentControlWorkerResumesSession|AgentControlWorkerRejectsResume|AgentControlPersistsRuntimeSessionRefEarly|RuntimeParserEmitsNormalizedSessionStarted",
         "-count=1", "-v",
     ])
 
@@ -37,6 +37,8 @@ def main():
     http = pathlib.Path("internal/server/control_http.go").read_text(encoding="utf-8")
     worker = pathlib.Path("internal/worker/control_execution.go").read_text(encoding="utf-8")
     adapter = pathlib.Path("internal/adapter/control_contract.go").read_text(encoding="utf-8")
+    parser = pathlib.Path("internal/adapter/adapter.go").read_text(encoding="utf-8")
+    results = pathlib.Path("internal/server/results.go").read_text(encoding="utf-8")
     violations = []
 
     for required in [
@@ -76,6 +78,14 @@ def main():
         if required not in adapter:
             violations.append("missing Runtime resume contract: " + required)
 
+    for required in ["session.started", "session_ref"]:
+        if required not in parser:
+            violations.append("missing normalized early session event: " + required)
+
+    for required in ["persistRuntimeSessionRef", "native_session", "SESSION_REF_CONFLICT"]:
+        if required not in results:
+            violations.append("missing durable early session persistence: " + required)
+
     (logs / "go-test.stdout.log").write_text(result["stdout"], encoding="utf-8")
     (logs / "go-test.stderr.log").write_text(result["stderr"], encoding="utf-8")
     status = "PASSED" if result["returncode"] == 0 and not violations else "FAILED"
@@ -84,6 +94,7 @@ def main():
         "status": status,
         "real_model_calls": False,
         "coverage": {
+            "early_runtime_session_persistence": True,
             "explicit_session_ref": True,
             "current_attempt_generation_fencing": True,
             "workspace_in_use_required": True,
