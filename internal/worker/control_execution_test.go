@@ -232,3 +232,101 @@ func TestAgentControlWorkerFailsClosedForUncertifiedRuntime(t *testing.T) {
 		t.Fatalf("ack=%+v", ack)
 	}
 }
+
+
+func TestACP4ResumeFailsClosedWhenWorkspaceOrEnvironmentUnavailable(t *testing.T) {
+	d, err := store.Open(t.TempDir(), store.WorkerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	provider := &controlWorkerFixture{}
+	if err = adapter.Register(provider); err != nil {
+		// The fixture may already be registered by another test in this process.
+		if provider.Profile() != "control_worker_fixture" {
+			t.Fatal(err)
+		}
+	}
+	w := &Worker{db: d}
+	a := &pb.Assignment{
+		TaskId: "task-resume-negative", AttemptId: "attempt-resume-negative", Generation: 1, LeaseToken: "lease",
+		Spec: &pb.TaskSpec{RuntimeProfile: provider.Profile()},
+	}
+	ref := adapter.ExecutionRef{Provider: provider.Profile(), Transport: "remote_api", ID: "runtime-old"}
+	rawRef, err := adapter.EncodeExecutionRef(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envRef := []byte(`{"provider":"process","id":"attempt-resume-negative"}`)
+	if _, err = d.SQL.Exec(`INSERT INTO runs(
+		id,assignment,state,runtime_provider,runtime_transport,runtime_ref,runtime_state,runtime_cleanup,
+		environment_provider,environment_ref,environment_state,environment_cleanup
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		a.AttemptId, enc(a), "RUNNING", provider.Profile(), "remote_api", rawRef,
+		string(adapter.RuntimeExited), string(adapter.CleanupPending),
+		"process", envRef, "ACTIVE", "PENDING"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = d.SQL.Exec(`INSERT INTO workspaces(
+		attempt,task,generation,repository_ref,base_commit,path,state,created,updated
+	) VALUES(?,?,?,?,?,?,?,?,?)`,
+		a.AttemptId, a.TaskId, a.Generation, "repo", "base", t.TempDir(), "RETAINED", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	cmd := &pb.Command{
+		CommandId: "resume-workspace-unavailable", Kind: "control",
+		Control: &pb.ControlCommand{
+			PrincipalId: "owner", OperationId: "resume-workspace-unavailable-op",
+			TaskId: a.TaskId, AttemptId: a.AttemptId, Generation: a.Generation,
+			SessionRef: "native-session", Action: "resume",
+		},
+	}
+	ack, err := w.executeControl(context.Background(), cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ack.State != "REJECTED" || ack.ErrorCode != control.ErrorExecutionUnverifiable.String() {
+		t.Fatalf("workspace-incompatible resume ack=%+v", ack)
+	}
+
+	// Use a fresh Attempt to prove Environment incompatibility independently.
+	b := &pb.Assignment{
+		TaskId: "task-resume-env", AttemptId: "attempt-resume-env", Generation: 1, LeaseToken: "lease",
+		Spec: &pb.TaskSpec{RuntimeProfile: provider.Profile()},
+	}
+	refB := adapter.ExecutionRef{Provider: provider.Profile(), Transport: "remote_api", ID: "runtime-env"}
+	rawRefB, err := adapter.EncodeExecutionRef(refB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = d.SQL.Exec(`INSERT INTO runs(
+		id,assignment,state,runtime_provider,runtime_transport,runtime_ref,runtime_state,runtime_cleanup,
+		environment_provider,environment_ref,environment_state,environment_cleanup
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		b.AttemptId, enc(b), "RUNNING", provider.Profile(), "remote_api", rawRefB,
+		string(adapter.RuntimeExited), string(adapter.CleanupPending),
+		"process", []byte(`{"provider":"process","id":"attempt-resume-env"}`), "UNKNOWN", "UNKNOWN"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = d.SQL.Exec(`INSERT INTO workspaces(
+		attempt,task,generation,repository_ref,base_commit,path,state,created,updated
+	) VALUES(?,?,?,?,?,?,?,?,?)`,
+		b.AttemptId, b.TaskId, b.Generation, "repo", "base", t.TempDir(), "IN_USE", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	cmdB := &pb.Command{
+		CommandId: "resume-environment-unavailable", Kind: "control",
+		Control: &pb.ControlCommand{
+			PrincipalId: "owner", OperationId: "resume-environment-unavailable-op",
+			TaskId: b.TaskId, AttemptId: b.AttemptId, Generation: b.Generation,
+			SessionRef: "native-session", Action: "resume",
+		},
+	}
+	ack, err = w.executeControl(context.Background(), cmdB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ack.State != "REJECTED" || ack.ErrorCode != control.ErrorExecutionUnverifiable.String() {
+		t.Fatalf("environment-incompatible resume ack=%+v", ack)
+	}
+}
