@@ -68,7 +68,7 @@ func (w *Worker) accept(ctx context.Context, c *pb.Command) (bool, error) {
 				}
 			}
 		}
-		_, e = q.ExecContext(ctx, "INSERT INTO commands VALUES(?,?)", c.CommandId, hash)
+		_, e = q.ExecContext(ctx, "INSERT INTO commands(id,hash) VALUES(?,?)", c.CommandId, hash)
 		return e
 	})
 	return launch, e
@@ -123,6 +123,9 @@ func (w *Worker) failUnstarted(ctx context.Context, a *pb.Assignment, code, msg 
 	return w.completion(ctx, a, &pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: msg})
 }
 func (w *Worker) recover(ctx context.Context) error {
+	if _, e := w.db.SQL.ExecContext(ctx, "UPDATE commands SET state='UNKNOWN',error_code='EXECUTION_UNVERIFIABLE',error_message='worker restarted during control execution',updated=? WHERE state='EXECUTING'", store.Now()); e != nil {
+		return e
+	}
 	rows, e := w.db.SQL.QueryContext(ctx, "SELECT assignment,state,pid,start_id,completion,runtime_provider,runtime_ref,environment_provider,environment_ref FROM runs WHERE completed=0")
 	if e != nil {
 		return e
