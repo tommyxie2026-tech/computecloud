@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1/ACP-2 已完成；ACP-3a 已合并；ACP-3b structured Worker control dispatch / result ACK 已实现，待 CI/PR 合并
+- 状态：实施中；ACP-0/ACP-1/ACP-2 已完成；ACP-3a/ACP-3b 已合并；下一步 ACP-3c HTTP write endpoint + fault injection
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -30,7 +30,7 @@
 | ACP-0 | 当前 | Schema/contract 基线 | **已完成**：control.v1alpha1、事件 schema、Provider extension、独立 CI |
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
-| ACP-3 | v0.4.x | 安全写控制 | **ACP-3a 已合并**：durable ledger、idempotency、fencing、稳定错误码、negative contract；**ACP-3b 已实现待合并**：structured Worker control envelope、dispatch、SessionControlProvider、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed |
+| ACP-3 | v0.4.x | 安全写控制 | **ACP-3a/ACP-3b 已合并**：durable ledger、idempotency/fencing、structured Worker control envelope、SessionControlProvider dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed；HTTP write endpoint 延后 ACP-3c |
 | ACP-4 | v0.4.x | Approval + Resume | approval lifecycle、session resume |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
 | ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
@@ -256,6 +256,14 @@ POST /v1/jobs/{job}/cancel
 `agent-control-fencing`
 `agent-control-negative`（ACP-3a 已接入）
 `agent-control-dispatch`（ACP-3b 已接入）
+
+### 6.6 完成证据
+
+- ACP-3a：PR #43，merge commit `53c3f5306fe804f377fd3eacc41f5d32c23c93fc`。
+- ACP-3b：PR #44，merge commit `d30c45e97ffc1452e599b9477143df6f882acc1e`。
+- PR #44 CI：run `36408433183`，18 个 Gate 全部 PASS，其中 `agent-control-dispatch` 与 `verify` PASS。
+- main CI：run `36409021971`，18 个功能 Gate + `package` 全部 PASS。
+- `package` 已强制依赖 `agent-control-dispatch`。
 
 ## 7. ACP-4 — Approval 与 Session Resume
 
@@ -527,8 +535,8 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. 完成 ACP-3b PR CI 并合并；Package Gate 必须依赖 `agent-control-dispatch`。
-2. ACP-3c：在当前 durable/dispatch 语义之上开放 HTTP input/interrupt endpoint；HTTP 层不得绕过 `acceptAndDispatchControlOperation`。
+1. ACP-3c：在当前 durable/dispatch 语义之上开放 HTTP input/interrupt endpoint；HTTP 层不得绕过 `acceptAndDispatchControlOperation`。
+2. 增加 control read-back API / receipt 查询，使客户端可明确区分 ACCEPTED / DISPATCHED / COMPLETED / REJECTED。
 3. 增加 multi-process fault injection：Server intent commit 后重启、Worker Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
 4. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
 5. ACP-4 再接 Approval + Resume；Prepared Workspace 主线继续推进，不与 Control write plane 混成同一状态机。
