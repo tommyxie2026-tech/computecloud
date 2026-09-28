@@ -6,6 +6,9 @@
 | [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性内核、Agent Runtime/Tool、Agent-aware Scheduler、治理与规模化 | 当前长期主路线 |
 | [Control 客户端控制面技术方案](design/client-control-plane.md) | Web/iOS/Android、API、事件同步、设备身份、E2EE、Push、CI 和验收 | C0 设计基线完成；按 C1–C5 实施 |
 | [Agent 客户端控制端方案调研](research/agent-control-client-landscape-2026.md) | Orca、Paseo、Happy、Soromi、Codex/Claude Remote 等比较 | 2026-09-26 快照；已形成 ADR-008 |
+| [v0.4.4 EnvironmentProvider Execution 实施计划](implementation/v0.4.4-plan.md) | Provider lifecycle、durable EnvironmentRef、restart cleanup 与 environment-execution-flow | 当前功能主线 |
+| [v0.4.4 EnvironmentProvider 运行与扩展](implementation/v0.4.4-runbook.md) | process Provider、Worker schema v5、recovery/rollback 与扩展规则 | v0.4.4 操作依据 |
+| [ADR-016：EnvironmentProvider Execution](adr/0016-environment-provider-execution.md) | Environment Prepare/Activate/Inspect/Release 与 cleanup composition | Accepted |
 | [v0.4.3 EnvironmentCapability Foundation 实施计划](implementation/v0.4.3-plan.md) | 独立 Environment Registry、Job environment requirement、Policy gate 与 environment-contract-flow | 已实现并合并 main |
 | [v0.4.3 EnvironmentCapability 运行与扩展](implementation/v0.4.3-runbook.md) | process 环境、allowed_environments、扩展规则与兼容边界 | v0.4.3 操作依据 |
 | [v0.4.3 EnvironmentCapability 验证记录](validation/v0.4.3-results.md) | Registry/Policy/legacy compatibility 与 environment-contract-flow/main package CI 证据 | 已通过 |
