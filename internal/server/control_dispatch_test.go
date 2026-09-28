@@ -229,3 +229,48 @@ func TestAgentControlDispatchResume(t *testing.T) {
 		t.Fatalf("resume command=%+v", cmd.Control)
 	}
 }
+
+
+func TestAgentControlPersistsRuntimeSessionRefEarly(t *testing.T) {
+	h, _, taskID, _ := controlHarness(t)
+	ev := &pb.Event{
+		TaskId: taskID, AttemptId: "control-attempt-1", Generation: 1,
+		Type: "session.started",
+		PayloadJson: []byte(`{"session_ref":"native-session-early"}`),
+	}
+	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistRuntimeSessionRef(context.Background(), q, ev)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err := h.s.db.SQL.QueryRow("SELECT native_session FROM tasks WHERE id=?", taskID).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != "native-session-early" {
+		t.Fatalf("native session=%q", got)
+	}
+
+	// Replaying the same session-start identity is safe.
+	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistRuntimeSessionRef(context.Background(), q, ev)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	conflict := *ev
+	conflict.PayloadJson = []byte(`{"session_ref":"different-session"}`)
+	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistRuntimeSessionRef(context.Background(), q, &conflict)
+	}); err == nil {
+		t.Fatal("conflicting runtime session ref accepted")
+	}
+
+	stale := *ev
+	stale.Generation = 2
+	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistRuntimeSessionRef(context.Background(), q, &stale)
+	}); err == nil {
+		t.Fatal("stale generation session ref accepted")
+	}
+}
