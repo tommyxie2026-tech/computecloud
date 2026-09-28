@@ -43,7 +43,7 @@ func TestV1UpgradeBackupAndDrainGate(t *testing.T) {
 		t.Fatal(e)
 	}
 	db.SQL.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 8 {
+	if v != 9 {
 		t.Fatalf("version %d", v)
 	}
 	var state, stage string
@@ -109,7 +109,7 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 	}
 	defer db.Close()
 	var v int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 8 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 9 {
 		t.Fatalf("version=%d err=%v", v, e)
 	}
 	// New schema must allow multiple historical attempts for one Task while
@@ -173,7 +173,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 8 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 9 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -504,7 +504,7 @@ func TestV8ControlOperationLedger(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 8 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 9 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	_, e = db.SQL.Exec(`INSERT INTO control_operations(
@@ -533,5 +533,29 @@ func TestV8ControlOperationLedger(t *testing.T) {
 	}
 	if attempt != "attempt-1" || generation != 2 || resourceVersion != 3 {
 		t.Fatalf("fencing tuple=%s/%d/%d", attempt, generation, resourceVersion)
+	}
+}
+
+
+func TestV9GoalReplanGuardSchema(t *testing.T) {
+	dir := t.TempDir()
+	db, e := Open(dir, ServerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+
+	var version int
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 9 {
+		t.Fatalf("version=%d err=%v", version, e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO goals(id,owner,project,state,max_replans,max_total_attempts,max_wall_time_ms,created,updated) VALUES('g','o','p','GOAL_CREATED',2,4,60000,1,1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO replan_requests(id,goal_id,evaluation_id,expected_plan_revision,expected_graph_generation,state,created) VALUES('r1','g','e1',1,1,'PENDING',1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO replan_requests(id,goal_id,evaluation_id,expected_plan_revision,expected_graph_generation,state,created) VALUES('r2','g','e1',1,1,'PENDING',1)"); e == nil {
+		t.Fatal("duplicate goal/evaluation replan request accepted")
 	}
 }
