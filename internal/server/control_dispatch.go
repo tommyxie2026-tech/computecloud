@@ -200,6 +200,9 @@ func (s *Server) dispatchControlOperation(ctx context.Context, principalID, jobI
 			Scan(&workerID, &nativeSession); err != nil {
 			return err
 		}
+		if in.OperationType == "resume" && nativeSession == "" {
+			return status.Error(codes.FailedPrecondition, control.ErrorExecutionUnverifiable.String())
+		}
 		cmd := &pb.Command{
 			CommandId: commandID,
 			Kind: "control",
