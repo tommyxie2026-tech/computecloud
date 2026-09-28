@@ -41,18 +41,10 @@ func TestWorkerAdvertisesOnlyRegisteredCompatibleEnvironments(t *testing.T) {
 }
 
 func TestRegisteredFixtureEnvironmentCanBeAdvertisedWithoutSchedulerChange(t *testing.T) {
-	name := "worker_fixture_environment"
-	if _, ok := envreg.Lookup(name); !ok {
-		if err := envreg.Register(envreg.Descriptor{
-			Name: name, Version: "1",
-			IsolationClass: "container", FilesystemMode: "isolated", NetworkMode: "restricted",
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	caps := adapter.CapabilitySet{Environment: []string{name}}
+	ensureEnvironmentExecutionFixtures(t)
+	caps := adapter.CapabilitySet{Environment: []string{fixtureEnvironmentName}}
 	caps.Environment = envreg.InstalledCompatible(caps.Environment)
-	if !reflect.DeepEqual(caps.Advertised(), []string{"environment:" + name}) {
+	if !reflect.DeepEqual(caps.Advertised(), []string{"environment:" + fixtureEnvironmentName}) {
 		t.Fatalf("fixture Environment advertisement=%v", caps.Advertised())
 	}
 }

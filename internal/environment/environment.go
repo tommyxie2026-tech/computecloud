@@ -93,12 +93,10 @@ func Names() []string {
 }
 
 func InstalledCompatible(compatible []string) []string {
-	registry.RLock()
-	defer registry.RUnlock()
 	seen := map[string]bool{}
 	var out []string
 	for _, name := range compatible {
-		if _, ok := registry.items[name]; !ok || seen[name] {
+		if _, ok := LookupProvider(name); !ok || seen[name] {
 			continue
 		}
 		seen[name] = true
@@ -151,12 +149,3 @@ func AuthorizeRequired(requiredCapabilities, runtimeCompatible, policyAllowed []
 	return nil
 }
 
-func init() {
-	if err := Register(Descriptor{
-		Name: "process", Version: "1",
-		IsolationClass: "process", FilesystemMode: "workspace", NetworkMode: "host",
-		LegacyDefault: true,
-	}); err != nil {
-		panic(err)
-	}
-}

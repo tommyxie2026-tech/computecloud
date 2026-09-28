@@ -338,7 +338,7 @@ func TestWorkerV3WorkspaceLifecycleSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 4 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
 		t.Fatalf("worker version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO runs(id,assignment,state) VALUES('a','{}','DONE')"); e != nil {
@@ -431,7 +431,7 @@ func TestWorkerV4RuntimeExecutionSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 4 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
 		t.Fatalf("worker version=%d err=%v", version, e)
 	}
 	var provider, transport, state, cleanup string
@@ -443,5 +443,53 @@ func TestWorkerV4RuntimeExecutionSchema(t *testing.T) {
 	if provider != "" || transport != "" || len(ref) != 0 || state != "" || cleanup != "" {
 		t.Fatalf("legacy runtime metadata changed provider=%q transport=%q ref=%q state=%q cleanup=%q",
 			provider, transport, ref, state, cleanup)
+	}
+}
+
+
+func TestWorkerV5EnvironmentExecutionSchema(t *testing.T) {
+	dir := t.TempDir()
+	raw, e := sql.Open("sqlite", filepath.Join(dir, "state.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(WorkerSchema); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(workerV3); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(workerV4); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("PRAGMA user_version=4"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("INSERT INTO runs(id,assignment,state) VALUES('legacy-env','{}','STARTING')"); e != nil {
+		t.Fatal(e)
+	}
+	if e = raw.Close(); e != nil {
+		t.Fatal(e)
+	}
+
+	db, e := Open(dir, WorkerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+
+	var version int
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
+		t.Fatalf("worker version=%d err=%v", version, e)
+	}
+	var provider, state, cleanup string
+	var ref []byte
+	if e = db.SQL.QueryRow("SELECT environment_provider,environment_ref,environment_state,environment_cleanup FROM runs WHERE id='legacy-env'").
+		Scan(&provider, &ref, &state, &cleanup); e != nil {
+		t.Fatal(e)
+	}
+	if provider != "" || len(ref) != 0 || state != "" || cleanup != "" {
+		t.Fatalf("legacy environment metadata changed provider=%q ref=%q state=%q cleanup=%q",
+			provider, ref, state, cleanup)
 	}
 }

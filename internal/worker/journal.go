@@ -9,6 +9,7 @@ import (
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/adapter"
+	envreg "github.com/tommyxie2026-tech/computecloud/internal/environment"
 	"github.com/tommyxie2026-tech/computecloud/internal/process"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 )
@@ -122,19 +123,19 @@ func (w *Worker) failUnstarted(ctx context.Context, a *pb.Assignment, code, msg 
 	return w.completion(ctx, a, &pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: msg})
 }
 func (w *Worker) recover(ctx context.Context) error {
-	rows, e := w.db.SQL.QueryContext(ctx, "SELECT assignment,state,pid,start_id,completion,runtime_provider,runtime_ref FROM runs WHERE completed=0")
+	rows, e := w.db.SQL.QueryContext(ctx, "SELECT assignment,state,pid,start_id,completion,runtime_provider,runtime_ref,environment_provider,environment_ref FROM runs WHERE completed=0")
 	if e != nil {
 		return e
 	}
 	type record struct {
-		b, completion, runtimeRef []byte
-		state, id, runtimeProvider string
+		b, completion, runtimeRef, environmentRef []byte
+		state, id, runtimeProvider, environmentProvider string
 		pid int
 	}
 	var all []record
 	for rows.Next() {
 		var r record
-		if e = rows.Scan(&r.b, &r.state, &r.pid, &r.id, &r.completion, &r.runtimeProvider, &r.runtimeRef); e != nil {
+		if e = rows.Scan(&r.b, &r.state, &r.pid, &r.id, &r.completion, &r.runtimeProvider, &r.runtimeRef, &r.environmentProvider, &r.environmentRef); e != nil {
 			break
 		}
 		all = append(all, r)
@@ -188,6 +189,32 @@ func (w *Worker) recover(ctx context.Context) error {
 			// STARTING+pid=0 ambiguity only when the workspace proves pre-spawn.
 			clean = true
 		}
+
+		if len(r.environmentRef) > 0 {
+			envState := envreg.StateUnknown
+			envCleanup := envreg.CleanupUnknown
+			ref, refErr := decodeEnvironmentRef(r.environmentProvider, r.environmentRef)
+			envProvider, providerOK := envreg.LookupProvider(r.environmentProvider)
+			required, requiredErr := requiredEnvironment(a)
+			if refErr == nil && providerOK && requiredErr == nil && required == r.environmentProvider {
+				inspection, inspectErr := envProvider.Inspect(ctx, ref)
+				if inspectErr == nil {
+					envState, envCleanup = inspection.State, inspection.Cleanup
+					if !environmentCleanupConfirmed(inspection.Cleanup) {
+						released, releaseErr := envProvider.Release(ctx, ref)
+						if releaseErr == nil {
+							envState, envCleanup = released.State, released.Cleanup
+						}
+					}
+				}
+			}
+			if _, e = w.db.SQL.ExecContext(ctx, "UPDATE runs SET environment_state=?,environment_cleanup=? WHERE id=?",
+				string(envState), string(envCleanup), a.AttemptId); e != nil {
+				return e
+			}
+			clean = clean && environmentCleanupConfirmed(envCleanup)
+		}
+
 		c := &pb.CompleteRequest{CleanupConfirmed: clean, ErrorCode: "WORKER_RESTARTED", ErrorMessage: "execution interrupted by worker restart"}
 		if !clean {
 			c.ErrorCode = "CLEANUP_UNCONFIRMED"

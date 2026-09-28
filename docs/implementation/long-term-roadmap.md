@@ -9,7 +9,7 @@
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 - 当前实现依据：[v0.4.3 EnvironmentCapability](v0.4.3-plan.md)、[ADR-015](../adr/0015-environment-capability.md)
-- 当前实施跟踪：v0.4.3 EnvironmentCapability Foundation 已完成；下一主线进入 EnvironmentProvider execution；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实施跟踪：[v0.4.4 EnvironmentProvider Execution](v0.4.4-plan.md) / [Issue #33](https://github.com/tommyxie2026-tech/computecloud/issues/33)；v0.4.3 EnvironmentCapability 已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -597,6 +597,24 @@ v0.4.2 只稳定 capability 与 policy contract，不提前实现通用 Shell/Br
 - 独立 `environment-contract-flow` CI Gate。
 
 v0.4.3 只稳定 Environment capability/policy foundation。container/VM/external sandbox 的真实执行生命周期在后续 EnvironmentProvider 小版本实现。
+
+### 6.1.4 v0.4.4 EnvironmentProvider Execution — 当前功能主线
+
+在 v0.4.3 capability/policy contract 之上增加真正的 Environment execution lifecycle：
+
+- 独立 Environment Provider contract：Prepare / Activate / Inspect / Release；
+- transport-neutral EnvironmentRef；
+- builtin process Provider；
+- Worker schema v5 持久 environment provider/ref/state/cleanup；
+- EnvironmentRef 在 Runtime Start 前 durable；
+- Runtime 只消费 Environment Provider 返回的 CWD/Env；
+- Attempt cleanup 同时要求 Runtime 与 Environment cleanup proof；
+- Worker restart 使用 Environment Inspect/Release fail-closed；
+- descriptor-only Environment 不再进入 Worker 广告；
+- 独立 `environment-execution-flow` CI Gate；
+- package 同时依赖 Environment contract + Environment execution Gate。
+
+v0.4.4 仍不实现生产 container/VM/external sandbox，本版先稳定 Provider contract、恢复语义和 cleanup fencing。
 
 完成证据：PR #32 已合并为 `fb2ed88e1d0cebbe0268a0fde4fc889eb4e08f89`；PR-head CI `36358683344` 与 main CI `36358949361` 均通过，main package Gate 通过。
 

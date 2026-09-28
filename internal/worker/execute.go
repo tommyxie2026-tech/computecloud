@@ -139,6 +139,16 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: ee.Error()})
 		return
 	}
+	envName := envreg.RequiredName(a.Spec.RequiredCapabilities)
+	if envName == "" {
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE", ErrorMessage: "conflicting environment requirements"})
+		return
+	}
+	environmentProvider, environmentOK := envreg.LookupProvider(envName)
+	if !environmentOK {
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE", ErrorMessage: "environment provider unavailable"})
+		return
+	}
 	runtimeConfig := r
 	if a.Gateway != nil {
 		// Model Gateway credentials are Provider-owned. Do not inject the
@@ -206,14 +216,43 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "WORKSPACE_ERROR", ErrorMessage: e.Error()})
 		return
 	}
+	var environmentRef envreg.Ref
+	environmentPrepared, e := environmentProvider.Prepare(execCtx, envreg.PrepareRequest{
+		AttemptID: a.AttemptId,
+		TaskID: a.TaskId,
+		Generation: a.Generation,
+		CWD: cwd,
+		Env: env,
+	}, func(ref envreg.Ref) error {
+		environmentRef = ref
+		return w.recordEnvironmentPrepared(persistCtx, a, ref)
+	})
+	if e != nil {
+		clean := true
+		if environmentRef.Provider != "" {
+			clean = environmentCleanupConfirmed(w.releaseEnvironment(persistCtx, a.AttemptId, environmentProvider, environmentRef).Cleanup)
+		}
+		complete(&pb.CompleteRequest{CleanupConfirmed: clean, ErrorCode: "ENVIRONMENT_PREPARE_FAILED", ErrorMessage: e.Error()})
+		return
+	}
+	if e = environmentProvider.Activate(execCtx, environmentPrepared); e != nil {
+		released := w.releaseEnvironment(persistCtx, a.AttemptId, environmentProvider, environmentPrepared.Ref)
+		complete(&pb.CompleteRequest{CleanupConfirmed: environmentCleanupConfirmed(released.Cleanup), ErrorCode: "ENVIRONMENT_ACTIVATE_FAILED", ErrorMessage: e.Error()})
+		return
+	}
+	if e = w.recordEnvironmentActive(persistCtx, a, environmentPrepared.Ref); e != nil {
+		released := w.releaseEnvironment(persistCtx, a.AttemptId, environmentProvider, environmentPrepared.Ref)
+		complete(&pb.CompleteRequest{CleanupConfirmed: environmentCleanupConfirmed(released.Cleanup), ErrorCode: "STORAGE_UNAVAILABLE", ErrorMessage: e.Error()})
+		return
+	}
 	stderr := &capped{limit: 1 << 20}
 	prepared, e := provider.Prepare(adapter.PrepareRequest{
 		Runtime: runtimeConfig,
 		Spec: a.Spec,
 		Policy: policy,
 		Gateway: a.Gateway,
-		Env: env,
-		CWD: cwd,
+		Env: environmentPrepared.Env,
+		CWD: environmentPrepared.CWD,
 		Input: jobRun.prompt,
 		Emit: func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) },
 		Stderr: stderr,
@@ -224,7 +263,8 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		if a.Gateway != nil {
 			code = "INVALID_GATEWAY"
 		}
-		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: e.Error()})
+		released := w.releaseEnvironment(persistCtx, a.AttemptId, environmentProvider, environmentPrepared.Ref)
+		complete(&pb.CompleteRequest{CleanupConfirmed: environmentCleanupConfirmed(released.Cleanup), ErrorCode: code, ErrorMessage: e.Error()})
 		return
 	}
 	secrets = append(secrets, prepared.Sensitive...)
@@ -242,7 +282,8 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		}))
 	}
 	out := run.Outcome
-	success := run.Err == nil && run.ExitCode == 0 && runtimeCleanupConfirmed(run.Cleanup) && run.ProtocolErr == nil && out.Final && out.Success
+	success := run.Err == nil && run.ExitCode == 0 && runtimeCleanupConfirmed(run.Cleanup) &&
+		run.ProtocolErr == nil && out.Final && out.Success
 	code, msg := "", ""
 	if !success {
 		code = choose(out.Code, "RUNTIME_FAILED")
@@ -334,7 +375,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		}
 		msg = qe.Error()
 	}
-	report := config.JSON(map[string]any{"task_id": a.TaskId, "attempt_id": a.AttemptId, "base_commit": a.Spec.Workspace.BaseCommit, "model": a.Spec.Model, "runtime_version": provider.Version(r), "template_digest": a.GetJob().GetTemplateDigest(), "native_final": out.Final, "native_success": out.Success, "exit_code": run.ExitCode, "cleanup_confirmed": runtimeCleanupConfirmed(run.Cleanup), "verification": verification, "result": string(redact([]byte(out.Result), secrets)), "stderr_truncated": stderr.truncated, "manifest_sha256": a.GetJob().GetInputManifestSha256()})
+	report := config.JSON(map[string]any{"task_id": a.TaskId, "attempt_id": a.AttemptId, "base_commit": a.Spec.Workspace.BaseCommit, "model": a.Spec.Model, "runtime_version": provider.Version(r), "environment_provider": environmentPrepared.Ref.Provider, "template_digest": a.GetJob().GetTemplateDigest(), "native_final": out.Final, "native_success": out.Success, "exit_code": run.ExitCode, "runtime_cleanup": string(run.Cleanup), "verification": verification, "result": string(redact([]byte(out.Result), secrets)), "stderr_truncated": stderr.truncated, "manifest_sha256": a.GetJob().GetInputManifestSha256()})
 	files["report.json"] = report
 	files["changes.patch"] = redact(diff, secrets)
 	files["stderr.log"] = redact(stderr.Bytes(), secrets)
@@ -347,7 +388,18 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 	} else {
 		ids = []string{artifact.ArtifactId}
 	}
-	complete(&pb.CompleteRequest{Success: success, CleanupConfirmed: runtimeCleanupConfirmed(run.Cleanup), ErrorCode: code, ErrorMessage: msg, Result: string(redact([]byte(out.Result), secrets)), NativeSessionId: out.Session, ArtifactIds: ids})
+	environmentReleased := w.releaseEnvironment(persistCtx, a.AttemptId, environmentProvider, environmentPrepared.Ref)
+	cleanupConfirmed := runtimeCleanupConfirmed(run.Cleanup) && environmentCleanupConfirmed(environmentReleased.Cleanup)
+	if !cleanupConfirmed {
+		success = false
+		code = "CLEANUP_UNCONFIRMED"
+		if environmentReleased.Err != nil {
+			msg = environmentReleased.Err.Error()
+		} else {
+			msg = "runtime or environment cleanup unconfirmed"
+		}
+	}
+	complete(&pb.CompleteRequest{Success: success, CleanupConfirmed: cleanupConfirmed, ErrorCode: code, ErrorMessage: msg, Result: string(redact([]byte(out.Result), secrets)), NativeSessionId: out.Session, ArtifactIds: ids})
 }
 func choose(a, b string) string {
 	if a != "" {
