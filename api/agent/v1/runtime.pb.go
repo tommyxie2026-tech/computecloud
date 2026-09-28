@@ -1277,6 +1277,9 @@ type CommandAck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
 	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	OperationId   string                 `protobuf:"bytes,3,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,4,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1321,6 +1324,27 @@ func (x *CommandAck) GetCommandId() string {
 func (x *CommandAck) GetState() string {
 	if x != nil {
 		return x.State
+	}
+	return ""
+}
+
+func (x *CommandAck) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *CommandAck) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+func (x *CommandAck) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
 	}
 	return ""
 }
@@ -2655,12 +2679,16 @@ const file_api_agent_v1_runtime_proto_rawDesc = "" +
 	"\vlease_token\x18\x03 \x01(\tR\n" +
 	"leaseToken\"F\n" +
 	"\x05Renew\x12=\n" +
-	"\battempts\x18\x01 \x03(\v2!.computecloud.agent.v1.AttemptRefR\battempts\"A\n" +
+	"\battempts\x18\x01 \x03(\v2!.computecloud.agent.v1.AttemptRefR\battempts\"\xa8\x01\n" +
 	"\n" +
 	"CommandAck\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x14\n" +
-	"\x05state\x18\x02 \x01(\tR\x05state\"\xf2\x02\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\x12!\n" +
+	"\foperation_id\x18\x03 \x01(\tR\voperationId\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x04 \x01(\tR\terrorCode\x12#\n" +
+	"\rerror_message\x18\x05 \x01(\tR\ferrorMessage\"\xf2\x02\n" +
 	"\x0eControlCommand\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x1d\n" +
