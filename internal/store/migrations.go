@@ -112,6 +112,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 9
 	}
+	if schema == ServerSchema && version < 10 {
+		if _, err = tx.Exec(serverV10); err != nil {
+			return err
+		}
+		version = 10
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -606,4 +612,29 @@ CREATE TABLE replan_requests (
   UNIQUE(goal_id,evaluation_id)
 );
 CREATE INDEX replan_requests_goal ON replan_requests(goal_id,created);
+`;
+
+
+const serverV10 = `ALTER TABLE replan_requests ADD COLUMN failure_class TEXT NOT NULL DEFAULT '';
+ALTER TABLE replan_requests ADD COLUMN evidence_fingerprint TEXT NOT NULL DEFAULT '';
+ALTER TABLE replan_requests ADD COLUMN proposed_plan_fingerprint TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE goal_evidence (
+  goal_id TEXT NOT NULL REFERENCES goals(id),
+  fingerprint TEXT NOT NULL,
+  evaluation_id TEXT NOT NULL,
+  failure_class TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL,
+  PRIMARY KEY(goal_id,fingerprint)
+);
+CREATE INDEX goal_evidence_eval ON goal_evidence(goal_id,evaluation_id);
+
+CREATE TABLE plan_fingerprints (
+  goal_id TEXT NOT NULL REFERENCES goals(id),
+  plan_revision INTEGER NOT NULL,
+  fingerprint TEXT NOT NULL,
+  created INTEGER NOT NULL,
+  PRIMARY KEY(goal_id,plan_revision),
+  UNIQUE(goal_id,fingerprint)
+);
 `;
