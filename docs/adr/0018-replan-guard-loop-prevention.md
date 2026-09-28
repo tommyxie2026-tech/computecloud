@@ -538,6 +538,83 @@ approval escalation + cost/token accounting + policy templates
 
 第一版不依赖 embedding/vector DB。优先使用结构化 Plan、canonical fingerprint、failure class 和确定性状态比较，保持系统轻量。
 
+## 16. RPG 收敛与退出标准
+
+RPG（Re-plan Guard）是一个**有限实施序列**，固定为 RPG-1 ～ RPG-4。
+
+~~~text
+RPG-1  Bound
+RPG-2  Evidence
+RPG-3  Convergence
+RPG-4  Governance
+   ↓
+RPG CLOSED
+~~~
+
+RPG-4 完成后：
+
+- 不再创建 RPG-5 / RPG-6；
+- Re-plan Guard 视为 Goal-oriented Computing 的稳定核心能力；
+- 后续 Bug Fix / 性能优化进入普通版本维护；
+- 新的 Goal Governance 能力进入 Enterprise Governance / Policy 主线；
+- 新的 Evaluator / Planner 能力进入 Provider Contract 主线；
+- 新的调度优化进入 Adaptive Scheduling 主线；
+- 若未来必须改变 Re-plan Guard 的核心不变量，需要新 ADR，而不是继续扩展 RPG 编号。
+
+### RPG-4 必须完成的最小闭环
+
+RPG-4 只负责补齐自治边界之外的治理能力：
+
+~~~text
+NEEDS_APPROVAL
+    ↓
+Human / Policy Decision
+    ├── APPROVE_NEXT_REPLAN
+    ├── INCREASE_BUDGET
+    ├── PROVIDE_EVIDENCE
+    ├── CHANGE_CONSTRAINT
+    ├── ABORT
+    └── REJECT
+~~~
+
+以及：
+
+- token / cost budget accounting；
+- project / goal re-plan policy；
+- budget increase authorization；
+- Goal / constraint 变更审计；
+- approval fencing / idempotency；
+- approval actor / reason / evidence durable audit。
+
+### RPG 完成定义
+
+只有同时满足以下条件，RPG 才正式关闭：
+
+1. **Bounded**：次数、Attempt、时间、Token/Cost 有硬边界；
+2. **Evidence-driven**：无新 Evidence 不得自动 Re-plan；
+3. **Convergent**：重复策略、重复失败、连续无进展可被阻断；
+4. **Governed**：越过自治边界后必须进入明确的 Approval / Policy 路径；
+5. **Durable**：所有 Guard / Approval 决策可恢复、幂等、可审计；
+6. **CI-gated**：RPG-1～4 的核心负向场景均进入 CI；
+7. **No hidden autonomy**：Planner / Evaluator 无权扩大预算、改变 Goal、提升权限或绕过 Guard。
+
+RPG 关闭后的稳定接口统一为：
+
+~~~text
+Evaluator
+   ↓
+Re-plan Proposal
+   ↓
+Re-plan Guard
+   ├── ALLOW
+   ├── REJECT
+   └── NEEDS_APPROVAL
+          ↓
+      Goal Governance
+~~~
+
+因此 RPG 是“建立 Re-plan 安全边界”的一次性建设阶段，不成为永久演进主线。
+
 ## Consequences
 
 正面影响：
