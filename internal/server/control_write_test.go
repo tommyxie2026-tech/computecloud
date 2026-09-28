@@ -238,3 +238,61 @@ func TestAgentControlDispatchPersistsStructuredCommand(t *testing.T) {
 		t.Fatalf("control commands=%d want=1", count)
 	}
 }
+
+
+func TestAgentControlAcceptedOperationRecoversWithoutClientReplay(t *testing.T) {
+	h, jobID, taskID, version := controlHarness(t)
+	h.s.mu.Lock()
+	h.s.peers["fixture-worker"] = &session{hello: &pb.WorkerHello{
+		WorkerId: "fixture-worker", Epoch: "epoch-1",
+		Runtimes: []*pb.Runtime{{
+			Profile: "codex_exec",
+			Capabilities: []string{"control:interactive_input"},
+		}},
+	}}
+	h.s.mu.Unlock()
+
+	in := ControlOperationRequest{
+		OperationID: "control-op-recover",
+		OperationType: "input",
+		ResourceType: "session",
+		ResourceID: "control-attempt-1",
+		TaskID: taskID,
+		ExpectedAttemptID: "control-attempt-1",
+		ExpectedGeneration: 1,
+		ExpectedResourceVersion: version,
+		Payload: json.RawMessage(`{"mode":"queue_next","content":"continue after restart"}`),
+	}
+	receipt, err := h.s.acceptControlOperation(h.ctx, jobID, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.State != "ACCEPTED" {
+		t.Fatalf("receipt=%+v", receipt)
+	}
+
+	// Simulate restart/offline Worker projection: recovery relies on the
+	// authorization/capability proof captured at acceptance, not a live peer.
+	h.s.mu.Lock()
+	delete(h.s.peers, "fixture-worker")
+	h.s.mu.Unlock()
+
+	if err = h.s.recoverAcceptedControlOperations(h.ctx); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	var raw []byte
+	if err = h.s.db.SQL.QueryRow("SELECT state,receipt_json FROM control_operations WHERE operation_id=?", in.OperationID).Scan(&state, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if state != "DISPATCHED" {
+		t.Fatalf("state=%s receipt=%s", state, raw)
+	}
+	var count int
+	if err = h.s.db.SQL.QueryRow("SELECT count(*) FROM commands WHERE kind='control' AND attempt=?", in.ExpectedAttemptID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("recovered control commands=%d want=1", count)
+	}
+}
