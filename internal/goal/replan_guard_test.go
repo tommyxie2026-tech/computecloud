@@ -32,7 +32,7 @@ func createTestGoal(t *testing.T, db *store.DB, id string, budget Budget) {
 
 func plan(strategy string) PlanCanonical {
 	return PlanCanonical{
-		Strategy: strategy, DependencySignature: "scan>implement>test",
+		Strategy: strategy, StrategyClass: strategy, DependencySignature: "scan>implement>test",
 		RequiredCapabilities: []string{"runtime:codex", "tool:git"},
 		KeyAssumptions: []string{"repository accessible"},
 		EvaluationStrategy: "tests", SideEffectClass: "workspace",
@@ -49,6 +49,17 @@ func request(id, eval string, planRev, graphGen int64, evidenceFact, strategy st
 			Evidence: []Evidence{{Type: "test_failure", ArtifactID: "artifact-" + eval, Fact: evidenceFact}},
 		},
 		ProposedPlan: plan(strategy),
+		StrategyDelta: StrategyDelta{
+			ChangedDimensions: []string{"strategy"},
+			Summary: "change execution strategy",
+		},
+		Progress: ProgressSnapshot{
+			AcceptedChecks: 1,
+			FailedChecks: 1,
+			UnknownChecks: 1,
+			ResolvedAssumptions: 1,
+			UnresolvedBlockers: 1,
+		},
 	}
 }
 
@@ -244,5 +255,139 @@ func TestPlanFingerprintCanonicalizesSetFields(t *testing.T) {
 	b.RequiredCapabilities = []string{"tool:git", "runtime:codex"}
 	if a.Fingerprint() != b.Fingerprint() {
 		t.Fatal("plan fingerprint depends on capability order")
+	}
+}
+
+
+func TestGuardReplanDetectsStrategyCycle(t *testing.T) {
+	db := newGoalDB(t)
+	createTestGoal(t, db, "g", Budget{MaxReplans: 4, MaxTotalAttempts: 8, MaxWallTime: time.Hour})
+
+	first := request("r1", "e1", 1, 1, "fact-a", "strategy-a")
+	first.ProposedPlan.StrategyClass = "oauth-adapter"
+	first.Progress.AcceptedChecks = 2
+	if got, err := GuardReplan(context.Background(), db, first); err != nil || !got.Allowed {
+		t.Fatalf("first=%+v err=%v", got, err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+
+	second := request("r2", "e2", 2, 2, "fact-b", "strategy-b")
+	second.ProposedPlan.StrategyClass = "oauth-adapter"
+	second.ProposedPlan.Strategy = "rewrite oauth adapter with different wording"
+	second.Progress.AcceptedChecks = 3
+	got, err := GuardReplan(context.Background(), db, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Allowed || !got.NeedsApproval || got.Code != DecisionLoopDetected {
+		t.Fatalf("strategy cycle accepted: %+v", got)
+	}
+}
+
+func TestGuardReplanStopsThirdSameFailureClass(t *testing.T) {
+	db := newGoalDB(t)
+	createTestGoal(t, db, "g", Budget{MaxReplans: 5, MaxTotalAttempts: 10, MaxWallTime: time.Hour})
+
+	r1 := request("r1", "e1", 1, 1, "fact-a", "strategy-a")
+	r1.Progress.AcceptedChecks = 2
+	if got, err := GuardReplan(context.Background(), db, r1); err != nil || !got.Allowed {
+		t.Fatalf("r1=%+v err=%v", got, err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+
+	r2 := request("r2", "e2", 2, 2, "fact-b", "strategy-b")
+	r2.Progress.AcceptedChecks = 3
+	if got, err := GuardReplan(context.Background(), db, r2); err != nil || !got.Allowed {
+		t.Fatalf("r2=%+v err=%v", got, err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+
+	r3 := request("r3", "e3", 3, 3, "fact-c", "strategy-c")
+	r3.Progress.AcceptedChecks = 4
+	got, err := GuardReplan(context.Background(), db, r3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Allowed || !got.NeedsApproval || got.Code != DecisionRepeatedFailure {
+		t.Fatalf("third same failure accepted: %+v", got)
+	}
+}
+
+func TestGuardReplanAllowsOneStagnantRoundThenStops(t *testing.T) {
+	db := newGoalDB(t)
+	createTestGoal(t, db, "g", Budget{MaxReplans: 5, MaxTotalAttempts: 10, MaxWallTime: time.Hour})
+
+	r1 := request("r1", "e1", 1, 1, "fact-a", "strategy-a")
+	r1.Evidence.FailureClass = FailureTest
+	r1.Progress = ProgressSnapshot{AcceptedChecks: 2, FailedChecks: 2, UnknownChecks: 1, ResolvedAssumptions: 1, UnresolvedBlockers: 2}
+	if got, err := GuardReplan(context.Background(), db, r1); err != nil || !got.Allowed {
+		t.Fatalf("r1=%+v err=%v", got, err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+
+	r2 := request("r2", "e2", 2, 2, "fact-b", "strategy-b")
+	r2.Evidence.FailureClass = FailureTimeout
+	r2.Progress = r1.Progress
+	if got, err := GuardReplan(context.Background(), db, r2); err != nil || !got.Allowed {
+		t.Fatalf("first stagnant round should be allowed: got=%+v err=%v", got, err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+
+	r3 := request("r3", "e3", 3, 3, "fact-c", "strategy-c")
+	r3.Evidence.FailureClass = FailureDependency
+	r3.Progress = r2.Progress
+	got, err := GuardReplan(context.Background(), db, r3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Allowed || !got.NeedsApproval || got.Code != DecisionNoProgress {
+		t.Fatalf("second stagnant round accepted: %+v", got)
+	}
+}
+
+func TestGuardReplanProgressResetsStagnation(t *testing.T) {
+	db := newGoalDB(t)
+	createTestGoal(t, db, "g", Budget{MaxReplans: 5, MaxTotalAttempts: 10, MaxWallTime: time.Hour})
+
+	r1 := request("r1", "e1", 1, 1, "fact-a", "strategy-a")
+	r1.Evidence.FailureClass = FailureTest
+	r1.Progress = ProgressSnapshot{AcceptedChecks: 1, FailedChecks: 2, UnknownChecks: 2, ResolvedAssumptions: 0, UnresolvedBlockers: 2}
+	if got, err := GuardReplan(context.Background(), db, r1); err != nil || !got.Allowed {
+		t.Fatalf("r1=%+v err=%v", got, err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+
+	r2 := request("r2", "e2", 2, 2, "fact-b", "strategy-b")
+	r2.Evidence.FailureClass = FailureTimeout
+	r2.Progress = r1.Progress
+	if got, err := GuardReplan(context.Background(), db, r2); err != nil || !got.Allowed {
+		t.Fatalf("r2=%+v err=%v", got, err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+
+	r3 := request("r3", "e3", 3, 3, "fact-c", "strategy-c")
+	r3.Evidence.FailureClass = FailureDependency
+	r3.Progress = r2.Progress
+	r3.Progress.AcceptedChecks = 2
+	got, err := GuardReplan(context.Background(), db, r3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Allowed {
+		t.Fatalf("real progress should reset stagnation: %+v", got)
 	}
 }
