@@ -1362,6 +1362,7 @@ type ControlCommand struct {
 	ApprovalId     string                 `protobuf:"bytes,9,opt,name=approval_id,json=approvalId,proto3" json:"approval_id,omitempty"`
 	RequestVersion int64                  `protobuf:"varint,10,opt,name=request_version,json=requestVersion,proto3" json:"request_version,omitempty"`
 	Decision       string                 `protobuf:"bytes,11,opt,name=decision,proto3" json:"decision,omitempty"`
+	PrincipalId    string                 `protobuf:"bytes,12,opt,name=principal_id,json=principalId,proto3" json:"principal_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1469,6 +1470,13 @@ func (x *ControlCommand) GetRequestVersion() int64 {
 func (x *ControlCommand) GetDecision() string {
 	if x != nil {
 		return x.Decision
+	}
+	return ""
+}
+
+func (x *ControlCommand) GetPrincipalId() string {
+	if x != nil {
+		return x.PrincipalId
 	}
 	return ""
 }
@@ -2688,7 +2696,7 @@ const file_api_agent_v1_runtime_proto_rawDesc = "" +
 	"\foperation_id\x18\x03 \x01(\tR\voperationId\x12\x1d\n" +
 	"\n" +
 	"error_code\x18\x04 \x01(\tR\terrorCode\x12#\n" +
-	"\rerror_message\x18\x05 \x01(\tR\ferrorMessage\"\xf2\x02\n" +
+	"\rerror_message\x18\x05 \x01(\tR\ferrorMessage\"\x95\x03\n" +
 	"\x0eControlCommand\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x1d\n" +
@@ -2706,7 +2714,8 @@ const file_api_agent_v1_runtime_proto_rawDesc = "" +
 	"approvalId\x12'\n" +
 	"\x0frequest_version\x18\n" +
 	" \x01(\x03R\x0erequestVersion\x12\x1a\n" +
-	"\bdecision\x18\v \x01(\tR\bdecision\"\xbe\x01\n" +
+	"\bdecision\x18\v \x01(\tR\bdecision\x12!\n" +
+	"\fprincipal_id\x18\f \x01(\tR\vprincipalId\"\xbe\x01\n" +
 	"\vWorkerFrame\x12:\n" +
 	"\x05hello\x18\x01 \x01(\v2\".computecloud.agent.v1.WorkerHelloH\x00R\x05hello\x124\n" +
 	"\x05renew\x18\x02 \x01(\v2\x1c.computecloud.agent.v1.RenewH\x00R\x05renew\x125\n" +
