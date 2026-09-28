@@ -338,7 +338,7 @@ func TestWorkerV3WorkspaceLifecycleSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 6 {
 		t.Fatalf("worker version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO runs(id,assignment,state) VALUES('a','{}','DONE')"); e != nil {
@@ -431,7 +431,7 @@ func TestWorkerV4RuntimeExecutionSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 6 {
 		t.Fatalf("worker version=%d err=%v", version, e)
 	}
 	var provider, transport, state, cleanup string
@@ -479,7 +479,7 @@ func TestWorkerV5EnvironmentExecutionSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 6 {
 		t.Fatalf("worker version=%d err=%v", version, e)
 	}
 	var provider, state, cleanup string
@@ -533,5 +533,33 @@ func TestV8ControlOperationLedger(t *testing.T) {
 	}
 	if attempt != "attempt-1" || generation != 2 || resourceVersion != 3 {
 		t.Fatalf("fencing tuple=%s/%d/%d", attempt, generation, resourceVersion)
+	}
+}
+
+
+func TestWorkerV6ControlCommandJournal(t *testing.T) {
+	dir := t.TempDir()
+	db, e := Open(dir, WorkerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	var version int
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 6 {
+		t.Fatalf("worker version=%d err=%v", version, e)
+	}
+	if _, e = db.SQL.Exec(`INSERT INTO commands(id,hash,kind,body,state)
+		VALUES('control-1','hash','control','{}','RECEIVED')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("UPDATE commands SET state='UNKNOWN' WHERE id='control-1'"); e != nil {
+		t.Fatal(e)
+	}
+	var kind, state string
+	if e = db.SQL.QueryRow("SELECT kind,state FROM commands WHERE id='control-1'").Scan(&kind,&state); e != nil {
+		t.Fatal(e)
+	}
+	if kind != "control" || state != "UNKNOWN" {
+		t.Fatalf("control journal=%s/%s", kind, state)
 	}
 }
