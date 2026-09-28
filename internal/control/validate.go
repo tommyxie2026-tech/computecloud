@@ -14,7 +14,7 @@ var knownEventTypes = map[string]struct{}{
 	"approval.requested": {}, "approval.accepted": {}, "approval.rejected": {}, "approval.expired": {},
 	"file.changed": {}, "diff.updated": {}, "artifact.created": {},
 	"runtime.warning": {}, "runtime.disconnected": {}, "runtime.recovered": {},
-	"control.accepted": {}, "control.rejected": {},
+	"control.accepted": {}, "control.completed": {}, "control.rejected": {},
 }
 
 var knownApprovalStates = map[ApprovalState]struct{}{
