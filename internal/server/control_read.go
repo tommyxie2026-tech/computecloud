@@ -90,7 +90,7 @@ func (s *Server) ControlBootstrap(ctx context.Context) (*ControlBootstrap, error
 		ProtocolMin: control.ProtocolV1Alpha1,
 		ProtocolMax: control.ProtocolV1Alpha1,
 		ServerEpoch: s.controlEpoch,
-		ReadOnly:    true,
+		ReadOnly:    false,
 		Runtimes:    s.controlRuntimeSnapshot(),
 	}, nil
 }
