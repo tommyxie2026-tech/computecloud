@@ -202,11 +202,14 @@ type OperationReceipt struct {
 	ProtocolVersion string         `json:"protocol_version"`
 	OperationID     string         `json:"operation_id"`
 	OperationType   string         `json:"operation_type"`
+	ResourceType    string         `json:"resource_type"`
+	ResourceID      string         `json:"resource_id"`
+	ResourceVersion int64          `json:"resource_version,omitempty"`
 	JobID           string         `json:"job_id"`
-	SessionID       string         `json:"session_id"`
-	TaskID          string         `json:"task_id"`
-	AttemptID       string         `json:"attempt_id"`
-	Generation      int64          `json:"generation"`
+	SessionID       string         `json:"session_id,omitempty"`
+	TaskID          string         `json:"task_id,omitempty"`
+	AttemptID       string         `json:"attempt_id,omitempty"`
+	Generation      int64          `json:"generation,omitempty"`
 	State           OperationState `json:"state"`
 	Existing        bool           `json:"existing,omitempty"`
 	CreatedAt       time.Time      `json:"created_at"`
@@ -221,17 +224,25 @@ func (r OperationReceipt) Validate() error {
 	for field, value := range map[string]string{
 		"operation_id": r.OperationID,
 		"operation_type": r.OperationType,
+		"resource_type": r.ResourceType,
+		"resource_id": r.ResourceID,
 		"job_id": r.JobID,
-		"session_id": r.SessionID,
-		"task_id": r.TaskID,
-		"attempt_id": r.AttemptID,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("%s required", field)
 		}
 	}
-	if r.Generation < 1 {
-		return errors.New("generation must be positive")
+	switch r.ResourceType {
+	case "job":
+		if r.ResourceVersion < 1 {
+			return errors.New("job operation resource_version must be positive")
+		}
+	case "session", "approval":
+		if r.SessionID == "" || r.TaskID == "" || r.AttemptID == "" || r.Generation < 1 {
+			return errors.New("session/approval operation requires attempt generation identity")
+		}
+	default:
+		return fmt.Errorf("invalid resource type: %q", r.ResourceType)
 	}
 	switch r.State {
 	case OperationAccepted, OperationRejected, OperationCompleted:
