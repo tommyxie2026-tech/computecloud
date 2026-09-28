@@ -78,6 +78,7 @@ message ControlCommand {
   string session_ref = 7;
   string mode = 8;
   bytes payload_json = 9;
+  string lease_token = 10;
 }
 message Command {
   string command_id = 1;
