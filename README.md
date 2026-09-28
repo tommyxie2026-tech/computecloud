@@ -268,6 +268,7 @@ Worker / Runtime / Tool / Environment
 
 - [文档索引](docs/README.md)
 - [长期路线图](docs/implementation/long-term-roadmap.md)
+- [3–5 人并行开发计划](docs/implementation/parallel-development-plan.md)
 - [Agent-aware 总体架构](docs/design/agent-job-executor-architecture.md)
 - [ADR-017：Goal-oriented Computing Model](docs/adr/0017-goal-oriented-computing-model.md)
 - [ADR-018：Re-plan Guard 与自治循环防护](docs/adr/0018-replan-guard-loop-prevention.md)
