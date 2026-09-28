@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://computecloud.dev/schema/control/v1alpha1/event.schema.json",
+  "title": "computecloud Agent Control Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "event_id", "seq", "job_id", "task_id", "attempt_id", "generation", "type", "occurred_at", "payload"],
+  "properties": {
+    "protocol_version": {"const": "control.v1alpha1"},
+    "event_id": {"type": "string", "minLength": 1},
+    "seq": {"type": "integer", "minimum": 1},
+    "job_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "attempt_id": {"type": "string", "minLength": 1},
+    "generation": {"type": "integer", "minimum": 1},
+    "session_id": {"type": "string"},
+    "type": {
+      "enum": [
+        "session.created", "session.started", "session.resumed", "session.interrupted", "session.completed", "session.failed",
+        "message.started", "message.delta", "message.completed", "plan.updated",
+        "tool.requested", "tool.started", "tool.completed", "tool.failed",
+        "approval.requested", "approval.accepted", "approval.rejected", "approval.expired",
+        "file.changed", "diff.updated", "artifact.created",
+        "runtime.warning", "runtime.disconnected", "runtime.recovered",
+        "control.accepted", "control.rejected"
+      ]
+    },
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "payload": {"type": "object"}
+  }
+}
