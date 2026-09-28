@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1/ACP-2 已完成；ACP-3a durable acceptance / fencing / negative contract 已实现，ACP-3b Worker control dispatch 待实施
+- 状态：实施中；ACP-0/ACP-1/ACP-2 已完成；ACP-3a 已合并；ACP-3b structured Worker control dispatch / result ACK 已实现，待 CI/PR 合并
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -30,7 +30,7 @@
 | ACP-0 | 当前 | Schema/contract 基线 | **已完成**：control.v1alpha1、事件 schema、Provider extension、独立 CI |
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
-| ACP-3 | v0.4.x | 安全写控制 | **ACP-3a 已实现**：durable ledger、idempotency、fencing、稳定错误码、negative contract；**ACP-3b 待实现**：Worker control envelope/dispatch/input/interrupt |
+| ACP-3 | v0.4.x | 安全写控制 | **ACP-3a 已合并**：durable ledger、idempotency、fencing、稳定错误码、negative contract；**ACP-3b 已实现待合并**：structured Worker control envelope、dispatch、SessionControlProvider、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed |
 | ACP-4 | v0.4.x | Approval + Resume | approval lifecycle、session resume |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
 | ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
@@ -204,9 +204,15 @@ Interrupt
 - `PRIMARY KEY(principal_id, operation_id)`；
 - request hash；
 - expected Attempt / generation / resource version；
-- durable `ACCEPTED` receipt；
+- durable `ACCEPTED -> DISPATCHED -> COMPLETED/REJECTED` receipt；
 - released Attempt fail-closed；
-- duplicate same request replay / different request conflict。
+- duplicate same request replay / different request conflict；
+- Worker protobuf `ControlCommand` 与 Assignment 分离；
+- principal-scoped operation identity；
+- Worker 本地 control execution ledger；
+- `EXECUTING` 崩溃窗口恢复为 `UNKNOWN / EXECUTION_UNVERIFIABLE`，禁止自动重放副作用；
+- `SessionControlProvider` capability check 与 fail-closed；
+- structured final ACK -> durable receipt + `control.completed/control.rejected` event。
 
 约束:
 - unique(principal_id, operation_id)；
@@ -241,14 +247,15 @@ POST /v1/jobs/{job}/cancel
 - [x] old generation control -> ATTEMPT_FENCED。
 - [x] duplicate same op -> same receipt。
 - [x] duplicate different payload -> OPERATION_CONFLICT。
-- [ ] unsupported input -> CAPABILITY_UNSUPPORTED。
-- [ ] response lost + retry -> no duplicate side effect。
+- [x] unsupported input -> CAPABILITY_UNSUPPORTED。
+- [x] response lost + retry -> no duplicate side effect；已覆盖 Worker replay 与 Server offline durable receipt replay。
 - [ ] offline client stale cancel -> rejected。
 
 ### 6.5 CI
 
 `agent-control-fencing`
 `agent-control-negative`（ACP-3a 已接入）
+`agent-control-dispatch`（ACP-3b 已接入）
 
 ## 7. ACP-4 — Approval 与 Session Resume
 
@@ -520,10 +527,10 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. ACP-3b：扩展 Worker control command envelope，结构化携带 input/interrupt；不得复用 Assignment 字段做隐式编码。
-2. 使用 canonical protobuf toolchain 重新生成 Go wire code，并保持旧 Worker 协议兼容门槛。
-3. 用 fixture SessionControlProvider 完成 Server -> Worker -> Adapter E2E；只有通过后才开放 HTTP write endpoint。
-4. Codex/Claude 不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过。
-5. Prepared Workspace 主线继续推进；ACP-4 在 Session/Approval 原生能力稳定后接入。
+1. 完成 ACP-3b PR CI 并合并；Package Gate 必须依赖 `agent-control-dispatch`。
+2. ACP-3c：在当前 durable/dispatch 语义之上开放 HTTP input/interrupt endpoint；HTTP 层不得绕过 `acceptAndDispatchControlOperation`。
+3. 增加 multi-process fault injection：Server intent commit 后重启、Worker Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
+4. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
+5. ACP-4 再接 Approval + Resume；Prepared Workspace 主线继续推进，不与 Control write plane 混成同一状态机。
 
 这一顺序可以最小化返工，同时确保 Control App 不先于服务端语义成熟。

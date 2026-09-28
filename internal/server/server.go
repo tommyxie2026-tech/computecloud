@@ -262,7 +262,27 @@ func (s *Server) ConnectWorker(stream grpc.BidiStreamingServer[pb.WorkerFrame, p
 	}
 }
 func commandDeliverable(ctx context.Context, q store.Query, c *pb.Command, worker, epoch string) (bool, error) {
-	if c == nil || c.Assignment == nil || (c.Kind != "start" && c.Kind != "stop") {
+	if c == nil {
+		return false, nil
+	}
+	if c.Kind == "control" && c.Control != nil {
+		x := c.Control
+		var n int
+		e := q.QueryRowContext(ctx, `SELECT count(*)
+			FROM attempts a
+			JOIN tasks t ON t.id=a.task
+			JOIN control_operations o
+			  ON o.principal_id=? AND o.operation_id=?
+			WHERE a.id=? AND a.task=? AND a.worker=? AND a.epoch=?
+			  AND a.generation=? AND a.released=0
+			  AND t.attempt=a.id AND t.current_generation=a.generation
+			  AND o.task_id=t.id AND o.expected_attempt_id=a.id
+			  AND o.expected_generation=a.generation AND o.state='DISPATCHED'`,
+			x.PrincipalId, x.OperationId, x.AttemptId, x.TaskId, worker, epoch, x.Generation,
+		).Scan(&n)
+		return n == 1, e
+	}
+	if c.Assignment == nil || (c.Kind != "start" && c.Kind != "stop") {
 		return false, nil
 	}
 	a := c.Assignment
@@ -286,11 +306,14 @@ func (s *Server) receive(ctx context.Context, p *session, f *pb.WorkerFrame) err
 		return status.Error(codes.FailedPrecondition, "STALE_CONNECTION")
 	}
 	if a := f.GetAck(); a != nil {
-		if a.State != "RECEIVED" {
-			return status.Error(codes.InvalidArgument, "invalid command ACK")
+		if a.State == "RECEIVED" {
+			_, e := s.db.SQL.ExecContext(ctx, "UPDATE commands SET acked=1 WHERE id=? AND worker=?", a.CommandId, p.hello.WorkerId)
+			return dbErr(e)
 		}
-		_, e := s.db.SQL.ExecContext(ctx, "UPDATE commands SET acked=1 WHERE id=? AND worker=?", a.CommandId, p.hello.WorkerId)
-		return dbErr(e)
+		if a.State == "COMPLETED" || a.State == "REJECTED" || a.State == "UNKNOWN" {
+			return dbErr(s.applyControlAck(ctx, p.hello.WorkerId, a))
+		}
+		return status.Error(codes.InvalidArgument, "invalid command ACK")
 	}
 	r := f.GetRenew()
 	if r == nil {

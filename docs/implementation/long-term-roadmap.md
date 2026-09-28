@@ -11,7 +11,7 @@
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
 - 当前实现依据：[v0.4.3 EnvironmentCapability](v0.4.3-plan.md)、[ADR-015](../adr/0015-environment-capability.md)
-- 当前实施跟踪：v0.4.4 EnvironmentProvider Execution 已完成；下一功能主线进入 Prepared Workspace / Workspace Template；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实施跟踪：v0.4.4 EnvironmentProvider Execution 已完成；Agent Control 横向能力 ACP-3a 已合并、ACP-3b structured Worker control dispatch 已实现待 CI/PR；下一功能主线仍为 Prepared Workspace / Workspace Template；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -694,6 +694,17 @@ ToolCapability 至少包含：
 每个 Runtime 必须通过统一 contract test。
 
 ### 6.4 SessionRef / Approval
+
+#### Agent Control ACP-3 安全写控制现状
+
+截至 2026-09-28：
+
+- ACP-3a 已合并：durable operation receipt、principal-scoped idempotency、Attempt/generation/resource-version fencing、稳定错误码与 negative Gate；
+- ACP-3b 已实现待合并：独立 Worker `ControlCommand` envelope、Server durable dispatch、SessionControlProvider execution、Worker local control ledger、structured terminal ACK、`control.completed/control.rejected` durable event；
+- Worker 在 control side-effect 执行期间崩溃时，不自动重放；恢复为 `UNKNOWN / EXECUTION_UNVERIFIABLE`，避免 duplicate side effect；
+- Codex / Claude 继续只暴露已认证的 stream/structured/cancel，interactive input / approval / resume / interrupt 保持 fail-closed；
+- HTTP write endpoint 延后到 ACP-3c，仅在上述链路 CI 通过后开放。
+
 
 Session 不升级为平台一级领域模型，只作为 Runtime capability：
 

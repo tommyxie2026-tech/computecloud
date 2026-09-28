@@ -11,6 +11,7 @@ import (
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/adapter"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	envreg "github.com/tommyxie2026-tech/computecloud/internal/environment"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
@@ -69,7 +70,22 @@ func advertisedRuntimeCapabilities(provider adapter.Provider) []string {
 	caps := provider.Capabilities()
 	caps.Tools = toolreg.InstalledCompatible(caps.Tools)
 	caps.Environment = envreg.InstalledCompatible(caps.Environment)
-	return caps.Advertised()
+	out := caps.Advertised()
+	if desc, ok, err := adapter.ControlDescriptorFor(provider); ok && err == nil {
+		for _, capability := range desc.Capabilities {
+			if err := control.ValidateCapabilities([]control.Capability{capability}); err == nil {
+				out = append(out, "control:"+string(capability))
+			}
+		}
+	}
+	sort.Strings(out)
+	compacted := out[:0]
+	for _, value := range out {
+		if len(compacted) == 0 || compacted[len(compacted)-1] != value {
+			compacted = append(compacted, value)
+		}
+	}
+	return compacted
 }
 
 func keys[V any](m map[string]V) []string {
@@ -218,6 +234,16 @@ func (w *Worker) connect(parent context.Context) error {
 		cmd := f.GetCommand()
 		if cmd == nil {
 			return errors.New("unknown server frame")
+		}
+		if cmd.Kind == "control" {
+			ack, controlErr := w.executeControl(ctx, cmd)
+			if controlErr != nil {
+				return controlErr
+			}
+			if e = send(&pb.WorkerFrame{Body: &pb.WorkerFrame_Ack{Ack: ack}}); e != nil {
+				return e
+			}
+			continue
 		}
 		launch, e := w.accept(ctx, cmd)
 		if e != nil {
