@@ -29,28 +29,36 @@ def main():
     result = run([
         "go", "test", "./internal/store", "./internal/control", "./internal/server",
         "-run",
-        "V8ControlOperationsSchema|AgentControlOperationReceiptValidation|AgentControlSafeCancelIdempotentAndFenced|AgentControlRejectsStaleGenerationBeforeMutation|AgentControlUnsupportedInteractiveActionsFailClosed",
+        "V8ControlOperationsSchema|AgentControlOperationReceiptValidation|AgentControlSafeCancelIdempotentAndVersionFenced|AgentControlRejectsStaleJobVersionBeforeMutation|AgentControlUnsupportedInteractiveActionsFailClosedAndFenceAttempt",
         "-count=1", "-v",
     ])
 
-    source = pathlib.Path("internal/server/control_write.go").read_text(encoding="utf-8")
+    session_source = pathlib.Path("internal/server/control_write.go").read_text(encoding="utf-8")
+    job_source = pathlib.Path("internal/server/jobs.go").read_text(encoding="utf-8")
     migration = pathlib.Path("internal/store/migrations.go").read_text(encoding="utf-8")
     violations = []
     for required in [
-        "control_operations",
         "ATTEMPT_FENCED",
-        "OPERATION_CONFLICT",
         "CAPABILITY_UNSUPPORTED",
         "ExpectedGeneration",
         "ExpectedAttemptID",
+    ]:
+        if required not in session_source:
+            violations.append("session control source missing: " + required)
+    for required in [
+        "control_operations",
+        "OPERATION_CONFLICT",
+        "RESOURCE_VERSION_CONFLICT",
+        "ExpectedVersion",
         "jobState(ctx, q, j, \"STOPPING\", \"USER_CANCEL\"",
     ]:
-        if required not in source:
-            violations.append("safe control source missing: " + required)
+        if required not in job_source:
+            violations.append("job control source missing: " + required)
     for required in [
         "PRIMARY KEY(principal_id,operation_id)",
-        "attempt_id TEXT NOT NULL REFERENCES attempts(id)",
-        "generation INTEGER NOT NULL",
+        "resource_type TEXT NOT NULL",
+        "resource_id TEXT NOT NULL",
+        "resource_version INTEGER NOT NULL",
     ]:
         if required not in migration:
             violations.append("control operation migration missing: " + required)
@@ -66,6 +74,7 @@ def main():
             "durable_operation_receipt": True,
             "same_request_replay": True,
             "different_payload_conflict": True,
+            "job_resource_version_fencing": True,
             "attempt_generation_fencing": True,
             "cancel_only_certified_write": True,
             "unsupported_interactive_actions_fail_closed": True,
