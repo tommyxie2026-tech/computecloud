@@ -64,11 +64,10 @@ func TestAgentControlOperationReceiptValidation(t *testing.T) {
 		ProtocolVersion: ProtocolV1Alpha1,
 		OperationID: "op1",
 		OperationType: "cancel",
+		ResourceType: "job",
+		ResourceID: "j1",
+		ResourceVersion: 1,
 		JobID: "j1",
-		SessionID: "s1",
-		TaskID: "t1",
-		AttemptID: "a1",
-		Generation: 1,
 		State: OperationAccepted,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -76,8 +75,8 @@ func TestAgentControlOperationReceiptValidation(t *testing.T) {
 	if err := receipt.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	receipt.Generation = 0
+	receipt.ResourceVersion = 0
 	if err := receipt.Validate(); err == nil {
-		t.Fatal("zero generation accepted")
+		t.Fatal("zero job resource version accepted")
 	}
 }
