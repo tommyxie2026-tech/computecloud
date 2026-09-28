@@ -258,18 +258,22 @@ func TestAgentControlPersistsRuntimeSessionRefEarly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	conflict := *ev
-	conflict.PayloadJson = []byte(`{"session_ref":"different-session"}`)
+	conflict := &pb.Event{
+		TaskId: ev.TaskId, AttemptId: ev.AttemptId, Generation: ev.Generation,
+		Type: ev.Type, PayloadJson: []byte(`{"session_ref":"different-session"}`),
+	}
 	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
-		return persistRuntimeSessionRef(context.Background(), q, &conflict)
+		return persistRuntimeSessionRef(context.Background(), q, conflict)
 	}); err == nil {
 		t.Fatal("conflicting runtime session ref accepted")
 	}
 
-	stale := *ev
-	stale.Generation = 2
+	stale := &pb.Event{
+		TaskId: ev.TaskId, AttemptId: ev.AttemptId, Generation: 2,
+		Type: ev.Type, PayloadJson: ev.PayloadJson,
+	}
 	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
-		return persistRuntimeSessionRef(context.Background(), q, &stale)
+		return persistRuntimeSessionRef(context.Background(), q, stale)
 	}); err == nil {
 		t.Fatal("stale generation session ref accepted")
 	}
