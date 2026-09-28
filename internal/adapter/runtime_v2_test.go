@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func (f fixtureProvider) Capabilities() CapabilitySet {
 func (f fixtureProvider) SupportsGateway() bool { return false }
 
 func TestRuntimeV2BuiltinsAndCapabilityNamespaces(t *testing.T) {
-	wantProfiles := []string{"claude_print", "codex_exec"}
+	wantProfiles := []string{"claude_print", "codex_exec", "gemini_cli"}
 	got := Profiles()
 	if !reflect.DeepEqual(got, wantProfiles) {
 		t.Fatalf("profiles=%v want=%v", got, wantProfiles)
@@ -71,6 +72,13 @@ func TestRuntimeV2BuiltinsAndCapabilityNamespaces(t *testing.T) {
 	}
 	if claude.SupportsGateway() {
 		t.Fatal("claude unexpectedly supports gateway")
+	}
+	gemini, ok := Lookup("gemini_cli")
+	if !ok {
+		t.Fatal("gemini provider missing")
+	}
+	if gemini.SupportsGateway() {
+		t.Fatal("gemini unexpectedly supports gateway")
 	}
 	caps := codex.Capabilities().Advertised()
 	for _, required := range []string{
@@ -138,6 +146,7 @@ func TestRuntimeV2CompatibilityArgs(t *testing.T) {
 	}{
 		{"codex_exec", config.Policy{CodexSandbox: "read-only"}},
 		{"claude_print", config.Policy{ClaudePermissionMode: "dontAsk"}},
+		{"gemini_cli", config.Policy{}},
 	} {
 		spec := &pb.TaskSpec{RuntimeProfile: tc.profile, Model: "fixture-model"}
 		legacy, err := Args(spec, tc.policy)
@@ -218,5 +227,56 @@ func TestRemoteFixtureExecutionContractUsesNoLocalPID(t *testing.T) {
 	inspection, err := p.Inspect(context.Background(), config.Runtime{}, persisted)
 	if err != nil || inspection.State != RuntimeExited || inspection.Cleanup != CleanupConfirmed {
 		t.Fatalf("remote inspect=%+v err=%v", inspection, err)
+	}
+}
+
+
+func TestGeminiStreamJSONParser(t *testing.T) {
+	p, ok := Lookup("gemini_cli")
+	if !ok {
+		t.Fatal("gemini provider missing")
+	}
+	var emitted []string
+	parser := p.Parser(func(typ string, _ []byte) error {
+		emitted = append(emitted, typ)
+		return nil
+	})
+	for _, line := range []string{
+		`{"type":"init","session_id":"gemini-session","model":"fixture"}`,
+		`{"type":"message","role":"assistant","content":"hello ","delta":true}`,
+		`{"type":"message","role":"assistant","content":"world","delta":true}`,
+		`{"type":"tool_use","tool_name":"read_file"}`,
+		`{"type":"tool_result","tool_name":"read_file"}`,
+		`{"type":"result","status":"success"}`,
+	} {
+		if err := parser.Line([]byte(line)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := parser.Outcome()
+	if !out.Final || !out.Success || out.Session != "gemini-session" || out.Result != "hello world" {
+		t.Fatalf("gemini outcome=%+v", out)
+	}
+	want := []string{"runtime.diagnostic", "message.delta", "message.delta", "tool.started", "tool.completed", "runtime.result"}
+	if !reflect.DeepEqual(emitted, want) {
+		t.Fatalf("emitted=%v want=%v", emitted, want)
+	}
+}
+
+func TestGeminiArgsKeepPromptOutOfArgv(t *testing.T) {
+	p, _ := Lookup("gemini_cli")
+	spec := &pb.TaskSpec{RuntimeProfile: "gemini_cli", Model: "gemini-test", Input: &pb.Input{Text: "secret prompt"}}
+	args, err := p.Args(spec, config.Policy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, " ")
+	if strings.Contains(joined, "secret prompt") {
+		t.Fatal("gemini prompt leaked into argv")
+	}
+	for _, want := range []string{"--output-format", "stream-json", "--approval-mode", "plan"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing %q in %v", want, args)
+		}
 	}
 }
