@@ -100,6 +100,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 7
 	}
+	if schema == ServerSchema && version < 8 {
+		if _, err = tx.Exec(serverV8); err != nil {
+			return err
+		}
+		version = 8
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -508,6 +514,31 @@ FROM events
 WHERE worker_seq IS NOT NULL;
 
 CREATE INDEX event_dedup_attempt_seq ON event_dedup(attempt,worker_seq);
+`
+
+
+const serverV8 = `CREATE TABLE control_operations (
+  principal_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  operation_type TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
+  job_id TEXT,
+  task_id TEXT,
+  expected_attempt_id TEXT NOT NULL DEFAULT '',
+  expected_generation INTEGER NOT NULL DEFAULT 0,
+  expected_resource_version INTEGER NOT NULL DEFAULT 0,
+  request_hash TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('ACCEPTED','DISPATCHED','COMPLETED','REJECTED')),
+  receipt_json BLOB NOT NULL,
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  PRIMARY KEY(principal_id, operation_id)
+);
+CREATE INDEX control_operations_resource
+  ON control_operations(resource_type,resource_id,created);
+CREATE INDEX control_operations_job
+  ON control_operations(job_id,created);
 `
 
 
