@@ -258,3 +258,30 @@ func TestACP4RuntimeSessionRefIsImmutableWithinAttempt(t *testing.T) {
 		t.Fatalf("session ref mutation err=%v", err)
 	}
 }
+
+
+func TestACP4ApprovalDecisionRejectsStaleAttemptGeneration(t *testing.T) {
+	h, jobID, taskID, version := controlHarness(t)
+	attachControlRuntime(t, h, taskID, "control:approval")
+	ev := &pb.Event{
+		TaskId: taskID, AttemptId: "control-attempt-1", Generation: 1,
+		Type: "approval.requested",
+		PayloadJson: []byte(`{"approval_id":"approval-stale-attempt","tool":"shell","action":"run","risk_class":"HIGH","request_version":1}`),
+	}
+	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistAgentControlRuntimeState(context.Background(), q, ev)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	in := ControlOperationRequest{
+		OperationID: "approval-stale-attempt-op", OperationType: "approval",
+		ResourceType: "approval", ResourceID: "approval-stale-attempt", TaskID: taskID,
+		ExpectedAttemptID: "control-attempt-1", ExpectedGeneration: 2,
+		ExpectedResourceVersion: version,
+		Payload: json.RawMessage(`{"approval_id":"approval-stale-attempt","request_version":1,"decision":"accept"}`),
+	}
+	_, err := h.s.acceptAndDispatchControlOperation(h.ctx, jobID, in)
+	if status.Code(err) != codes.Aborted || status.Convert(err).Message() != "ATTEMPT_FENCED" {
+		t.Fatalf("stale approval generation err=%v", err)
+	}
+}
