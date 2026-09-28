@@ -1467,9 +1467,10 @@ evaluation history / runtime capability / cost / latency
 ### 19.1 Re-plan Guard 实施切片
 
 ~~~text
-RPG-1
+RPG-1  ✅ implemented
 max_replans / total attempts / wall-time budget
 + current graph generation guard
+Implementation: [RPG-1 Re-plan Guard Foundation](rpg-1-replan-guard-foundation.md)
 
 RPG-2
 evidence fingerprint
