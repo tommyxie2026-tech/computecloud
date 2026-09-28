@@ -15,13 +15,17 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type controlInputPayload struct {
-	Mode    string `json:"mode"`
-	Content string `json:"content"`
+type controlDispatchPayload struct {
+	Mode           string `json:"mode,omitempty"`
+	Content        string `json:"content,omitempty"`
+	ApprovalID     string `json:"approval_id,omitempty"`
+	RequestVersion int64  `json:"request_version,omitempty"`
+	Decision       string `json:"decision,omitempty"`
+	SessionRef     string `json:"session_ref,omitempty"`
 }
 
-func requiredControlCapability(in ControlOperationRequest) (control.Capability, controlInputPayload, error) {
-	var payload controlInputPayload
+func requiredControlCapability(in ControlOperationRequest) (control.Capability, controlDispatchPayload, error) {
+	var payload controlDispatchPayload
 	switch in.OperationType {
 	case "input":
 		if len(in.Payload) == 0 {
@@ -45,6 +49,18 @@ func requiredControlCapability(in ControlOperationRequest) (control.Capability, 
 		}
 	case "interrupt":
 		return control.CapabilityInterrupt, payload, nil
+	case "approval":
+		if len(in.Payload) == 0 || json.Unmarshal(in.Payload, &payload) != nil ||
+			payload.ApprovalID == "" || payload.RequestVersion < 1 ||
+			(payload.Decision != "accept" && payload.Decision != "reject") {
+			return "", payload, status.Error(codes.InvalidArgument, "invalid approval decision payload")
+		}
+		return control.CapabilityApproval, payload, nil
+	case "resume":
+		if len(in.Payload) == 0 || json.Unmarshal(in.Payload, &payload) != nil || payload.SessionRef == "" {
+			return "", payload, status.Error(codes.InvalidArgument, "explicit session_ref required")
+		}
+		return control.CapabilitySessionResume, payload, nil
 	default:
 		return "", payload, status.Error(codes.FailedPrecondition, control.ErrorCapabilityUnsupported.String())
 	}
@@ -121,6 +137,20 @@ func (s *Server) acceptAndDispatchControlOperation(ctx context.Context, jobID st
 	if err != nil {
 		return nil, err
 	}
+	if err = s.db.Tx(ctx, func(q store.Query) error {
+		switch in.OperationType {
+		case "approval":
+			return validateApprovalDecisionControl(ctx, q, jobID, in, approvalDecisionPayload{
+				ApprovalID: payload.ApprovalID, RequestVersion: payload.RequestVersion, Decision: payload.Decision,
+			})
+		case "resume":
+			return validateResumeControl(ctx, q, jobID, in, resumeControlPayload{SessionRef: payload.SessionRef})
+		default:
+			return nil
+		}
+	}); err != nil {
+		return nil, dbErr(err)
+	}
 	var workerID string
 	var specRaw []byte
 	if err = s.db.SQL.QueryRowContext(ctx, "SELECT worker,spec FROM tasks WHERE id=? AND job_id=?", in.TaskID, jobID).
@@ -148,7 +178,7 @@ func (s *Server) acceptAndDispatchControlOperation(ctx context.Context, jobID st
 	return receipt, nil
 }
 
-func (s *Server) dispatchControlOperation(ctx context.Context, principalID, jobID string, in ControlOperationRequest, payload controlInputPayload) error {
+func (s *Server) dispatchControlOperation(ctx context.Context, principalID, jobID string, in ControlOperationRequest, payload controlDispatchPayload) error {
 	commandID := "control-" + store.Hash([]byte(principalID+"\x00"+in.OperationID))
 	err := s.db.Tx(ctx, func(q store.Query) error {
 		var state string
@@ -184,8 +214,15 @@ func (s *Server) dispatchControlOperation(ctx context.Context, principalID, jobI
 				Mode: payload.Mode,
 			},
 		}
-		if in.OperationType == "input" {
+		switch in.OperationType {
+		case "input":
 			cmd.Control.Input = &pb.Input{Text: payload.Content}
+		case "approval":
+			cmd.Control.ApprovalId = payload.ApprovalID
+			cmd.Control.RequestVersion = payload.RequestVersion
+			cmd.Control.Decision = payload.Decision
+		case "resume":
+			cmd.Control.SessionRef = payload.SessionRef
 		}
 		body := encode(cmd)
 		var old []byte
@@ -208,6 +245,20 @@ func (s *Server) dispatchControlOperation(ctx context.Context, principalID, jobI
 			ResourceVersion: in.ExpectedResourceVersion,
 		}
 		now := store.Now()
+		if in.OperationType == "approval" {
+			res, err := q.ExecContext(ctx, `UPDATE approval_requests
+				SET actor=?,decision_operation_id=?
+				WHERE approval_id=? AND request_version=? AND state='PENDING'
+				  AND (decision_operation_id='' OR decision_operation_id=?)`,
+				principalID, in.OperationID, payload.ApprovalID, payload.RequestVersion, in.OperationID)
+			if err != nil {
+				return err
+			}
+			n, err := res.RowsAffected()
+			if err != nil || n != 1 {
+				return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
+			}
+		}
 		if _, err := q.ExecContext(ctx, "UPDATE control_operations SET state='DISPATCHED',receipt_json=?,updated=? WHERE principal_id=? AND operation_id=? AND state='ACCEPTED'",
 			job.JSON(receipt), now, principalID, in.OperationID); err != nil {
 			return err
@@ -276,6 +327,37 @@ func (s *Server) applyControlAck(ctx context.Context, workerID string, ack *pb.C
 		if _, err := q.ExecContext(ctx, "UPDATE control_operations SET state=?,receipt_json=?,updated=? WHERE principal_id=? AND operation_id=?",
 			ledgerState, job.JSON(receipt), store.Now(), cmd.Control.PrincipalId, ack.OperationId); err != nil {
 			return err
+		}
+		if cmd.Control.Action == "approval" {
+			if ack.State == "COMPLETED" {
+				next := "ACCEPTED"
+				if cmd.Control.Decision == "reject" {
+					next = "REJECTED"
+				}
+				res, err := q.ExecContext(ctx, `UPDATE approval_requests SET state=?,decided_at=?,actor=?,decision_operation_id=?
+					WHERE approval_id=? AND request_version=? AND attempt_id=? AND generation=? AND state='PENDING' AND decision_operation_id=?`,
+					next, store.Now(), cmd.Control.PrincipalId, ack.OperationId,
+					cmd.Control.ApprovalId, cmd.Control.RequestVersion, cmd.Control.AttemptId, cmd.Control.Generation, ack.OperationId)
+				if err != nil {
+					return err
+				}
+				n, err := res.RowsAffected()
+				if err != nil || n != 1 {
+					return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
+				}
+			} else if ack.State == "UNKNOWN" {
+				if _, err := q.ExecContext(ctx, `UPDATE approval_requests SET state='SUPERSEDED',decided_at=?
+					WHERE approval_id=? AND request_version=? AND state='PENDING' AND decision_operation_id=?`,
+					store.Now(), cmd.Control.ApprovalId, cmd.Control.RequestVersion, ack.OperationId); err != nil {
+					return err
+				}
+			} else {
+				if _, err := q.ExecContext(ctx, `UPDATE approval_requests SET actor='',decision_operation_id=''
+					WHERE approval_id=? AND request_version=? AND state='PENDING' AND decision_operation_id=?`,
+					cmd.Control.ApprovalId, cmd.Control.RequestVersion, ack.OperationId); err != nil {
+					return err
+				}
+			}
 		}
 		if _, err := q.ExecContext(ctx, "UPDATE commands SET acked=1 WHERE id=? AND worker=?",
 			ack.CommandId, workerID); err != nil {
