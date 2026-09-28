@@ -78,14 +78,25 @@ func TestACP4ApprovalLifecycleAndDecisionFencing(t *testing.T) {
 		cmd.Control.RequestVersion != 1 || cmd.Control.Decision != "accept" {
 		t.Fatalf("approval command=%+v", cmd.Control)
 	}
-	if err = h.s.applyControlAck(context.Background(), "fixture-worker", &pb.CommandAck{
+	ack := &pb.CommandAck{
 		CommandId: commandID, State: "COMPLETED", OperationId: in.OperationID,
-	}); err != nil {
+	}
+	if err = h.s.applyControlAck(context.Background(), "fixture-worker", ack); err != nil {
 		t.Fatal(err)
+	}
+	if err = h.s.applyControlAck(context.Background(), "fixture-worker", ack); err != nil {
+		t.Fatalf("duplicate approval ACK was not idempotent: %v", err)
 	}
 	items, err = h.s.JobApprovals(h.ctx, jobID)
 	if err != nil || len(items) != 1 || items[0].State != "ACCEPTED" {
 		t.Fatalf("final approvals=%+v err=%v", items, err)
+	}
+	var acceptedEvents int
+	if err = h.s.db.SQL.QueryRow("SELECT count(*) FROM job_events WHERE job_id=? AND type='approval.accepted'", jobID).Scan(&acceptedEvents); err != nil {
+		t.Fatal(err)
+	}
+	if acceptedEvents != 1 {
+		t.Fatalf("approval.accepted events=%d want=1", acceptedEvents)
 	}
 
 	stale := in
