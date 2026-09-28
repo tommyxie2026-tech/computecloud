@@ -589,3 +589,53 @@ func TestV10GoalEvidenceAndPlanFingerprintSchema(t *testing.T) {
 		t.Fatal("duplicate plan fingerprint accepted")
 	}
 }
+
+
+func TestWorkerV6ControlExecutionLedgerMigration(t *testing.T) {
+	dir := t.TempDir()
+	raw, e := sql.Open("sqlite", filepath.Join(dir, "state.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec(WorkerSchema); e != nil {
+		t.Fatal(e)
+	}
+	for _, migration := range []string{workerV3, workerV4, workerV5} {
+		if _, e = raw.Exec(migration); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, e = raw.Exec("PRAGMA user_version=5"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = raw.Exec("INSERT INTO commands(id,hash) VALUES('legacy-command','legacy-hash')"); e != nil {
+		t.Fatal(e)
+	}
+	if e = raw.Close(); e != nil {
+		t.Fatal(e)
+	}
+
+	db, e := Open(dir, WorkerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+
+	var version int
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 6 {
+		t.Fatalf("worker version=%d err=%v", version, e)
+	}
+	var state, attempt, operationID, code, message string
+	var updated int64
+	if e = db.SQL.QueryRow("SELECT state,attempt,operation_id,updated,error_code,error_message FROM commands WHERE id='legacy-command'").
+		Scan(&state, &attempt, &operationID, &updated, &code, &message); e != nil {
+		t.Fatal(e)
+	}
+	if state != "COMPLETED" || attempt != "" || operationID != "" || updated != 0 || code != "" || message != "" {
+		t.Fatalf("legacy command migration state=%q attempt=%q operation=%q updated=%d code=%q message=%q",
+			state, attempt, operationID, updated, code, message)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO commands(id,hash,state,attempt,operation_id,updated) VALUES('control-command','h','EXECUTING','a','op',1)"); e != nil {
+		t.Fatal(e)
+	}
+}
