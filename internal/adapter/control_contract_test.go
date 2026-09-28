@@ -55,7 +55,7 @@ func TestControlProviderContractHarness(t *testing.T) {
 }
 
 func TestBuiltinProvidersAdvertiseOnlyCertifiedControlCapabilities(t *testing.T) {
-	for _, profile := range []string{"codex_exec", "claude_print"} {
+	for _, profile := range []string{"codex_exec", "claude_print", "gemini_cli"} {
 		p, ok := Lookup(profile)
 		if !ok {
 			t.Fatalf("missing builtin provider %s", profile)
