@@ -22,7 +22,7 @@
         "approval.requested", "approval.accepted", "approval.rejected", "approval.expired",
         "file.changed", "diff.updated", "artifact.created",
         "runtime.warning", "runtime.disconnected", "runtime.recovered",
-        "control.accepted", "control.rejected"
+        "control.accepted", "control.completed", "control.rejected"
       ]
     },
     "occurred_at": {"type": "string", "format": "date-time"},
