@@ -48,6 +48,8 @@ func requiredControlCapability(in ControlOperationRequest) (control.Capability, 
 		}
 	case "interrupt":
 		return control.CapabilityInterrupt, payload, nil
+	case "resume":
+		return control.CapabilitySessionResume, payload, nil
 	case "approval":
 		var decision approvalDecisionPayload
 		if len(in.Payload) == 0 || json.Unmarshal(in.Payload, &decision) != nil {
