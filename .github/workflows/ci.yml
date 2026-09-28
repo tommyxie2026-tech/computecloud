@@ -290,9 +290,28 @@ jobs:
           path: dist/ci-runtime-adapter-contract
           if-no-files-found: error
           retention-days: 30
+  agent-control-fencing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - run: go mod verify
+      - name: Exercise ACP-3 durable operation and fencing invariants
+        run: make ci-agent-control-fencing
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-agent-control-fencing-${{ github.run_id }}
+          path: dist/ci-agent-control-fencing
+          if-no-files-found: error
+          retention-days: 30
   package:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [verify, task-flow, retry-flow, artifact-flow, workspace-flow, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract]
+    needs: [verify, task-flow, retry-flow, artifact-flow, workspace-flow, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, agent-control-fencing]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
