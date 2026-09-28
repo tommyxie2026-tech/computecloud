@@ -78,10 +78,10 @@ func ReserveAttempt(ctx context.Context, db *store.DB, goalID string) error {
 			return err
 		}
 		if terminal(state) {
-			return fmt.Errorf(DecisionGoalTerminal)
+			return errors.New(DecisionGoalTerminal)
 		}
 		if used >= max {
-			return fmt.Errorf(DecisionAttemptExhausted)
+			return errors.New(DecisionAttemptExhausted)
 		}
 		res, err := q.ExecContext(ctx,
 			"UPDATE goals SET consumed_attempts=consumed_attempts+1,updated=?,version=version+1 WHERE id=? AND consumed_attempts<?",
@@ -94,7 +94,7 @@ func ReserveAttempt(ctx context.Context, db *store.DB, goalID string) error {
 			return err
 		}
 		if n != 1 {
-			return fmt.Errorf(DecisionAttemptExhausted)
+			return errors.New(DecisionAttemptExhausted)
 		}
 		return nil
 	})
