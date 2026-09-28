@@ -709,6 +709,7 @@ const serverV12 = `CREATE TABLE approval_requests (
   risk_class TEXT NOT NULL CHECK (risk_class IN ('LOW','MEDIUM','HIGH','CRITICAL')),
   arguments_summary TEXT NOT NULL DEFAULT '',
   policy_context BLOB,
+  request_hash TEXT NOT NULL,
   requested_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL DEFAULT 0,
   state TEXT NOT NULL CHECK (state IN ('PENDING','ACCEPTED','REJECTED','EXPIRED','SUPERSEDED')),
