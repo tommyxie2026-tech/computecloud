@@ -542,11 +542,14 @@ const serverV8 = `CREATE TABLE control_operations (
   principal_id TEXT NOT NULL,
   operation_id TEXT NOT NULL,
   operation_type TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
   job_id TEXT NOT NULL REFERENCES jobs(id),
-  session_id TEXT NOT NULL,
-  task_id TEXT NOT NULL REFERENCES tasks(id),
-  attempt_id TEXT NOT NULL REFERENCES attempts(id),
-  generation INTEGER NOT NULL,
+  session_id TEXT NOT NULL DEFAULT '',
+  task_id TEXT NOT NULL DEFAULT '',
+  attempt_id TEXT NOT NULL DEFAULT '',
+  generation INTEGER NOT NULL DEFAULT 0,
+  resource_version INTEGER NOT NULL DEFAULT 0,
   request_hash TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('ACCEPTED','REJECTED','COMPLETED')),
   receipt BLOB NOT NULL DEFAULT '{}',
@@ -555,5 +558,6 @@ const serverV8 = `CREATE TABLE control_operations (
   PRIMARY KEY(principal_id,operation_id)
 );
 CREATE INDEX control_operations_job ON control_operations(job_id,created,operation_id);
+CREATE INDEX control_operations_resource ON control_operations(resource_type,resource_id,created);
 CREATE INDEX control_operations_attempt ON control_operations(attempt_id,generation,created);
 `
