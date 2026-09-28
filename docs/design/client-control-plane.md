@@ -5,6 +5,8 @@
 - 状态：目标设计；按长期路线图分阶段实施
 - 决策依据：[ADR-008](../adr/0008-client-control-plane.md)
 - 调研依据：[Agent 客户端控制端方案调研](../research/agent-control-client-landscape-2026.md)
+- 协议设计：[Agent Control Protocol 与 Runtime Adapter](./agent-control-protocol.md)
+- 实施计划：[Agent Control Protocol 实施计划](../implementation/agent-control-protocol-plan.md)
 - 路线归属：[Agent Job Executor 长期路线图](../implementation/long-term-roadmap.md)
 - 现有基线：[v0.3.2 Artifact Lifecycle](../implementation/v0.3.2-plan.md)、[v0.3.2 验证记录](../validation/v0.3.2-results.md)、[v0.2 接口契约](../contracts/job-gateway-v0.2.md)
 
@@ -117,6 +119,8 @@ flowchart TD
 - 所有危险操作要求重新确认；高风险审批可要求设备生物识别，但服务端授权不能依赖客户端声称。
 
 ## 6. API 与协议
+
+> 本节定义客户端视角的 API。跨 Runtime 的 Session/Event/Approval/Capability 规范、Runtime Provider contract 与 Adapter 约束，以 [Agent Control Protocol 与 Runtime Adapter](./agent-control-protocol.md) 为权威设计；Control Client 不直接绑定 Codex、Claude Code、Gemini CLI 或其他 Runtime 私有协议。
 
 ### 6.1 复用 v0.2 接口
 
