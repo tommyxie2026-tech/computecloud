@@ -94,11 +94,12 @@ func (s *Server) ControlBootstrap(ctx context.Context) (*ControlBootstrap, error
 	if _, err := rpcutil.Require(ctx, "jobs:read", false); err != nil {
 		return nil, err
 	}
+	_, writeErr := rpcutil.Require(ctx, "jobs:control", false)
 	return &ControlBootstrap{
 		ProtocolMin: control.ProtocolV1Alpha1,
 		ProtocolMax: control.ProtocolV1Alpha1,
 		ServerEpoch: s.controlEpoch,
-		ReadOnly:    true,
+		ReadOnly:    writeErr != nil,
 		Runtimes:    s.controlRuntimeSnapshot(),
 	}, nil
 }
