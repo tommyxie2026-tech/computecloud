@@ -9,6 +9,7 @@ import (
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/adapter"
+	envreg "github.com/tommyxie2026-tech/computecloud/internal/environment"
 	"github.com/tommyxie2026-tech/computecloud/internal/process"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 )
