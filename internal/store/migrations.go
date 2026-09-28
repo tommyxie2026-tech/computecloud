@@ -124,6 +124,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 11
 	}
+	if schema == ServerSchema && version < 12 {
+		if _, err = tx.Exec(serverV12); err != nil {
+			return err
+		}
+		version = 12
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -687,4 +693,33 @@ CREATE TABLE replan_history (
 CREATE INDEX replan_history_recent ON replan_history(goal_id,ordinal DESC);
 CREATE INDEX replan_history_failure ON replan_history(goal_id,failure_class,ordinal DESC);
 CREATE INDEX replan_history_strategy ON replan_history(goal_id,strategy_signature,ordinal DESC);
+`;
+
+
+const serverV12 = `ALTER TABLE attempts ADD COLUMN runtime_session_ref TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE approval_requests (
+  approval_id TEXT NOT NULL,
+  request_version INTEGER NOT NULL CHECK (request_version >= 1),
+  job_id TEXT NOT NULL REFERENCES jobs(id),
+  task_id TEXT NOT NULL REFERENCES tasks(id),
+  attempt_id TEXT NOT NULL,
+  generation INTEGER NOT NULL CHECK (generation >= 1),
+  session_id TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  action TEXT NOT NULL,
+  risk_class TEXT NOT NULL CHECK (risk_class IN ('LOW','MEDIUM','HIGH','CRITICAL')),
+  arguments_summary TEXT NOT NULL DEFAULT '',
+  policy_context_json BLOB NOT NULL DEFAULT '{}',
+  request_hash TEXT NOT NULL,
+  requested_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL CHECK (state IN ('PENDING','ACCEPTED','REJECTED','EXPIRED','SUPERSEDED')),
+  decided_at INTEGER NOT NULL DEFAULT 0,
+  actor TEXT NOT NULL DEFAULT '',
+  decision_operation_id TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY(approval_id,request_version)
+);
+CREATE INDEX approval_requests_job_state ON approval_requests(job_id,state,requested_at);
+CREATE INDEX approval_requests_attempt ON approval_requests(attempt_id,generation,state);
 `;
