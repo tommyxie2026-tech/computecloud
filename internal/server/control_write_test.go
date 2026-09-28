@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"google.golang.org/grpc/codes"
@@ -48,14 +49,14 @@ func TestAgentControlOperationIdempotencyAndFencing(t *testing.T) {
 	h, jobID, taskID, version := controlHarness(t)
 	base := ControlOperationRequest{
 		OperationID: "control-op-1",
-		OperationType: "input",
+		OperationType: "cancel",
 		ResourceType: "session",
 		ResourceID: "control-attempt-1",
 		TaskID: taskID,
 		ExpectedAttemptID: "control-attempt-1",
 		ExpectedGeneration: 1,
 		ExpectedResourceVersion: version,
-		Payload: json.RawMessage(`{"mode":"queue_next","content":"continue"}`),
+		Payload: json.RawMessage(`{"reason":"user requested"}`),
 	}
 
 	first, err := h.s.acceptControlOperation(h.ctx, jobID, base)
@@ -75,7 +76,7 @@ func TestAgentControlOperationIdempotencyAndFencing(t *testing.T) {
 	}
 
 	conflict := base
-	conflict.Payload = json.RawMessage(`{"mode":"queue_next","content":"different"}`)
+	conflict.Payload = json.RawMessage(`{"reason":"different"}`)
 	if _, err = h.s.acceptControlOperation(h.ctx, jobID, conflict); status.Code(err) != codes.AlreadyExists || status.Convert(err).Message() != "OPERATION_CONFLICT" {
 		t.Fatalf("conflict err=%v", err)
 	}
@@ -127,5 +128,32 @@ func TestAgentControlOperationReleasedAttemptFailsClosed(t *testing.T) {
 	}
 	if _, err := h.s.acceptControlOperation(h.ctx, jobID, in); status.Code(err) != codes.Aborted || status.Convert(err).Message() != "ATTEMPT_FENCED" {
 		t.Fatalf("released attempt err=%v", err)
+	}
+}
+
+
+func TestAgentControlOperationUnsupportedCapabilityFailsClosed(t *testing.T) {
+	h, jobID, taskID, version := controlHarness(t)
+	in := ControlOperationRequest{
+		OperationID: "control-op-unsupported",
+		OperationType: "input",
+		ResourceType: "session",
+		ResourceID: "control-attempt-1",
+		TaskID: taskID,
+		ExpectedAttemptID: "control-attempt-1",
+		ExpectedGeneration: 1,
+		ExpectedResourceVersion: version,
+		Payload: json.RawMessage(`{"mode":"queue_next","content":"continue"}`),
+	}
+	_, err := h.s.acceptControlOperation(h.ctx, jobID, in)
+	if status.Code(err) != codes.FailedPrecondition || status.Convert(err).Message() != control.ErrorCapabilityUnsupported {
+		t.Fatalf("unsupported capability err=%v", err)
+	}
+	var count int
+	if err = h.s.db.SQL.QueryRow("SELECT count(*) FROM control_operations WHERE operation_id=?", in.OperationID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("unsupported operation was persisted: count=%d", count)
 	}
 }
