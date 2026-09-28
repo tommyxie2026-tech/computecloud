@@ -15,13 +15,16 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type controlInputPayload struct {
-	Mode    string `json:"mode"`
-	Content string `json:"content"`
+type controlDispatchPayload struct {
+	Mode           string `json:"mode,omitempty"`
+	Content        string `json:"content,omitempty"`
+	ApprovalID     string `json:"approval_id,omitempty"`
+	RequestVersion int64  `json:"request_version,omitempty"`
+	Decision       string `json:"decision,omitempty"`
 }
 
-func requiredControlCapability(in ControlOperationRequest) (control.Capability, controlInputPayload, error) {
-	var payload controlInputPayload
+func requiredControlCapability(in ControlOperationRequest) (control.Capability, controlDispatchPayload, error) {
+	var payload controlDispatchPayload
 	switch in.OperationType {
 	case "input":
 		if len(in.Payload) == 0 {
@@ -45,6 +48,19 @@ func requiredControlCapability(in ControlOperationRequest) (control.Capability, 
 		}
 	case "interrupt":
 		return control.CapabilityInterrupt, payload, nil
+	case "approval":
+		var decision approvalDecisionPayload
+		if len(in.Payload) == 0 || json.Unmarshal(in.Payload, &decision) != nil {
+			return "", payload, status.Error(codes.InvalidArgument, "invalid approval decision payload")
+		}
+		if decision.ApprovalID == "" || decision.RequestVersion < 1 ||
+			(decision.Decision != "ACCEPT" && decision.Decision != "REJECT") {
+			return "", payload, status.Error(codes.InvalidArgument, "invalid approval decision payload")
+		}
+		payload.ApprovalID = decision.ApprovalID
+		payload.RequestVersion = decision.RequestVersion
+		payload.Decision = decision.Decision
+		return control.CapabilityApproval, payload, nil
 	default:
 		return "", payload, status.Error(codes.FailedPrecondition, control.ErrorCapabilityUnsupported.String())
 	}
@@ -121,6 +137,18 @@ func (s *Server) acceptAndDispatchControlOperation(ctx context.Context, jobID st
 	if err != nil {
 		return nil, err
 	}
+	if in.OperationType == "approval" {
+		decision := approvalDecisionPayload{
+			ApprovalID: payload.ApprovalID,
+			RequestVersion: payload.RequestVersion,
+			Decision: payload.Decision,
+		}
+		if err = s.db.Tx(ctx, func(q store.Query) error {
+			return validateApprovalDecision(ctx, q, jobID, in, decision)
+		}); err != nil {
+			return nil, dbErr(err)
+		}
+	}
 	var workerID string
 	var specRaw []byte
 	if err = s.db.SQL.QueryRowContext(ctx, "SELECT worker,spec FROM tasks WHERE id=? AND job_id=?", in.TaskID, jobID).
@@ -148,7 +176,7 @@ func (s *Server) acceptAndDispatchControlOperation(ctx context.Context, jobID st
 	return receipt, nil
 }
 
-func (s *Server) dispatchControlOperation(ctx context.Context, principalID, jobID string, in ControlOperationRequest, payload controlInputPayload) error {
+func (s *Server) dispatchControlOperation(ctx context.Context, principalID, jobID string, in ControlOperationRequest, payload controlDispatchPayload) error {
 	commandID := "control-" + store.Hash([]byte(principalID+"\x00"+in.OperationID))
 	err := s.db.Tx(ctx, func(q store.Query) error {
 		var state string
@@ -184,8 +212,13 @@ func (s *Server) dispatchControlOperation(ctx context.Context, principalID, jobI
 				Mode: payload.Mode,
 			},
 		}
-		if in.OperationType == "input" {
+		switch in.OperationType {
+		case "input":
 			cmd.Control.Input = &pb.Input{Text: payload.Content}
+		case "approval":
+			cmd.Control.ApprovalId = payload.ApprovalID
+			cmd.Control.RequestVersion = payload.RequestVersion
+			cmd.Control.Decision = payload.Decision
 		}
 		body := encode(cmd)
 		var old []byte
@@ -273,6 +306,9 @@ func (s *Server) applyControlAck(ctx context.Context, workerID string, ack *pb.C
 		receipt.State = ledgerState
 		receipt.ErrorCode = code
 		receipt.ErrorMessage = message
+		if err := applyApprovalControlResult(ctx, q, cmd.Control, ack); err != nil {
+			return err
+		}
 		if _, err := q.ExecContext(ctx, "UPDATE control_operations SET state=?,receipt_json=?,updated=? WHERE principal_id=? AND operation_id=?",
 			ledgerState, job.JSON(receipt), store.Now(), cmd.Control.PrincipalId, ack.OperationId); err != nil {
 			return err
