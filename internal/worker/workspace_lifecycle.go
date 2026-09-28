@@ -30,9 +30,9 @@ func preparedTemplateForAssignment(a *pb.Assignment, repoRef, base string) (work
 	if a == nil || a.Spec == nil {
 		return workspace.WorkspaceTemplate{}, errors.New("assignment task spec required")
 	}
-	envName := requiredEnvironment(a)
-	if envName == "" {
-		return workspace.WorkspaceTemplate{}, errors.New("assignment has conflicting environment requirements")
+	envName, err := requiredEnvironment(a)
+	if err != nil {
+		return workspace.WorkspaceTemplate{}, err
 	}
 	var tools []string
 	for _, capability := range a.Spec.RequiredCapabilities {
