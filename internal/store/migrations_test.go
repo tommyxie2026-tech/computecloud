@@ -43,7 +43,7 @@ func TestV1UpgradeBackupAndDrainGate(t *testing.T) {
 		t.Fatal(e)
 	}
 	db.SQL.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 8 {
+	if v != 9 {
 		t.Fatalf("version %d", v)
 	}
 	var state, stage string
@@ -109,7 +109,7 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 	}
 	defer db.Close()
 	var v int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 8 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 9 {
 		t.Fatalf("version=%d err=%v", v, e)
 	}
 	// New schema must allow multiple historical attempts for one Task while
@@ -173,7 +173,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 8 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 9 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -504,7 +504,7 @@ func TestV8ControlOperationLedger(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 8 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 9 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	_, e = db.SQL.Exec(`INSERT INTO control_operations(
@@ -533,5 +533,26 @@ func TestV8ControlOperationLedger(t *testing.T) {
 	}
 	if attempt != "attempt-1" || generation != 2 || resourceVersion != 3 {
 		t.Fatalf("fencing tuple=%s/%d/%d", attempt, generation, resourceVersion)
+	}
+}
+
+
+func TestV9ApprovalAndControlReplayLedger(t *testing.T) {
+	db, err := Open(t.TempDir(), ServerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var version int
+	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 9 {
+		t.Fatalf("version=%d err=%v", version, err)
+	}
+	var requestJSON []byte
+	if err = db.SQL.QueryRow("SELECT request_json FROM control_operations LIMIT 1").Scan(&requestJSON); err != sql.ErrNoRows {
+		t.Fatalf("request_json column unavailable err=%v", err)
+	}
+	var n int
+	if err = db.SQL.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='approval_requests'").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("approval_requests table count=%d err=%v", n, err)
 	}
 }
