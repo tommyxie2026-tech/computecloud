@@ -80,6 +80,43 @@ func (s *Server) acceptAndDispatchControlOperation(ctx context.Context, jobID st
 	if err != nil {
 		return nil, err
 	}
+	if err = validateControlOperationRequest(in); err != nil {
+		return nil, err
+	}
+	j, err := s.jobAuthorized(ctx, jobID, "jobs:read")
+	if err != nil {
+		return nil, err
+	}
+	if j.owner != principal.Identity.Owner {
+		return nil, status.Error(codes.NotFound, "NOT_FOUND")
+	}
+
+	hash := job.Hash(job.JSON(in))
+	var oldHash string
+	var oldReceipt []byte
+	readErr := s.db.SQL.QueryRowContext(ctx, "SELECT request_hash,receipt_json FROM control_operations WHERE principal_id=? AND operation_id=?",
+		principal.Identity.Owner, in.OperationID).Scan(&oldHash, &oldReceipt)
+	if readErr == nil {
+		if oldHash != hash {
+			return nil, status.Error(codes.AlreadyExists, control.ErrorOperationConflict.String())
+		}
+		var receipt ControlOperationReceipt
+		if err = json.Unmarshal(oldReceipt, &receipt); err != nil {
+			return nil, dbErr(err)
+		}
+		receipt.Existing = true
+		if receipt.State == "DISPATCHED" || receipt.State == "COMPLETED" || receipt.State == "REJECTED" {
+			return &receipt, nil
+		}
+	} else if !errors.Is(readErr, sql.ErrNoRows) {
+		return nil, dbErr(readErr)
+	}
+
+	if err = s.db.Tx(ctx, func(q store.Query) error {
+		return validateControlFence(ctx, q, jobID, in)
+	}); err != nil {
+		return nil, dbErr(err)
+	}
 	required, payload, err := requiredControlCapability(in)
 	if err != nil {
 		return nil, err
