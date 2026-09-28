@@ -161,9 +161,83 @@ func fmtInt(v int64) string {
 	return strconv.FormatInt(v, 10)
 }
 
+
+type approvalDecisionPayload struct {
+	ApprovalID     string `json:"approval_id"`
+	RequestVersion int64  `json:"request_version"`
+	Decision       string `json:"decision"`
+}
+
+type resumeControlPayload struct {
+	SessionRef string `json:"session_ref"`
+}
+
+func validateApprovalDecisionControl(ctx context.Context, q store.Query, jobID string, in ControlOperationRequest, payload approvalDecisionPayload) error {
+	if payload.ApprovalID == "" || payload.RequestVersion < 1 || (payload.Decision != "accept" && payload.Decision != "reject") {
+		return status.Error(codes.InvalidArgument, "invalid approval decision payload")
+	}
+	if err := expireApprovals(ctx, q, jobID, store.Now()); err != nil {
+		return err
+	}
+	var taskID, attemptID, state, lockedOperation string
+	var generation int64
+	err := q.QueryRowContext(ctx, `SELECT task_id,attempt_id,generation,state,decision_operation_id
+		FROM approval_requests WHERE approval_id=? AND request_version=? AND job_id=?`,
+		payload.ApprovalID, payload.RequestVersion, jobID).
+		Scan(&taskID, &attemptID, &generation, &state, &lockedOperation)
+	if errors.Is(err, sql.ErrNoRows) {
+		var maxVersion int64
+		if e := q.QueryRowContext(ctx, "SELECT coalesce(max(request_version),0) FROM approval_requests WHERE approval_id=? AND job_id=?",
+			payload.ApprovalID, jobID).Scan(&maxVersion); e != nil {
+			return e
+		}
+		if maxVersion != 0 {
+			return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
+		}
+		return status.Error(codes.NotFound, "NOT_FOUND")
+	}
+	if err != nil {
+		return err
+	}
+	if taskID != in.TaskID || attemptID != in.ExpectedAttemptID || generation != in.ExpectedGeneration {
+		return status.Error(codes.Aborted, control.ErrorAttemptFenced.String())
+	}
+	if state != "PENDING" {
+		return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
+	}
+	if lockedOperation != "" && lockedOperation != in.OperationID {
+		return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
+	}
+	return nil
+}
+
+func validateResumeControl(ctx context.Context, q store.Query, jobID string, in ControlOperationRequest, payload resumeControlPayload) error {
+	if payload.SessionRef == "" {
+		return status.Error(codes.InvalidArgument, "explicit session_ref required")
+	}
+	var taskState, sessionRef string
+	err := q.QueryRowContext(ctx, `SELECT t.state,a.runtime_session_ref
+		FROM tasks t JOIN attempts a ON a.id=t.attempt
+		WHERE t.id=? AND t.job_id=? AND a.id=? AND a.generation=? AND a.released=0`,
+		in.TaskID, jobID, in.ExpectedAttemptID, in.ExpectedGeneration).Scan(&taskState, &sessionRef)
+	if errors.Is(err, sql.ErrNoRows) {
+		return status.Error(codes.Aborted, control.ErrorAttemptFenced.String())
+	}
+	if err != nil {
+		return err
+	}
+	if taskState != "RUNNING" && taskState != "STARTING" {
+		return status.Error(codes.FailedPrecondition, control.ErrorExecutionUnverifiable.String())
+	}
+	if sessionRef == "" || sessionRef != payload.SessionRef {
+		return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
+	}
+	return nil
+}
+
 func expireApprovals(ctx context.Context, q store.Query, jobID string, now int64) error {
 	rows, err := q.QueryContext(ctx, `SELECT approval_id,request_version,task_id,attempt_id,generation
-		FROM approval_requests WHERE job_id=? AND state='PENDING' AND expires_at>0 AND expires_at<=?
+		FROM approval_requests WHERE job_id=? AND state='PENDING' AND decision_operation_id='' AND expires_at>0 AND expires_at<=?
 		ORDER BY requested_at`, jobID, now)
 	if err != nil {
 		return err
