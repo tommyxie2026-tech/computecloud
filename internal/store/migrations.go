@@ -106,6 +106,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 8
 	}
+	if schema == ServerSchema && version < 9 {
+		if _, err = tx.Exec(serverV9); err != nil {
+			return err
+		}
+		version = 9
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -561,3 +567,43 @@ ALTER TABLE runs ADD COLUMN environment_cleanup TEXT NOT NULL DEFAULT '';
 CREATE INDEX runs_environment_recovery
   ON runs(completed,environment_provider,environment_state,id);
 `
+
+
+const serverV9 = `CREATE TABLE goals (
+  id TEXT PRIMARY KEY,
+  owner TEXT NOT NULL,
+  project TEXT NOT NULL,
+  state TEXT NOT NULL
+    CHECK (state IN ('GOAL_CREATED','PLANNING','PLANNED','GRAPH_READY','RUNNING','EVALUATING','REPLAN_GUARDING','REPLANNING','NEEDS_APPROVAL','SUCCEEDED','FAILED','CANCELED')),
+  active_plan_revision INTEGER NOT NULL DEFAULT 1 CHECK (active_plan_revision >= 1),
+  active_graph_generation INTEGER NOT NULL DEFAULT 1 CHECK (active_graph_generation >= 1),
+  max_replans INTEGER NOT NULL CHECK (max_replans >= 0),
+  max_total_attempts INTEGER NOT NULL CHECK (max_total_attempts >= 1),
+  max_wall_time_ms INTEGER NOT NULL CHECK (max_wall_time_ms >= 1),
+  consumed_replans INTEGER NOT NULL DEFAULT 0 CHECK (consumed_replans >= 0),
+  consumed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (consumed_attempts >= 0),
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  deadline INTEGER NOT NULL DEFAULT 0,
+  version INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX goals_active ON goals(state,updated);
+
+CREATE TABLE replan_requests (
+  id TEXT PRIMARY KEY,
+  goal_id TEXT NOT NULL REFERENCES goals(id),
+  evaluation_id TEXT NOT NULL,
+  expected_plan_revision INTEGER NOT NULL,
+  expected_graph_generation INTEGER NOT NULL,
+  reason_code TEXT NOT NULL DEFAULT '',
+  state TEXT NOT NULL
+    CHECK (state IN ('PENDING','ALLOWED','REJECTED','NEEDS_APPROVAL')),
+  decision_code TEXT NOT NULL DEFAULT '',
+  next_plan_revision INTEGER NOT NULL DEFAULT 0,
+  next_graph_generation INTEGER NOT NULL DEFAULT 0,
+  created INTEGER NOT NULL,
+  decided INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(goal_id,evaluation_id)
+);
+CREATE INDEX replan_requests_goal ON replan_requests(goal_id,created);
+`;
