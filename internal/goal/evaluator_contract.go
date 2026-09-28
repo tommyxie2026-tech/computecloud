@@ -59,15 +59,23 @@ func (r ReplanEvidence) Fingerprint() string {
 		if items[i].Type != items[j].Type {
 			return items[i].Type < items[j].Type
 		}
-		if items[i].ArtifactID != items[j].ArtifactID {
-			return items[i].ArtifactID < items[j].ArtifactID
-		}
-		return items[i].Fact < items[j].Fact
+		return strings.TrimSpace(items[i].Fact) < strings.TrimSpace(items[j].Fact)
 	})
+	type semanticEvidence struct {
+		Type string
+		Fact string
+	}
+	semantic := make([]semanticEvidence, 0, len(items))
+	for _, item := range items {
+		semantic = append(semantic, semanticEvidence{
+			Type: strings.TrimSpace(item.Type),
+			Fact: strings.TrimSpace(item.Fact),
+		})
+	}
 	raw, _ := json.Marshal(struct {
 		FailureClass FailureClass
-		Evidence     []Evidence
-	}{FailureClass: r.FailureClass, Evidence: items})
+		Evidence     []semanticEvidence
+	}{FailureClass: r.FailureClass, Evidence: semantic})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
