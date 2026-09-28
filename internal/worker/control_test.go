@@ -161,3 +161,25 @@ func TestAgentControlWorkerRejectsStaleIdentity(t *testing.T) {
 		t.Fatalf("stale control accepted execute=%v err=%v", execute, err)
 	}
 }
+
+
+func TestAgentControlWorkerAdvertisementIncludesControlNamespace(t *testing.T) {
+	provider := &controlRemoteProvider{}
+	values := advertisedRuntimeCapabilities(provider)
+	want := map[string]bool{
+		"control:interactive_input": false,
+		"control:approval": false,
+		"control:session_resume": false,
+		"runtime:event_stream": false,
+	}
+	for _, value := range values {
+		if _, ok := want[value]; ok {
+			want[value] = true
+		}
+	}
+	for value, found := range want {
+		if !found {
+			t.Fatalf("missing advertised capability %q in %v", value, values)
+		}
+	}
+}
