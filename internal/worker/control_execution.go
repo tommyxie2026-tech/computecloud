@@ -44,6 +44,11 @@ func controlCapability(cmd *pb.ControlCommand) (control.Capability, error) {
 			return "", errors.New("invalid approval command")
 		}
 		return control.CapabilityApproval, nil
+	case "resume":
+		if cmd.SessionRef == "" {
+			return "", errors.New("explicit session ref required")
+		}
+		return control.CapabilitySessionResume, nil
 	default:
 		return "", errors.New("unsupported control action")
 	}
@@ -193,6 +198,38 @@ func (w *Worker) executeControl(ctx context.Context, c *pb.Command) (*pb.Command
 			Generation: cmd.Generation, ApprovalID: cmd.ApprovalId,
 			RequestVersion: cmd.RequestVersion, Decision: cmd.Decision,
 		})
+	case "resume":
+		var resumed adapter.ExecutionRef
+		resumed, err = sessionProvider.Resume(ctx, adapter.ControlResumeRequest{
+			Ref: ref, SessionRef: cmd.SessionRef, AttemptID: cmd.AttemptId,
+			Generation: cmd.Generation,
+		})
+		if err == nil {
+			if resumed.Provider == "" || resumed.Provider != runtimeProvider || resumed.ID == "" {
+				err = errors.New("runtime resume returned invalid execution ref")
+			} else {
+				var encoded []byte
+				encoded, err = adapter.EncodeExecutionRef(resumed)
+				if err == nil {
+					var res sql.Result
+					res, err = w.db.SQL.ExecContext(ctx, `UPDATE runs
+						SET runtime_ref=?,runtime_transport=?,runtime_state=?
+						WHERE id=? AND completion IS NULL AND runtime_provider=? AND runtime_state=?`,
+						encoded, resumed.Transport, string(adapter.RuntimeRunning),
+						cmd.AttemptId, runtimeProvider, string(adapter.RuntimeRunning))
+					if err == nil {
+						var n int64
+						n, err = res.RowsAffected()
+						if err == nil && n != 1 {
+							err = errors.New("runtime resume lost Attempt ownership")
+						}
+					}
+				}
+				if err != nil {
+					return w.finishControl(ctx, c, "UNKNOWN", control.ErrorExecutionUnverifiable.String(), err.Error())
+				}
+			}
+		}
 	default:
 		err = adapter.ErrControlCapabilityUnsupported
 	}
