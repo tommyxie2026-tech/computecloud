@@ -1,5 +1,15 @@
 # 版本记录
 
+## 未发布 — Agent Control Protocol ACP-0/ACP-2
+
+- 新增 `control.v1alpha1` Session/Event/Approval/Capability schema、Go model、版本协商与独立 `agent-control-schema` Gate。
+- 新增只读 Agent Control 面：bootstrap、当前 Attempt Session 投影、Runtime event durable replay、SSE cursor/Last-Event-ID 恢复与 `agent-control-read` Gate。
+- Codex/Claude 内置 Runtime 通过同一 ControlProvider descriptor 认证，只声明 `stream_output / structured_output / cancel`；未实现的 Resume/Input/Approval/Interrupt 保持 fail-closed。
+- 新增 `runtime-adapter-contract` Gate，对内置 Runtime 的 Provider/ExecutionRef/Inspect/Stop 与 Control capability 一致性做统一验证。
+- Control Client 仍不直接连接 Runtime；所有 Session 状态继续由 Job/Task/Attempt 投影，ACP-1 不新增第二套 Session 事实表。
+- ACP-3 才进入 durable control operation、operation-id 幂等与 generation fencing；交互式 Runtime 能力不会因 UI 需求提前伪造。
+
+
 ## 未发布 — v0.4.4 EnvironmentProvider Execution（实现完成，待版本发布）
 
 - 新增独立 Environment Provider lifecycle：Descriptor / Prepare / Activate / Inspect / Release。
