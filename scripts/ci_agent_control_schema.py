@@ -65,10 +65,12 @@ def main():
         violations.append("event envelope must require generation")
     if "request_version" not in approval.get("required", []):
         violations.append("approval must require request_version")
-    if "generation" not in operation.get("required", []):
-        violations.append("control operation must require generation")
     if "operation_id" not in operation.get("required", []):
         violations.append("control operation must require operation_id")
+    if "resource_type" not in operation.get("required", []) or "resource_id" not in operation.get("required", []):
+        violations.append("control operation must require resource identity")
+    if "resource_version" not in operation.get("properties", {}):
+        violations.append("control operation must expose resource_version fencing")
     caps = capabilities.get("$defs", {}).get("capability", {}).get("enum", [])
     for required in ("session_resume", "interactive_input", "approval", "cancel"):
         if required not in caps:
