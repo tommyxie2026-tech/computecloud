@@ -35,19 +35,27 @@ def main():
     ])
 
     worker = pathlib.Path("internal/worker/control_execution.go").read_text(encoding="utf-8")
+    worker_recovery = pathlib.Path("internal/worker/journal.go").read_text(encoding="utf-8")
     server = pathlib.Path("internal/server/control_dispatch.go").read_text(encoding="utf-8")
     proto = pathlib.Path("api/agent/v1/runtime.proto").read_text(encoding="utf-8")
     violations = []
 
     for required in [
-        'state=\'UNKNOWN\'',
-        'EXECUTION_UNVERIFIABLE',
+        'ErrorExecutionUnverifiable',
         'SessionControlProvider',
-        'CAPABILITY_UNSUPPORTED',
-        'operation_id',
+        'ErrorCapabilityUnsupported',
+        'OperationId',
     ]:
         if required not in worker:
             violations.append("missing Worker control safety invariant: " + required)
+
+    for required in [
+        "SET state='UNKNOWN'",
+        "WHERE state='EXECUTING'",
+        "EXECUTION_UNVERIFIABLE",
+    ]:
+        if required not in worker_recovery:
+            violations.append("missing Worker recovery safety invariant: " + required)
 
     for required in [
         "acceptAndDispatchControlOperation",
