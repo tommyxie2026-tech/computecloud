@@ -127,6 +127,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 5
 	}
+	if schema == WorkerSchema && version < 6 {
+		if _, err = tx.Exec(workerV6); err != nil {
+			return err
+		}
+		version = 6
+	}
 	rows, err := tx.Query("PRAGMA foreign_key_check")
 	if err != nil {
 		return err
@@ -560,4 +566,15 @@ ALTER TABLE runs ADD COLUMN environment_cleanup TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX runs_environment_recovery
   ON runs(completed,environment_provider,environment_state,id);
+`
+
+
+const workerV6 = `ALTER TABLE commands ADD COLUMN kind TEXT NOT NULL DEFAULT '';
+ALTER TABLE commands ADD COLUMN body BLOB;
+ALTER TABLE commands ADD COLUMN state TEXT NOT NULL DEFAULT 'RECEIVED'
+  CHECK (state IN ('RECEIVED','COMPLETED','REJECTED','UNKNOWN'));
+ALTER TABLE commands ADD COLUMN result BLOB;
+
+CREATE INDEX commands_state
+  ON commands(kind,state,id);
 `
