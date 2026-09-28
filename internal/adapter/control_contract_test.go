@@ -54,14 +54,59 @@ func TestControlProviderContractHarness(t *testing.T) {
 	}
 }
 
-func TestBuiltinProvidersDoNotClaimUnimplementedControlCapabilities(t *testing.T) {
+func TestBuiltinProvidersAdvertiseOnlyCertifiedControlCapabilities(t *testing.T) {
 	for _, profile := range []string{"codex_exec", "claude_print"} {
 		p, ok := Lookup(profile)
 		if !ok {
 			t.Fatalf("missing builtin provider %s", profile)
 		}
-		if _, claimed, err := ControlDescriptorFor(p); err != nil || claimed {
-			t.Fatalf("%s claimed interactive control before implementation: claimed=%v err=%v", profile, claimed, err)
+		desc, claimed, err := ControlDescriptorFor(p)
+		if err != nil || !claimed {
+			t.Fatalf("%s missing control descriptor: claimed=%v err=%v", profile, claimed, err)
+		}
+		want := map[control.Capability]bool{
+			control.CapabilityStreamOutput:     true,
+			control.CapabilityStructuredOutput: true,
+			control.CapabilityCancel:           true,
+		}
+		if len(desc.Capabilities) != len(want) {
+			t.Fatalf("%s capabilities=%v", profile, desc.Capabilities)
+		}
+		for _, capability := range desc.Capabilities {
+			if !want[capability] {
+				t.Fatalf("%s exposed uncertified capability %q", profile, capability)
+			}
+		}
+		if _, interactive := p.(SessionControlProvider); interactive {
+			t.Fatalf("%s exposed SessionControlProvider before resume/input/approval implementation", profile)
+		}
+	}
+}
+
+func TestBuiltinControlDescriptorMatchesRuntimeCapabilities(t *testing.T) {
+	for _, profile := range []string{"codex_exec", "claude_print"} {
+		p, _ := Lookup(profile)
+		desc, _, err := ControlDescriptorFor(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		runtimeCaps := map[string]bool{}
+		for _, capability := range p.Capabilities().Runtime {
+			runtimeCaps[capability] = true
+		}
+		for _, capability := range desc.Capabilities {
+			switch capability {
+			case control.CapabilityStreamOutput, control.CapabilityStructuredOutput:
+				if !runtimeCaps["event_stream"] {
+					t.Fatalf("%s claims %s without event_stream", profile, capability)
+				}
+			case control.CapabilityCancel:
+				if !runtimeCaps["cancel"] {
+					t.Fatalf("%s claims cancel without runtime cancel", profile)
+				}
+			default:
+				t.Fatalf("%s unexpected capability %s", profile, capability)
+			}
 		}
 	}
 }
