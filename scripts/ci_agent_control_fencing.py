@@ -44,9 +44,9 @@ def main():
         if required not in migration:
             violations.append("missing durable control ledger invariant: " + required)
     for required in [
-        "OPERATION_CONFLICT",
-        "ATTEMPT_FENCED",
-        "RESOURCE_VERSION_CONFLICT",
+        "control.ErrorOperationConflict",
+        "control.ErrorAttemptFenced",
+        "control.ErrorResourceVersionConflict",
         "validateControlFence",
         "jobs:control",
     ]:
