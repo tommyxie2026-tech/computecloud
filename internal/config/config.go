@@ -74,8 +74,10 @@ type Worker struct {
 	Policies     map[string]Policy     `yaml:"policies"`
 	Verifiers            map[string][][]string `yaml:"verifiers"`
 	StopGraceMS          int                   `yaml:"stop_grace_ms"`
-	WorkspaceRetentionMS int                   `yaml:"workspace_retention_ms"`
-	WorkspaceMaxBytes    int64                 `yaml:"workspace_max_bytes"`
+	WorkspaceRetentionMS        int   `yaml:"workspace_retention_ms"`
+	WorkspaceMaxBytes           int64 `yaml:"workspace_max_bytes"`
+	PreparedWorkspaceCache      bool  `yaml:"prepared_workspace_cache"`
+	PreparedWorkspaceRetentionMS int   `yaml:"prepared_workspace_retention_ms"`
 }
 type Client struct {
 	Address   string `yaml:"address"`
@@ -167,6 +169,9 @@ func Load(path string) (Config, error) {
 	if c.Worker.WorkspaceRetentionMS == 0 {
 		c.Worker.WorkspaceRetentionMS = 24 * 60 * 60 * 1000
 	}
+	if c.Worker.PreparedWorkspaceCache && c.Worker.PreparedWorkspaceRetentionMS == 0 {
+		c.Worker.PreparedWorkspaceRetentionMS = 24 * 60 * 60 * 1000
+	}
 	c.Server.DefaultV02()
 	return c, nil
 }
@@ -204,8 +209,8 @@ func (c Worker) Validate() error {
 	if c.ID == "" || c.DataDir == "" || c.Address == "" || c.Slots < 1 || len(c.Runtimes) == 0 {
 		return errors.New("worker id/data_dir/address/slots/runtimes required")
 	}
-	if c.WorkspaceRetentionMS < 0 || c.WorkspaceMaxBytes < 0 {
-		return errors.New("worker workspace retention/quota must be non-negative")
+	if c.WorkspaceRetentionMS < 0 || c.WorkspaceMaxBytes < 0 || c.PreparedWorkspaceRetentionMS < 0 {
+		return errors.New("worker workspace/prepared retention/quota must be non-negative")
 	}
 	for ref, path := range c.Repositories {
 		if ref == "" || !filepath.IsAbs(path) {
