@@ -115,6 +115,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 4
 	}
+	if schema == WorkerSchema && version < 5 {
+		if _, err = tx.Exec(workerV5); err != nil {
+			return err
+		}
+		version = 5
+	}
 	rows, err := tx.Query("PRAGMA foreign_key_check")
 	if err != nil {
 		return err
@@ -513,4 +519,14 @@ ALTER TABLE runs ADD COLUMN runtime_cleanup TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX runs_runtime_recovery
   ON runs(completed,runtime_provider,runtime_state,id);
+`
+
+
+const workerV5 = `ALTER TABLE runs ADD COLUMN environment_provider TEXT NOT NULL DEFAULT '';
+ALTER TABLE runs ADD COLUMN environment_ref BLOB;
+ALTER TABLE runs ADD COLUMN environment_state TEXT NOT NULL DEFAULT '';
+ALTER TABLE runs ADD COLUMN environment_cleanup TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX runs_environment_recovery
+  ON runs(completed,environment_provider,environment_state,id);
 `
