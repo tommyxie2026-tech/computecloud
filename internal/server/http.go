@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	"github.com/tommyxie2026-tech/computecloud/internal/jsonutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
@@ -44,8 +45,12 @@ func httpError(w http.ResponseWriter, e error) {
 		code = 409
 	case codes.FailedPrecondition:
 		code = 400
-		if status.Convert(e).Message() == "JOB_NOT_FINISHED" {
+		message := status.Convert(e).Message()
+		if message == "JOB_NOT_FINISHED" {
 			code = 409
+		}
+		if message == control.ErrorExecutionUnverifiable {
+			code = http.StatusServiceUnavailable
 		}
 	case codes.ResourceExhausted:
 		code = 413
@@ -57,6 +62,12 @@ func httpError(w http.ResponseWriter, e error) {
 		code = 408
 	}
 	message := cleanCode(e)
+	if message == control.ErrorEventCursorExpired {
+		code = http.StatusGone
+	}
+	if message == control.ErrorCapabilityUnsupported {
+		code = http.StatusUnprocessableEntity
+	}
 	if code == 500 {
 		message = "INTERNAL_ERROR"
 	}
