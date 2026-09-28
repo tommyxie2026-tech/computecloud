@@ -8,11 +8,11 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 
 - 稳定发布基线：**v0.3.2**
 - main 功能基线：**v0.4.x Runtime / Tool / Environment Ecosystem**
-- 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control 基础能力
+- 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
 - 当前功能主线：**Prepared Workspace / Workspace Template**
 - Goal-oriented Computing：已完成计算模型与 Re-plan Guard RPG-1～RPG-3
 - RPG：固定只做 RPG-1～RPG-4，RPG-4 完成后正式关闭，不继续 RPG-5
-- 当前 Server schema：**v11**
+- 当前 Server schema：**v12**
 - 当前主线 CI：RPG-3 代码主线已通过；最新文档提交 CI 正在运行
 
 当前演进关系：
@@ -272,6 +272,8 @@ Worker / Runtime / Tool / Environment
 - [Agent-aware 总体架构](docs/design/agent-job-executor-architecture.md)
 - [ADR-017：Goal-oriented Computing Model](docs/adr/0017-goal-oriented-computing-model.md)
 - [ADR-018：Re-plan Guard 与自治循环防护](docs/adr/0018-replan-guard-loop-prevention.md)
+- [ADR-019：Prepared Workspace Core](docs/adr/0019-prepared-workspace-core.md)
+- [Prepared Workspace Core 实施记录](docs/implementation/prepared-workspace-core.md)
 - [RPG-1 Re-plan Guard Foundation](docs/implementation/rpg-1-replan-guard-foundation.md)
 - [RPG-2 Evidence Guard](docs/implementation/rpg-2-evidence-plan-guard.md)
 - [RPG-3 Loop / Progress Guard](docs/implementation/rpg-3-loop-progress-guard.md)
