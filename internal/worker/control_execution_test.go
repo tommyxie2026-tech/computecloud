@@ -15,9 +15,11 @@ import (
 
 type controlWorkerFixture struct {
 	mu        sync.Mutex
-	profile   string
-	inputs    int
-	approvals int
+	profile    string
+	resumeCap  bool
+	inputs     int
+	approvals  int
+	resumes    int
 }
 
 func (p *controlWorkerFixture) Profile() string {
@@ -48,18 +50,30 @@ func (p *controlWorkerFixture) Capabilities() adapter.CapabilitySet {
 }
 func (p *controlWorkerFixture) SupportsGateway() bool { return false }
 func (p *controlWorkerFixture) ControlDescriptor() adapter.ControlDescriptor {
+	caps := []control.Capability{
+		control.CapabilityInteractiveInput,
+		control.CapabilityQueueNextInput,
+		control.CapabilityInterrupt,
+		control.CapabilityApproval,
+	}
+	if p.resumeCap {
+		caps = append(caps, control.CapabilitySessionResume)
+	}
 	return adapter.ControlDescriptor{
 		ProtocolVersion: control.ProtocolV1Alpha1,
-		Capabilities: []control.Capability{
-			control.CapabilityInteractiveInput,
-			control.CapabilityQueueNextInput,
-			control.CapabilityInterrupt,
-			control.CapabilityApproval,
-		},
+		Capabilities: caps,
 	}
 }
-func (p *controlWorkerFixture) Resume(context.Context, adapter.ControlResumeRequest) (adapter.ExecutionRef, error) {
-	return adapter.ExecutionRef{}, adapter.ErrControlCapabilityUnsupported
+func (p *controlWorkerFixture) Resume(_ context.Context, req adapter.ControlResumeRequest) (adapter.ExecutionRef, error) {
+	if !p.resumeCap || req.SessionRef == "" {
+		return adapter.ExecutionRef{}, adapter.ErrControlCapabilityUnsupported
+	}
+	p.mu.Lock()
+	p.resumes++
+	p.mu.Unlock()
+	return adapter.ExecutionRef{
+		Provider: p.Profile(), Transport: "remote_api", ID: "runtime-resumed-" + req.SessionRef,
+	}, nil
 }
 func (p *controlWorkerFixture) Input(_ context.Context, _ adapter.ControlInputRequest) error {
 	p.mu.Lock()
@@ -226,5 +240,70 @@ func TestAgentControlWorkerExecutesApprovalAtMostOnce(t *testing.T) {
 	provider.mu.Unlock()
 	if approvals != 1 {
 		t.Fatalf("approval side effects=%d want=1", approvals)
+	}
+}
+
+
+func TestAgentControlWorkerReconnectsSessionAtMostOnce(t *testing.T) {
+	d, err := store.Open(t.TempDir(), store.WorkerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	provider := &controlWorkerFixture{profile: "control_worker_resume_fixture", resumeCap: true}
+	if err = adapter.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	w := &Worker{db: d}
+	a := &pb.Assignment{
+		TaskId: "task-resume", AttemptId: "attempt-resume", Generation: 4, LeaseToken: "lease",
+		Spec: &pb.TaskSpec{RuntimeProfile: provider.Profile()},
+	}
+	oldRef := adapter.ExecutionRef{Provider: provider.Profile(), Transport: "remote_api", ID: "runtime-before-resume"}
+	rawRef, err := adapter.EncodeExecutionRef(oldRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = d.SQL.Exec("INSERT INTO runs(id,assignment,state,runtime_provider,runtime_transport,runtime_ref,runtime_state,runtime_cleanup) VALUES(?,?,?,?,?,?,?,?)",
+		a.AttemptId, enc(a), "RUNNING", provider.Profile(), "remote_api", rawRef, string(adapter.RuntimeRunning), string(adapter.CleanupPending)); err != nil {
+		t.Fatal(err)
+	}
+	cmd := &pb.Command{
+		CommandId: "resume-command-1", Kind: "control",
+		Control: &pb.ControlCommand{
+			PrincipalId: "owner", OperationId: "resume-operation-1",
+			TaskId: a.TaskId, AttemptId: a.AttemptId, Generation: a.Generation,
+			Action: "resume", SessionRef: "native-session-1",
+		},
+	}
+	first, err := w.executeControl(context.Background(), cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := w.executeControl(context.Background(), cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.State != "COMPLETED" || second.State != "COMPLETED" {
+		t.Fatalf("resume acks first=%+v second=%+v", first, second)
+	}
+	provider.mu.Lock()
+	resumes := provider.resumes
+	provider.mu.Unlock()
+	if resumes != 1 {
+		t.Fatalf("resume side effects=%d want=1", resumes)
+	}
+	var providerName, transport string
+	var updatedRaw []byte
+	if err = d.SQL.QueryRow("SELECT runtime_provider,runtime_transport,runtime_ref FROM runs WHERE id=?", a.AttemptId).
+		Scan(&providerName, &transport, &updatedRaw); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := decodeRuntimeRef(providerName, updatedRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.ID != "runtime-resumed-native-session-1" || transport != "remote_api" {
+		t.Fatalf("updated runtime ref=%+v transport=%s", updated, transport)
 	}
 }
