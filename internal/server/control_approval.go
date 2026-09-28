@@ -108,7 +108,21 @@ func persistApprovalRequested(ctx context.Context, q store.Query, event *pb.Even
 	if err := model.Validate(); err != nil {
 		return status.Error(codes.InvalidArgument, "invalid approval request")
 	}
-	hash := job.Hash(job.JSON(model))
+	hash := job.Hash(job.JSON(map[string]any{
+		"approval_id": model.ApprovalID,
+		"job_id": model.JobID,
+		"task_id": model.TaskID,
+		"attempt_id": model.AttemptID,
+		"generation": model.Generation,
+		"session_id": model.SessionID,
+		"tool": model.Tool,
+		"action": model.Action,
+		"risk_class": model.RiskClass,
+		"arguments_summary": model.ArgumentsSummary,
+		"policy_context": model.PolicyContext,
+		"request_version": model.RequestVersion,
+		"expires_at_ms": payload.ExpiresAtMS,
+	}))
 	var oldHash string
 	err := q.QueryRowContext(ctx, `SELECT request_hash FROM approval_requests
 		WHERE approval_id=? AND request_version=?`, payload.ApprovalID, payload.RequestVersion).Scan(&oldHash)
@@ -173,7 +187,7 @@ type resumeControlPayload struct {
 }
 
 func validateApprovalDecisionControl(ctx context.Context, q store.Query, jobID string, in ControlOperationRequest, payload approvalDecisionPayload) error {
-	if payload.ApprovalID == "" || payload.RequestVersion < 1 || (payload.Decision != "accept" && payload.Decision != "reject") {
+	if in.ResourceID != payload.ApprovalID || payload.ApprovalID == "" || payload.RequestVersion < 1 || (payload.Decision != "accept" && payload.Decision != "reject") {
 		return status.Error(codes.InvalidArgument, "invalid approval decision payload")
 	}
 	if err := expireApprovals(ctx, q, jobID, store.Now()); err != nil {
@@ -212,7 +226,7 @@ func validateApprovalDecisionControl(ctx context.Context, q store.Query, jobID s
 }
 
 func validateResumeControl(ctx context.Context, q store.Query, jobID string, in ControlOperationRequest, payload resumeControlPayload) error {
-	if payload.SessionRef == "" {
+	if in.ResourceID != in.ExpectedAttemptID || payload.SessionRef == "" {
 		return status.Error(codes.InvalidArgument, "explicit session_ref required")
 	}
 	var taskState, sessionRef string
@@ -233,6 +247,61 @@ func validateResumeControl(ctx context.Context, q store.Query, jobID string, in 
 		return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
 	}
 	return nil
+}
+
+func applyApprovalControlResult(ctx context.Context, q store.Query, cmd *pb.ControlCommand, ack *pb.CommandAck) error {
+	if cmd == nil || ack == nil {
+		return status.Error(codes.InvalidArgument, "approval result identity required")
+	}
+	var state, lockedOperation string
+	err := q.QueryRowContext(ctx, `SELECT state,decision_operation_id FROM approval_requests
+		WHERE approval_id=? AND request_version=? AND attempt_id=? AND generation=?`,
+		cmd.ApprovalId, cmd.RequestVersion, cmd.AttemptId, cmd.Generation).Scan(&state, &lockedOperation)
+	if err != nil {
+		return err
+	}
+	switch ack.State {
+	case "COMPLETED":
+		next := "ACCEPTED"
+		if cmd.Decision == "reject" {
+			next = "REJECTED"
+		}
+		if state == next && lockedOperation == ack.OperationId {
+			return nil
+		}
+		if state != "PENDING" || lockedOperation != ack.OperationId {
+			return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
+		}
+		_, err = q.ExecContext(ctx, `UPDATE approval_requests SET state=?,decided_at=?,actor=?,decision_operation_id=?
+			WHERE approval_id=? AND request_version=? AND state='PENDING' AND decision_operation_id=?`,
+			next, store.Now(), cmd.PrincipalId, ack.OperationId,
+			cmd.ApprovalId, cmd.RequestVersion, ack.OperationId)
+		return err
+	case "UNKNOWN":
+		if state == "SUPERSEDED" && lockedOperation == ack.OperationId {
+			return nil
+		}
+		if state != "PENDING" || lockedOperation != ack.OperationId {
+			return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
+		}
+		_, err = q.ExecContext(ctx, `UPDATE approval_requests SET state='SUPERSEDED',decided_at=?
+			WHERE approval_id=? AND request_version=? AND state='PENDING' AND decision_operation_id=?`,
+			store.Now(), cmd.ApprovalId, cmd.RequestVersion, ack.OperationId)
+		return err
+	case "REJECTED":
+		if state == "PENDING" && lockedOperation == "" {
+			return nil
+		}
+		if state != "PENDING" || lockedOperation != ack.OperationId {
+			return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
+		}
+		_, err = q.ExecContext(ctx, `UPDATE approval_requests SET actor='',decision_operation_id=''
+			WHERE approval_id=? AND request_version=? AND state='PENDING' AND decision_operation_id=?`,
+			cmd.ApprovalId, cmd.RequestVersion, ack.OperationId)
+		return err
+	default:
+		return status.Error(codes.InvalidArgument, "invalid approval result state")
+	}
 }
 
 func expireApprovals(ctx context.Context, q store.Query, jobID string, now int64) error {
