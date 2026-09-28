@@ -43,7 +43,7 @@ func TestV1UpgradeBackupAndDrainGate(t *testing.T) {
 		t.Fatal(e)
 	}
 	db.SQL.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 7 {
+	if v != 8 {
 		t.Fatalf("version %d", v)
 	}
 	var state, stage string
@@ -109,7 +109,7 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 	}
 	defer db.Close()
 	var v int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 7 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 8 {
 		t.Fatalf("version=%d err=%v", v, e)
 	}
 	// New schema must allow multiple historical attempts for one Task while
@@ -173,7 +173,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 7 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 8 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -491,5 +491,39 @@ func TestWorkerV5EnvironmentExecutionSchema(t *testing.T) {
 	if provider != "" || len(ref) != 0 || state != "" || cleanup != "" {
 		t.Fatalf("legacy environment metadata changed provider=%q ref=%q state=%q cleanup=%q",
 			provider, ref, state, cleanup)
+	}
+}
+
+
+func TestV8ControlOperationsSchema(t *testing.T) {
+	dir := t.TempDir()
+	db, e := Open(dir, ServerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+
+	var version int
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 8 {
+		t.Fatalf("version=%d err=%v", version, e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism) VALUES('j','o','p','i','rh','sh','{}','single','EXECUTING',1,1,9999999999999,1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO stages(id,job_id,kind,ordinal,state,created,updated) VALUES('j:single','j','single',0,'RUNNING',1,1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO tasks(id,owner,project,idem,hash,spec,state,attempt,worker,created,updated,deadline,job_id,stage,partition_key,stage_id,current_generation) VALUES('t','o','p','ti','h','{}','RUNNING','a','w',1,1,9999999999999,'j','single','_single','j:single',1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until,released,last_renewed) VALUES('a','t','w','e',1,'tok',9999999999999,0,1)"); e != nil {
+		t.Fatal(e)
+	}
+	insert := "INSERT INTO control_operations(principal_id,operation_id,operation_type,job_id,session_id,task_id,attempt_id,generation,request_hash,state,receipt,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
+	if _, e = db.SQL.Exec(insert, "o", "op1", "cancel", "j", "a", "t", "a", 1, "hash", "ACCEPTED", "{}", 1, 1); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec(insert, "o", "op1", "cancel", "j", "a", "t", "a", 1, "hash", "ACCEPTED", "{}", 1, 1); e == nil {
+		t.Fatal("duplicate principal/operation accepted")
 	}
 }
