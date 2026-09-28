@@ -1,5 +1,15 @@
 # 版本记录
 
+## 未发布 — ACP-3 Safe Control Foundation
+
+- Server schema 升级到 v8，新增 durable `control_operations` ledger，以 `(principal_id, operation_id)` 作为幂等边界。
+- 每个控制意图固定 request hash、resource、expected Attempt、generation 与 resource version；同 operation 同参数返回原回执，异参数返回 `OPERATION_CONFLICT`。
+- 旧 Attempt / generation 返回 `ATTEMPT_FENCED`，旧 Job resource version 返回 `RESOURCE_VERSION_CONFLICT`；released Attempt fail-closed。
+- `ACCEPTED` 仅表示控制意图已持久化，不表示 Worker/Runtime 已执行；dispatch/ack 将作为 ACP-3b 独立阶段。
+- 新增独立 `agent-control-fencing` CI Gate 并纳入 package 依赖。
+- Codex/Claude 仍不暴露 Input/Approval/Resume；ACP-3 foundation 不改变 Runtime capability truth。
+
+
 ## 未发布 — Agent Control Protocol ACP-0/ACP-2
 
 - 新增 `control.v1alpha1` Session/Event/Approval/Capability schema、Go model、版本协商与独立 `agent-control-schema` Gate。
