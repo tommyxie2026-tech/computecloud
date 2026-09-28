@@ -69,7 +69,14 @@ func advertisedRuntimeCapabilities(provider adapter.Provider) []string {
 	caps := provider.Capabilities()
 	caps.Tools = toolreg.InstalledCompatible(caps.Tools)
 	caps.Environment = envreg.InstalledCompatible(caps.Environment)
-	return caps.Advertised()
+	out := caps.Advertised()
+	if desc, claimed, err := adapter.ControlDescriptorFor(provider); err == nil && claimed {
+		for _, capability := range desc.Capabilities {
+			out = append(out, "control:"+string(capability))
+		}
+		sort.Strings(out)
+	}
+	return out
 }
 
 func keys[V any](m map[string]V) []string {
