@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval lifecycle 已实现待 CI；ACP-4b Session Resume 待实施
+- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval 已合并；ACP-4b authoritative in-attempt Session Reconnect 已实现待 CI
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -31,7 +31,7 @@
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
 | ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
-| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已实现待 CI**：durable approval request/version/state、expiry/supersede、Worker Approve dispatch/ACK、HTTP decision；**ACP-4b 待实施**：session resume |
+| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已完成**：PR #48 / `da086cd7`；**ACP-4b 已实现待 CI**：active Attempt explicit session reconnect、native session projection、Worker Resume + RuntimeRef replacement、fail-closed |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
 | ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
@@ -259,7 +259,7 @@ POST /v1/jobs/{job}/cancel
 
 ## 7. ACP-4 — Approval 与 Session Resume
 
-### 7.1 Approval — ACP-4a 已实现待 CI
+### 7.1 Approval — ACP-4a 已完成
 
 已实现：
 - Server schema v12 `approval_requests`；
@@ -289,20 +289,30 @@ PENDING
 
 审批必须 audit。
 
-### 7.2 Resume — ACP-4b 待实施
+### 7.2 Session Reconnect — ACP-4b 已实现待 CI
 
-Resume 不与 Approval 混在同一提交中。现有 Attempt completion 会 release Attempt，Worker restart 也会先 reconciliation/cleanup，因此不能简单把 Resume 实现成“对已释放 Attempt 再发一条控制命令”。
-
-实现目标：
+ACP-4b 把 Resume 收敛为 **current active Attempt 内的显式 reconnect**：
 
 `POST /v1/jobs/{job}/sessions/{session}/resume`
 
-要求：
-- explicit SessionRef；
-- capability= session_resume；
-- workspace/environment compatible；
-- current generation policy；
-- 不使用隐式 last session。
+已实现：
+- `session.started/session.resumed` Runtime event 持久化 native SessionRef；
+- SessionRef 写入只允许 current Attempt + current generation；
+- 请求显式携带 `session_ref`，禁止隐式 last session；
+- capability = `session_resume`；
+- Job/resource version + Attempt/generation fencing；
+- Worker `SessionControlProvider.Resume()`；
+- Resume 返回的新 ExecutionRef 必须保持同 Provider，并 durable 替换当前 RuntimeRef；
+- Worker control ledger 保证自动重放 at-most-once；
+- Runtime 已 reconnect 但 RuntimeRef 落盘失败 -> `UNKNOWN / EXECUTION_UNVERIFIABLE`；
+- terminal/released Attempt 无法通过 control fence；
+- 独立 `agent-control-resume` CI Gate。
+
+明确不做：
+- 不 reopen terminal Job；
+- 不 revive released Attempt；
+- 不跨 generation 复用旧 writable Workspace；
+- “终态后继续工作”留给 Continuation / Prepared Workspace 语义。
 
 ### 7.3 测试
 
@@ -545,10 +555,10 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. ACP-4a：通过 `agent-control-approval` PR CI 并合并；Package Gate 必须依赖该 Gate。
-2. ACP-4b：先定义 Resume Attempt transition / Workspace / Environment compatibility，再实现 Worker Resume dispatch。
-3. 增加 multi-process fault injection：approval decision commit 后重启、Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
-4. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
-5. Prepared Workspace 主线继续推进；Resume 必须复用其 fingerprint/compatibility 语义，不能建立第二套 Workspace 状态机。
+1. ACP-4b：通过 `agent-control-resume` Gate 与 PR CI 后合并。
+2. 增加 multi-process fault injection：Resume Provider side-effect 后 RuntimeRef commit 前失败、ACK 前断线、旧 generation Client 恢复。
+3. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
+4. ACP-5 接入第三 Runtime，验证 control capability 与核心 Scheduler 无名称分支。
+5. Prepared Workspace 主线负责未来 Continuation / 新 generation 的 workspace/template compatibility，不建立第二套 Workspace 状态机。
 
 这一顺序可以最小化返工，同时确保 Control App 不先于服务端语义成熟。
