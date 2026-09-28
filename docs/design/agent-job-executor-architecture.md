@@ -7,7 +7,9 @@
 - 当前实现基线：v0.2.0
 - 长期路线：[长期演进路线图](../implementation/long-term-roadmap.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
-- 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)\n- 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
+- 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
+- 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
+- Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
 
 ## 1. 产品定位
 
@@ -112,7 +114,7 @@ Goal
 
 核心不变量：
 
-> **Goal != Plan，Plan revision != Execution Graph generation，Stage != Task，Task != Attempt，Retry != Re-plan。**
+> **Goal != Plan，Plan revision != Execution Graph generation，Stage != Task，Task != Attempt，Retry != Re-plan；Evaluator != Re-plan authority。**
 
 Map/Reduce、fan-out / barrier / fan-in 继续作为 Execution Graph 的有限图模式，而不是最高层计算模型，也不扩张为通用 Workflow DSL。
 
@@ -129,7 +131,8 @@ flowchart TB
         EG["Execution Graph Controller<br/>Compile / Generation / Ready Nodes"]
         JC["Durable Job Controller<br/>Job / Stage / Task / Attempt"]
         SCH["Agent-aware Scheduler<br/>Capability / Credential / Environment / Affinity / Queue"]
-        EV["Evaluator Provider<br/>Evidence / Verdict / Re-plan Trigger"]
+        EV["Evaluator Provider<br/>Evidence / Verdict / Re-plan Proposal"]
+        RG["Re-plan Guard<br/>Budget / Evidence / Loop / Progress / Approval"]
         ST["State Store<br/>SQLite by default"]
         RR["Worker / Runtime / Tool / Environment Registry"]
         AM["Artifact / Workspace Metadata"]
@@ -149,7 +152,9 @@ flowchart TB
         JC <--> AM
         AM --> EV
         EV --> GC
-        EV -->|RE_PLAN| P
+        EV -->|RE_PLAN proposal| RG
+        RG -->|ALLOW| P
+        RG -->|DENY / ESCALATE| GC
         G --> Q
         SCH --> Q
         EV --> Q
@@ -182,6 +187,7 @@ flowchart TB
     OBS -.-> JC
     OBS -.-> SCH
     OBS -.-> EV
+    OBS -.-> RG
     OBS -.-> WX
 ~~~
 
@@ -240,6 +246,67 @@ Re-plan
 ~~~
 
 旧 Graph generation 与旧 Attempt generation 的迟到结果都必须经过 fencing，不能污染当前 Goal 的最终 Verified Outcome。
+
+
+
+## 5.1 Re-plan Guard
+
+Re-plan 不是 Evaluator 可以直接触发的无限循环边。Evaluator 只能提出 RE_PLAN proposal，所有 proposal 必须先经过 Re-plan Guard：
+
+~~~text
+Evaluator
+   ↓
+RE_PLAN proposal
+   ↓
+Re-plan Guard
+   ├── Budget Guard
+   ├── Evidence Guard
+   ├── Duplicate / Cycle Guard
+   ├── Failure-class Guard
+   ├── Progress Guard
+   ├── Generation Guard
+   └── Approval / Policy Guard
+          ↓
+      allowed?
+       /   \
+     yes    no
+      ↓      ↓
+   Planner  NEEDS_APPROVAL / FAILED
+~~~
+
+自动 Re-plan 的统一判定：
+
+~~~text
+Allowed
+=
+BudgetAvailable
+AND NewEvidencePresent
+AND MaterialStrategyDelta
+AND NoLoopDetected
+AND FailurePolicyAllows
+AND GenerationIsCurrent
+AND ApprovalPolicyAllows
+~~~
+
+默认原则：
+
+> No new evidence, no re-plan. No material strategy change, no re-plan. No remaining budget, no re-plan. Detected loop, no re-plan.
+
+其中 Retry 与 Re-plan 的升级顺序保持：
+
+~~~text
+transient failure
+   ↓
+Retry / Re-route
+   ↓
+strategy / assumption invalidated by evidence
+   ↓
+Re-plan Guard
+   ↓
+new Plan revision + new Graph generation
+~~~
+
+Re-plan 必须是 bounded autonomy。生产模式下至少同时受到 max_replans、attempt、wall time、token/cost、deadline 中的硬预算约束，并在 loop/no-progress/repeated-failure 时升级到人工审批。
 
 ## 6. Runtime 与 Tool 必须分层
 
