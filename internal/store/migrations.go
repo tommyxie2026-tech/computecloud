@@ -663,7 +663,8 @@ CREATE INDEX commands_control_state ON commands(state,attempt,operation_id);
 `;
 
 
-const serverV11 = `ALTER TABLE replan_requests ADD COLUMN strategy_signature TEXT NOT NULL DEFAULT '';
+const serverV11 = `ALTER TABLE plan_fingerprints ADD COLUMN strategy_signature TEXT NOT NULL DEFAULT '';
+ALTER TABLE replan_requests ADD COLUMN strategy_signature TEXT NOT NULL DEFAULT '';
 ALTER TABLE replan_requests ADD COLUMN strategy_delta_json BLOB;
 ALTER TABLE replan_requests ADD COLUMN progress_json BLOB;
 
