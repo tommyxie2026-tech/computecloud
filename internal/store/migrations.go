@@ -651,5 +651,7 @@ const workerV6 = `ALTER TABLE commands ADD COLUMN state TEXT NOT NULL DEFAULT 'C
 ALTER TABLE commands ADD COLUMN attempt TEXT NOT NULL DEFAULT '';
 ALTER TABLE commands ADD COLUMN operation_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE commands ADD COLUMN updated INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE commands ADD COLUMN error_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE commands ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
 CREATE INDEX commands_control_state ON commands(state,attempt,operation_id);
 `;
