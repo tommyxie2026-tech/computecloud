@@ -15,11 +15,17 @@ import (
 
 type controlWorkerFixture struct {
 	mu        sync.Mutex
+	profile   string
 	inputs    int
 	approvals int
 }
 
-func (p *controlWorkerFixture) Profile() string { return "control_worker_fixture" }
+func (p *controlWorkerFixture) Profile() string {
+	if p.profile != "" {
+		return p.profile
+	}
+	return "control_worker_fixture"
+}
 func (p *controlWorkerFixture) Version(config.Runtime) string { return "fixture" }
 func (p *controlWorkerFixture) Transport() string { return "remote_api" }
 func (p *controlWorkerFixture) Probe(context.Context, config.Runtime) error { return nil }
@@ -178,7 +184,7 @@ func TestAgentControlWorkerExecutesApprovalAtMostOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.Close()
-	provider := &controlWorkerFixture{}
+	provider := &controlWorkerFixture{profile: "control_worker_approval_fixture"}
 	if err = adapter.Register(provider); err != nil {
 		t.Fatal(err)
 	}
