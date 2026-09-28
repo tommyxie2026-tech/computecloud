@@ -262,10 +262,31 @@ func (s *Server) ConnectWorker(stream grpc.BidiStreamingServer[pb.WorkerFrame, p
 	}
 }
 func commandDeliverable(ctx context.Context, q store.Query, c *pb.Command, worker, epoch string) (bool, error) {
-	if c == nil || c.Assignment == nil || (c.Kind != "start" && c.Kind != "stop") {
+	if c == nil {
 		return false, nil
 	}
-	a := c.Assignment
+	var attemptID, taskID, leaseToken string
+	var generation int64
+	switch c.Kind {
+	case "start", "stop":
+		if c.Assignment == nil {
+			return false, nil
+		}
+		attemptID = c.Assignment.AttemptId
+		taskID = c.Assignment.TaskId
+		generation = c.Assignment.Generation
+		leaseToken = c.Assignment.LeaseToken
+	case "control":
+		if c.Control == nil {
+			return false, nil
+		}
+		attemptID = c.Control.AttemptId
+		taskID = c.Control.TaskId
+		generation = c.Control.Generation
+		leaseToken = c.Control.LeaseToken
+	default:
+		return false, nil
+	}
 	var n int
 	e := q.QueryRowContext(ctx, `SELECT count(*)
 		FROM attempts x
@@ -273,7 +294,7 @@ func commandDeliverable(ctx context.Context, q store.Query, c *pb.Command, worke
 		WHERE x.id=? AND x.task=? AND x.worker=? AND x.epoch=?
 		  AND x.generation=? AND x.token=? AND x.released=0
 		  AND t.attempt=x.id AND t.current_generation=x.generation`,
-		a.AttemptId, a.TaskId, worker, epoch, a.Generation, a.LeaseToken,
+		attemptID, taskID, worker, epoch, generation, leaseToken,
 	).Scan(&n)
 	return n == 1, e
 }
