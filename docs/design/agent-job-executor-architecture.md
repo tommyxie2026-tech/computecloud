@@ -46,67 +46,113 @@ computecloud 专注一个问题：
 
 如果未来确实存在这些需求，应建立独立系统，通过 Agent Job API 复用 computecloud，而不是改变本系统的领域模型。
 
-## 3. 核心领域模型
+## 3. 核心计算模型
 
-长期稳定模型：
+computecloud 的最高层计算模型升级为 **Goal-oriented Computing**：
 
 ~~~text
-Job
-├── Stage
-│   ├── Task
-│   │   └── Attempt
-│   └── Task
-│       └── Attempt
-└── Stage
-    └── Task
-        └── Attempt
+Goal
+  ↓
+Plan
+  ↓
+Execution Graph
+  ↓
+Scheduler
+  ↓
+Worker
+  ↓
+Artifact
+  ↓
+Evaluator
+  ↓
+Re-plan
+  └────────→ Plan / Execution Graph next generation
+~~~
 
-Artifact / Workspace
-    ↕
-Attempt generation
+其中原有模型不废弃，而是作为下层可靠执行内核：
+
+~~~text
+Goal-oriented Computing Layer
+Goal -> Plan -> Execution Graph -> Evaluator -> Re-plan
+                         |
+                         v
+Durable Execution Layer
+Job -> Stage -> Task -> Attempt -> Artifact / Workspace
+                         |
+                         v
+Execution Plane
+Scheduler -> Worker -> Runtime / Tool / Environment
+~~~
+
+映射关系：
+
+~~~text
+Goal
+ └── Plan revision
+      └── Execution Graph generation
+           └── Graph Node
+                └── Job / Stage
+                     └── Task
+                          └── Attempt
 ~~~
 
 语义：
 
-- **Job**：调用方提交的一次完整 Agent 业务任务；
-- **Stage**：Job 内有限执行阶段和同步边界；
-- **Task**：可独立调度的逻辑工作单元；
-- **Attempt**：Task 的一次真实执行尝试；
-- **Artifact**：Attempt 产生且经过接受流程的结果；
+- **Goal**：调用方希望真正达成的目标、约束和验收标准；
+- **Plan**：针对 Goal 的可版本化求解策略；
+- **Execution Graph**：Plan 编译后的受控、版本化、可恢复执行图；
+- **Job / Stage / Task / Attempt**：Execution Graph Node 的可靠执行基元；
+- **Artifact**：执行产物与 Evaluator 使用的证据对象；
+- **Evaluator**：依据 Goal acceptance criteria 对结果做结构化判断；
+- **Re-plan**：在 Goal 不变时产生新的 Plan revision 与 Graph generation；
 - **Workspace**：Attempt 使用的可写执行环境；
-- **Runtime**：Codex、Claude、自研 Agent 等 Agent 执行载体；
-- **Tool**：Shell、Git、Browser、MCP、HTTP、Verifier 等 Agent 可调用能力；
-- **Worker**：承载 Runtime / Tool 的远程执行节点。
+- **Runtime**：Codex、Claude、自研 Agent 等执行载体；
+- **Tool**：Shell、Git、Browser、MCP、HTTP、Verifier 等能力；
+- **Worker**：承载 Runtime / Tool / Environment 的远程执行节点。
 
 核心不变量：
 
-> **Stage != Task，Task != Attempt。**
+> **Goal != Plan，Plan revision != Execution Graph generation，Stage != Task，Task != Attempt，Retry != Re-plan。**
 
-Map/Reduce 自然映射为 Map Stage + Reduce Stage；fan-out / barrier / fan-in 仍是有限 Stage 组合，而不是通用 DAG DSL。
+Map/Reduce、fan-out / barrier / fan-in 继续作为 Execution Graph 的有限图模式，而不是最高层计算模型，也不扩张为通用 Workflow DSL。
 
 ## 4. 总体架构
 
 ~~~mermaid
 flowchart TB
-    C["调用方<br/>CLI / HTTP API / MCP / CI / Agent"] --> G
+    C["调用方<br/>CLI / HTTP API / MCP / CI / Agent / Upstream AI OS"] --> G
 
     subgraph S["computecloud Server"]
-        G["Job Gateway<br/>Auth / Project / Token / Idempotency"]
-        JC["Job Controller<br/>Job / Stage / Task"]
-        SCH["Agent-aware Scheduler<br/>Capability / Credential / Affinity / Queue"]
+        G["Goal / Job Gateway<br/>Auth / Project / Idempotency / Policy"]
+        GC["Goal Controller<br/>Goal / Acceptance / Lifecycle"]
+        P["Planner Provider<br/>Plan Revision"]
+        EG["Execution Graph Controller<br/>Compile / Generation / Ready Nodes"]
+        JC["Durable Job Controller<br/>Job / Stage / Task / Attempt"]
+        SCH["Agent-aware Scheduler<br/>Capability / Credential / Environment / Affinity / Queue"]
+        EV["Evaluator Provider<br/>Evidence / Verdict / Re-plan Trigger"]
         ST["State Store<br/>SQLite by default"]
-        RR["Worker & Runtime Registry"]
+        RR["Worker / Runtime / Tool / Environment Registry"]
         AM["Artifact / Workspace Metadata"]
         Q["Quota / Policy / Audit"]
 
-        G --> JC
+        G --> GC
+        GC --> P
+        P --> EG
+        EG --> JC
         JC --> SCH
         JC <--> ST
+        GC <--> ST
+        EG <--> ST
+        EV <--> ST
         SCH <--> ST
         SCH <--> RR
         JC <--> AM
+        AM --> EV
+        EV --> GC
+        EV -->|RE_PLAN| P
         G --> Q
         SCH --> Q
+        EV --> Q
     end
 
     SCH <-->|"主动 gRPC 控制流"| W1["Worker A"]
@@ -116,8 +162,10 @@ flowchart TB
     subgraph WX["Worker Execution Plane"]
         R["Agent Runtime<br/>Codex / Claude / Custom Agent"]
         T["Tools<br/>Shell / Git / Browser / MCP / HTTP / Verifier"]
+        ENV["Environment<br/>Process / Container / VM / Provider"]
         WS["Workspace"]
         R --> T
+        R --> ENV
         R --> WS
         T --> WS
     end
@@ -129,42 +177,69 @@ flowchart TB
     AM --> AS["Artifact Storage Provider<br/>Local / Shared File / Object"]
     OBS["Events / Metrics / Trace / Audit"]
     OBS -.-> G
+    OBS -.-> GC
+    OBS -.-> EG
     OBS -.-> JC
     OBS -.-> SCH
+    OBS -.-> EV
     OBS -.-> WX
 ~~~
 
 ## 5. 主执行流程
 
 ~~~text
-Submit Job
+Submit Goal
    ↓
-Auth / Project / Idempotency / Quota
+Auth / Project / Idempotency / Policy / Budget
    ↓
-Job Controller
+Goal Controller
    ↓
-Create Stage / Tasks
+Create / Select Plan revision
+   ↓
+Compile Execution Graph generation
+   ↓
+Select Ready Graph Node
+   ↓
+Materialize Job / Stage / Task
    ↓
 Agent-aware Scheduler
    ↓
-Runtime + Tool + Credential + Affinity Match
+Runtime + Tool + Credential + Environment + Affinity Match
    ↓
 Create Attempt generation
    ↓
 Worker lease / fencing
    ↓
-Agent Runtime
+Agent Runtime / Tool Calls / Workspace
    ↓
-Tool Calls / Workspace
+Artifact STAGED -> ACCEPTED
    ↓
-Artifact STAGED
-   ↓
-Verifier / Completion CAS
-   ↓
-Artifact ACCEPTED / PUBLISHED
-   ↓
-Next Stage or Job Result
+Evaluator
+   ├── ACCEPT ------> Verified Outcome / Goal SUCCEEDED
+   ├── RETRY -------> same Plan/Graph, new Attempt generation
+   ├── RE_ROUTE ----> Scheduler
+   ├── RE_PLAN -----> new Plan revision + Graph generation
+   ├── APPROVAL ----> Human / Policy Gate
+   └── FAIL --------> Goal FAILED
 ~~~
+
+这里必须严格区分：
+
+~~~text
+Retry
+= same Goal
++ same Plan revision
++ same Execution Graph generation
++ same logical Task
++ new Attempt generation
+
+Re-plan
+= same Goal
++ new Plan revision
++ new Execution Graph generation
+~~~
+
+旧 Graph generation 与旧 Attempt generation 的迟到结果都必须经过 fencing，不能污染当前 Goal 的最终 Verified Outcome。
 
 ## 6. Runtime 与 Tool 必须分层
 
