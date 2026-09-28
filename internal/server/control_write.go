@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
@@ -68,7 +69,7 @@ func validateControlFence(ctx context.Context, q store.Query, jobID string, in C
 		return status.Error(codes.NotFound, "NOT_FOUND")
 	}
 	if currentAttempt != in.ExpectedAttemptID || currentGeneration != in.ExpectedGeneration {
-		return status.Error(codes.Aborted, "ATTEMPT_FENCED")
+		return status.Error(codes.Aborted, control.ErrorAttemptFenced.String())
 	}
 	var jobVersion int64
 	var state string
@@ -77,10 +78,10 @@ func validateControlFence(ctx context.Context, q store.Query, jobID string, in C
 		return err
 	}
 	if jobVersion != in.ExpectedResourceVersion {
-		return status.Error(codes.Aborted, "RESOURCE_VERSION_CONFLICT")
+		return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
 	}
 	if terminal(state) || state == "STOPPING" || state == "RECONCILING" {
-		return status.Error(codes.FailedPrecondition, "EXECUTION_UNVERIFIABLE")
+		return status.Error(codes.FailedPrecondition, control.ErrorExecutionUnverifiable.String())
 	}
 	var released int
 	if err := q.QueryRowContext(ctx,
@@ -88,12 +89,12 @@ func validateControlFence(ctx context.Context, q store.Query, jobID string, in C
 		in.ExpectedAttemptID, in.TaskID, in.ExpectedGeneration,
 	).Scan(&released); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return status.Error(codes.Aborted, "ATTEMPT_FENCED")
+			return status.Error(codes.Aborted, control.ErrorAttemptFenced.String())
 		}
 		return err
 	}
 	if released != 0 {
-		return status.Error(codes.Aborted, "ATTEMPT_FENCED")
+		return status.Error(codes.Aborted, control.ErrorAttemptFenced.String())
 	}
 	return nil
 }
@@ -135,7 +136,7 @@ func (s *Server) acceptControlOperation(ctx context.Context, jobID string, in Co
 			p.Identity.Owner, in.OperationID).Scan(&oldHash, &state, &oldReceipt)
 		if readErr == nil {
 			if oldHash != hash {
-				return status.Error(codes.AlreadyExists, "OPERATION_CONFLICT")
+				return status.Error(codes.AlreadyExists, control.ErrorOperationConflict.String())
 			}
 			if err := json.Unmarshal(oldReceipt, receipt); err != nil {
 				return err

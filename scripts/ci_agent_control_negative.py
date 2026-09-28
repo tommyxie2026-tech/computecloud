@@ -27,52 +27,57 @@ def main():
     logs.mkdir(parents=True, exist_ok=True)
 
     result = run([
-        "go", "test", "./internal/store", "./internal/server",
-        "-run", "V8ControlOperationLedger|AgentControlOperation",
+        "go", "test", "./internal/control", "./internal/server",
+        "-run", "AgentControlNegative|AgentControlOperation|AgentControlRoundTrip|AgentControlErrorCodes",
         "-count=1", "-v",
     ])
+
     write = pathlib.Path("internal/server/control_write.go").read_text(encoding="utf-8")
-    migration = pathlib.Path("internal/store/migrations.go").read_text(encoding="utf-8")
+    validate = pathlib.Path("internal/control/validate.go").read_text(encoding="utf-8")
+    tests = pathlib.Path("internal/control/roundtrip_test.go").read_text(encoding="utf-8")
     violations = []
+
     for required in [
-        "control_operations",
-        "PRIMARY KEY(principal_id, operation_id)",
-        "expected_attempt_id",
-        "expected_generation",
-        "expected_resource_version",
-    ]:
-        if required not in migration:
-            violations.append("missing durable control ledger invariant: " + required)
-    for required in [
-        "control.ErrorOperationConflict",
         "control.ErrorAttemptFenced",
+        "control.ErrorOperationConflict",
         "control.ErrorResourceVersionConflict",
-        "validateControlFence",
-        "jobs:control",
+        "control.ErrorExecutionUnverifiable",
     ]:
         if required not in write:
-            violations.append("missing safe-control invariant: " + required)
-    if "INSERT INTO control_operations" not in write:
-        violations.append("control acceptance is not persisted")
-    if "ACCEPTED" not in write:
-        violations.append("control operation acceptance state missing")
+            violations.append("server does not use stable control error: " + required)
+
+    for required in [
+        "unknown control event type",
+        "unknown approval risk class",
+        "generation must be positive",
+        "expected_generation must be positive",
+    ]:
+        if required not in validate:
+            violations.append("missing fail-closed model validation: " + required)
+
+    for required in [
+        "unknown event type accepted",
+        "unknown risk class accepted",
+        "attempt scoped control without generation accepted",
+        "stable error codes changed",
+    ]:
+        if required not in tests:
+            violations.append("missing negative contract test: " + required)
 
     (logs / "go-test.stdout.log").write_text(result["stdout"], encoding="utf-8")
     (logs / "go-test.stderr.log").write_text(result["stderr"], encoding="utf-8")
     status = "PASSED" if result["returncode"] == 0 and not violations else "FAILED"
     report = {
-        "schema_version": "ci-agent-control-fencing.v1",
+        "schema_version": "ci-agent-control-negative.v1",
         "status": status,
         "real_model_calls": False,
         "coverage": {
-            "durable_operation_ledger": True,
-            "principal_operation_idempotency": True,
-            "operation_conflict": True,
-            "attempt_id_fencing": True,
-            "generation_fencing": True,
-            "resource_version_fencing": True,
-            "released_attempt_rejection": True,
-            "dispatch_not_implied_by_acceptance": True,
+            "stable_machine_error_codes": True,
+            "model_fail_closed_validation": True,
+            "old_generation_rejected": True,
+            "duplicate_operation_conflict": True,
+            "schema_model_enum_alignment": True,
+            "interactive_runtime_capabilities_still_fail_closed": True,
         },
         "violations": violations,
         "command": result["command"],
@@ -85,7 +90,7 @@ def main():
         sys.stderr.write(result["stdout"])
         sys.stderr.write(result["stderr"])
     if violations:
-        sys.stderr.write("agent control fencing violations: " + json.dumps(violations) + "\n")
+        sys.stderr.write("agent control negative violations: " + json.dumps(violations) + "\n")
     if status != "PASSED":
         raise SystemExit(1)
 
