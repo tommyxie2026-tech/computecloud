@@ -2,18 +2,16 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
+	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -298,10 +296,7 @@ func (s *Server) httpJobEventStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func mirrorRuntimeEventToJob(ctx context.Context, q interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-}, event *pb.Event) error {
+func mirrorRuntimeEventToJob(ctx context.Context, q store.Query, event *pb.Event) error {
 	if event == nil || event.TaskId == "" {
 		return nil
 	}
@@ -333,5 +328,3 @@ func mirrorRuntimeEventToJob(ctx context.Context, q interface {
 	return appendJobEvent(ctx, q, jobID.String, "control.runtime_event", body, "", "")
 }
 
-var _ = errors.Is
-var _ = strings.TrimSpace
