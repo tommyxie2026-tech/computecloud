@@ -118,6 +118,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 10
 	}
+	if schema == ServerSchema && version < 11 {
+		if _, err = tx.Exec(serverV11); err != nil {
+			return err
+		}
+		version = 11
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -654,4 +660,29 @@ ALTER TABLE commands ADD COLUMN updated INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE commands ADD COLUMN error_code TEXT NOT NULL DEFAULT '';
 ALTER TABLE commands ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
 CREATE INDEX commands_control_state ON commands(state,attempt,operation_id);
+`;
+
+
+const serverV11 = `ALTER TABLE replan_requests ADD COLUMN strategy_signature TEXT NOT NULL DEFAULT '';
+ALTER TABLE replan_requests ADD COLUMN strategy_delta_json BLOB;
+ALTER TABLE replan_requests ADD COLUMN progress_json BLOB;
+
+CREATE TABLE replan_history (
+  goal_id TEXT NOT NULL REFERENCES goals(id),
+  ordinal INTEGER NOT NULL,
+  evaluation_id TEXT NOT NULL,
+  plan_revision INTEGER NOT NULL,
+  graph_generation INTEGER NOT NULL,
+  failure_class TEXT NOT NULL,
+  evidence_fingerprint TEXT NOT NULL,
+  plan_fingerprint TEXT NOT NULL,
+  strategy_signature TEXT NOT NULL,
+  progress_json BLOB NOT NULL,
+  created INTEGER NOT NULL,
+  PRIMARY KEY(goal_id,ordinal),
+  UNIQUE(goal_id,evaluation_id)
+);
+CREATE INDEX replan_history_recent ON replan_history(goal_id,ordinal DESC);
+CREATE INDEX replan_history_failure ON replan_history(goal_id,failure_class,ordinal DESC);
+CREATE INDEX replan_history_strategy ON replan_history(goal_id,strategy_signature,ordinal DESC);
 `;
