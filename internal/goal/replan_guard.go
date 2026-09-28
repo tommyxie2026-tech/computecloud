@@ -63,7 +63,6 @@ const (
 
 	replanCycleWindow      = 6
 	sameFailureMaxReplans  = 2
-	noProgressMaxReplans   = 1
 )
 
 func Create(ctx context.Context, db *store.DB, in CreateGoal) error {
@@ -291,7 +290,7 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 		case repeatedFailure:
 			requestState, code = "NEEDS_APPROVAL", DecisionRepeatedFailure
 			nextPlan, nextGraph = 0, 0
-		case !progressImproved && previousNoProgress && noProgressMaxReplans <= 1:
+		case !progressImproved && previousNoProgress:
 			requestState, code = "NEEDS_APPROVAL", DecisionNoProgress
 			nextPlan, nextGraph = 0, 0
 		}
