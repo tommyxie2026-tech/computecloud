@@ -29,6 +29,34 @@ type ControlProvider interface {
 	ControlDescriptor() ControlDescriptor
 }
 
+
+func builtinControlDescriptor(p Provider) ControlDescriptor {
+	caps := p.Capabilities()
+	controlCaps := make([]control.Capability, 0, 3)
+	hasRuntime := func(want string) bool {
+		for _, capability := range caps.Runtime {
+			if capability == want {
+				return true
+			}
+		}
+		return false
+	}
+	if hasRuntime("event_stream") {
+		controlCaps = append(controlCaps, control.CapabilityStreamOutput, control.CapabilityStructuredOutput)
+	}
+	if hasRuntime("cancel") {
+		controlCaps = append(controlCaps, control.CapabilityCancel)
+	}
+	normalized, err := control.NormalizeCapabilities(controlCaps)
+	if err != nil {
+		panic(err)
+	}
+	return ControlDescriptor{ProtocolVersion: control.ProtocolV1Alpha1, Capabilities: normalized}
+}
+
+func (p codexProvider) ControlDescriptor() ControlDescriptor  { return builtinControlDescriptor(p) }
+func (p claudeProvider) ControlDescriptor() ControlDescriptor { return builtinControlDescriptor(p) }
+
 // SessionControlProvider is implemented only by runtimes that can bind a stable
 // native session reference to an authoritative computecloud Attempt generation.
 type SessionControlProvider interface {
