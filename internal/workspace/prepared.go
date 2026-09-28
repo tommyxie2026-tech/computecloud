@@ -184,9 +184,6 @@ func (p *LocalPreparedProvider) PrepareTemplate(ctx context.Context, tmpl Worksp
 	if err = os.WriteFile(filepath.Join(stagePath, templateManifestName), body, 0600); err != nil {
 		return PreparedWorkspaceRef{}, err
 	}
-	if err = freezeTree(stagePath); err != nil {
-		return PreparedWorkspaceRef{}, err
-	}
 	if err = os.Rename(stagePath, finalPath); err != nil {
 		if _, statErr := os.Stat(finalPath); statErr == nil {
 			ref := PreparedWorkspaceRef{TemplateID: tmpl.TemplateID, Provider: p.Describe().Name, ImmutableRef: fingerprint}
@@ -196,6 +193,11 @@ func (p *LocalPreparedProvider) PrepareTemplate(ctx context.Context, tmpl Worksp
 				return ref, nil
 			}
 		}
+		return PreparedWorkspaceRef{}, err
+	}
+	if err = freezeTree(finalPath); err != nil {
+		_ = makeTreeWritable(finalPath)
+		_ = os.RemoveAll(finalPath)
 		return PreparedWorkspaceRef{}, err
 	}
 	return PreparedWorkspaceRef{
@@ -337,6 +339,28 @@ func treeDigest(ctx context.Context, root string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func makeTreeWritable(root string) error {
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		mode := info.Mode().Perm() | 0200
+		if entry.IsDir() {
+			mode |= 0700
+		} else {
+			mode |= 0600
+		}
+		return os.Chmod(path, mode)
+	})
 }
 
 func freezeTree(root string) error {
