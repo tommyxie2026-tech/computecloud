@@ -109,7 +109,8 @@ func TestACP4ApprovalExpiration(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.s.db.SQL.Exec("UPDATE approval_requests SET expires_at=? WHERE approval_id='approval-expire'", store.Now()-1); err != nil {
+	now := store.Now()
+	if _, err := h.s.db.SQL.Exec("UPDATE approval_requests SET requested_at=?,expires_at=? WHERE approval_id='approval-expire'", now-10000, now-1); err != nil {
 		t.Fatal(err)
 	}
 	items, err := h.s.JobApprovals(h.ctx, jobID)
