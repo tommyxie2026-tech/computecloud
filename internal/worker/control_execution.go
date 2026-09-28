@@ -24,21 +24,6 @@ func controlCapability(cmd *pb.ControlCommand) (control.Capability, error) {
 	if cmd == nil {
 		return "", errors.New("control command required")
 	}
-	if cmd.Action == "resume" {
-		var workspaceState, environmentState string
-		var environmentRef []byte
-		err = w.db.SQL.QueryRowContext(ctx, `SELECT w.state,r.environment_state,r.environment_ref
-			FROM runs r JOIN workspaces w ON w.attempt=r.id WHERE r.id=? AND r.completion IS NULL`,
-			cmd.AttemptId).Scan(&workspaceState, &environmentState, &environmentRef)
-		if err != nil || workspaceState != "IN_USE" || environmentState != "ACTIVE" || len(environmentRef) == 0 {
-			message := "workspace/environment is not compatible with session resume"
-			if err != nil {
-				message = err.Error()
-			}
-			return w.finishControl(ctx, c, "REJECTED", control.ErrorExecutionUnverifiable.String(), message)
-		}
-	}
-
 	switch cmd.Action {
 	case "input":
 		switch cmd.Mode {
@@ -195,6 +180,20 @@ func (w *Worker) executeControl(ctx context.Context, c *pb.Command) (*pb.Command
 	}
 	if !hasControlCapability(desc, required) {
 		return w.finishControl(ctx, c, "REJECTED", control.ErrorCapabilityUnsupported.String(), "runtime control capability not certified")
+	}
+	if cmd.Action == "resume" {
+		var workspaceState, environmentState string
+		var environmentRef []byte
+		err = w.db.SQL.QueryRowContext(ctx, `SELECT w.state,r.environment_state,r.environment_ref
+			FROM runs r JOIN workspaces w ON w.attempt=r.id WHERE r.id=? AND r.completion IS NULL`,
+			cmd.AttemptId).Scan(&workspaceState, &environmentState, &environmentRef)
+		if err != nil || workspaceState != "IN_USE" || environmentState != "ACTIVE" || len(environmentRef) == 0 {
+			message := "workspace/environment is not compatible with session resume"
+			if err != nil {
+				message = err.Error()
+			}
+			return w.finishControl(ctx, c, "REJECTED", control.ErrorExecutionUnverifiable.String(), message)
+		}
 	}
 
 	switch cmd.Action {
