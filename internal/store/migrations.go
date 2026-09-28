@@ -121,6 +121,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 5
 	}
+	if schema == WorkerSchema && version < 6 {
+		if _, err = tx.Exec(workerV6); err != nil {
+			return err
+		}
+		version = 6
+	}
 	rows, err := tx.Query("PRAGMA foreign_key_check")
 	if err != nil {
 		return err
@@ -529,4 +535,52 @@ ALTER TABLE runs ADD COLUMN environment_cleanup TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX runs_environment_recovery
   ON runs(completed,environment_provider,environment_state,id);
+`
+
+
+const workerV6 = `ALTER TABLE workspaces ADD COLUMN template_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE workspaces ADD COLUMN prepare_source TEXT NOT NULL DEFAULT 'direct';
+ALTER TABLE workspaces ADD COLUMN prepare_ms INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE prepared_workspaces (
+  id TEXT PRIMARY KEY,
+  repository_ref TEXT NOT NULL,
+  base_commit TEXT NOT NULL,
+  runtime_profile TEXT NOT NULL,
+  environment TEXT NOT NULL,
+  tools_json TEXT NOT NULL DEFAULT '[]',
+  path TEXT NOT NULL UNIQUE,
+  state TEXT NOT NULL
+    CHECK (state IN ('BUILDING','READY','QUARANTINED','DELETING','DELETED')),
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  last_used INTEGER NOT NULL DEFAULT 0,
+  retain_until INTEGER NOT NULL DEFAULT 0,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX prepared_workspaces_gc
+  ON prepared_workspaces(state,retain_until,last_used,id);
+
+CREATE TRIGGER prepared_workspace_identity_immutable
+BEFORE UPDATE OF id,repository_ref,base_commit,runtime_profile,environment,tools_json,path
+ON prepared_workspaces
+BEGIN
+  SELECT RAISE(ABORT,'prepared workspace identity is immutable');
+END;
+
+CREATE TRIGGER prepared_workspace_state_transition_guard
+BEFORE UPDATE OF state ON prepared_workspaces
+FOR EACH ROW
+WHEN NOT (
+  OLD.state=NEW.state
+  OR (OLD.state='BUILDING' AND NEW.state IN ('READY','QUARANTINED','DELETING'))
+  OR (OLD.state='READY' AND NEW.state IN ('QUARANTINED','DELETING'))
+  OR (OLD.state='QUARANTINED' AND NEW.state IN ('BUILDING','DELETING'))
+  OR (OLD.state='DELETING' AND NEW.state='DELETED')
+  OR (OLD.state='DELETED' AND NEW.state='BUILDING')
+)
+BEGIN
+  SELECT RAISE(ABORT,'invalid prepared workspace lifecycle transition');
+END;
 `
