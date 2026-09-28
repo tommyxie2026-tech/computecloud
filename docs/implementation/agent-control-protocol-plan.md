@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1/ACP-2 已完成；ACP-3a 已合并；ACP-3b structured Worker control dispatch / result ACK 已实现，待 CI/PR 合并
+- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成并进入 main；ACP-4 Approval + active-Attempt Session Resume 已实现，待 PR CI/合并
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -30,8 +30,8 @@
 | ACP-0 | 当前 | Schema/contract 基线 | **已完成**：control.v1alpha1、事件 schema、Provider extension、独立 CI |
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
-| ACP-3 | v0.4.x | 安全写控制 | **ACP-3a 已合并**：durable ledger、idempotency、fencing、稳定错误码、negative contract；**ACP-3b 已实现待合并**：structured Worker control envelope、dispatch、SessionControlProvider、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed |
-| ACP-4 | v0.4.x | Approval + Resume | approval lifecycle、session resume |
+| ACP-3 | v0.4.x | 安全写控制 | **已完成**：ACP-3a durable ledger/idempotency/fencing；ACP-3b structured Worker control envelope、SessionControlProvider、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed；main commit `d30c45e97ffc1452e599b9477143df6f882acc1e` |
+| ACP-4 | v0.4.x | Approval + Resume | **已实现待合并**：durable versioned approval、expiry/supersede/decision lock、explicit SessionRef、active-Attempt resume、Workspace/Environment compatibility、HTTP write API、独立 CI Gate |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
 | ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
@@ -256,6 +256,7 @@ POST /v1/jobs/{job}/cancel
 `agent-control-fencing`
 `agent-control-negative`（ACP-3a 已接入）
 `agent-control-dispatch`（ACP-3b 已接入）
+`agent-control-approval-resume`（ACP-4 已接入）
 
 ## 7. ACP-4 — Approval 与 Session Resume
 
@@ -288,12 +289,12 @@ PENDING
 
 ### 7.3 测试
 
-- [ ] approval version conflict。
-- [ ] old Attempt approval。
-- [ ] expired approval。
-- [ ] Worker restart then resume。
-- [ ] Workspace changed -> resume rejected。
-- [ ] Environment unavailable -> explicit failure。
+- [x] approval version conflict。
+- [x] old Attempt / stale generation approval。
+- [x] expired approval。
+- [ ] Worker restart then resume：**deferred**。当前 Worker restart recovery 会终结旧 Attempt；跨 Worker epoch resume 需先调整 recovery / Prepared Workspace 语义，ACP-4 不伪造支持。
+- [x] Workspace incompatible/unavailable -> resume rejected。
+- [x] Environment unavailable/UNKNOWN -> explicit fail-closed。
 
 ## 8. ACP-5 — 第三个 Runtime 验证
 
@@ -527,10 +528,12 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. 完成 ACP-3b PR CI 并合并；Package Gate 必须依赖 `agent-control-dispatch`。
-2. ACP-3c：在当前 durable/dispatch 语义之上开放 HTTP input/interrupt endpoint；HTTP 层不得绕过 `acceptAndDispatchControlOperation`。
-3. 增加 multi-process fault injection：Server intent commit 后重启、Worker Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
-4. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
-5. ACP-4 再接 Approval + Resume；Prepared Workspace 主线继续推进，不与 Control write plane 混成同一状态机。
+1. 完成 ACP-4 PR CI 并合并；Package Gate 必须依赖 `agent-control-approval-resume`。
+2. ACP-3c 已随本轮收口：HTTP input / interrupt / approval / resume 全部复用 `acceptAndDispatchControlOperation`，不存在旁路写状态机。
+3. 保留 Worker-restart Session Resume 为显式 deferred item；在 Prepared Workspace / recovery contract 支持跨 epoch 恢复前不得宣称支持。
+4. 进入 ACP-5：接入 Gemini CLI 或 OpenCode 作为第三 Runtime，验证 Adapter/Scheduler/Control API 无 Runtime 名称分支。
+5. 增加 multi-process fault injection：Server intent commit 后重启、Worker Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
+6. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
+7. Prepared Workspace 主线继续推进，不与 Control write plane 混成同一状态机。
 
 这一顺序可以最小化返工，同时确保 Control App 不先于服务端语义成熟。
