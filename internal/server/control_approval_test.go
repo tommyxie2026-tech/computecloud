@@ -161,10 +161,9 @@ func TestControlApprovalAckConcurrentDuplicateAndConflict(t *testing.T) {
 		}
 	}
 	before := approvalSnapshot(t, h.s)
-	conflict := *ack
-	conflict.State = "REJECTED"
-	conflict.ErrorCode = "RUNTIME_CONTROL_FAILED"
-	err := h.s.applyControlAck(h.ctx, "fixture-worker", &conflict)
+	conflict := &pb.CommandAck{CommandId: ack.CommandId, OperationId: ack.OperationId,
+		State: "REJECTED", ErrorCode: "RUNTIME_CONTROL_FAILED"}
+	err := h.s.applyControlAck(h.ctx, "fixture-worker", conflict)
 	if status.Code(err) != codes.AlreadyExists || status.Convert(err).Message() != control.ErrorOperationConflict.String() {
 		t.Fatalf("conflict=%v", err)
 	}

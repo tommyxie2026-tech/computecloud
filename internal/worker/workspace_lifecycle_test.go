@@ -286,3 +286,59 @@ func TestWorkspaceBootstrapAdoptsOnlyKnownLegacyRuns(t *testing.T) {
 		t.Fatalf("unowned directory was adopted: n=%d err=%v", n, err)
 	}
 }
+
+
+func TestPreparedWorkspaceWorkerReusesTemplateWithoutSharingWritableState(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(dir, store.WorkerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	repo, commit := workspaceTestRepo(t)
+	w := &Worker{db: db, cfg: config.Worker{
+		DataDir: dir,
+		Repositories: map[string]string{"repo": repo},
+	}}
+	a1 := workspaceAssignment("prepared-g1", "same-task", 1, commit)
+	a2 := workspaceAssignment("prepared-g2", "same-task", 2, commit)
+	a1.Spec.RuntimeProfile = "codex"
+	a2.Spec.RuntimeProfile = "codex"
+	for _, a := range []*pb.Assignment{a1, a2} {
+		insertWorkspaceRun(t, w, a, "ACCEPTED")
+	}
+	p1, err := w.prepareWorkspace(context.Background(), a1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(p1, "README.md"), []byte("attempt-one\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p2, err := w.prepareWorkspace(context.Background(), a2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p1 == p2 {
+		t.Fatal("prepared template caused generations to share writable path")
+	}
+	body, err := os.ReadFile(filepath.Join(p2, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "fixture\n" {
+		t.Fatalf("second attempt inherited first attempt mutation: %q", body)
+	}
+	entries, err := os.ReadDir(w.preparedWorkspaceRoot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	templateDirs := 0
+	for _, entry := range entries {
+		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".prepare-") {
+			templateDirs++
+		}
+	}
+	if templateDirs != 1 {
+		t.Fatalf("expected one reusable prepared template, got %d", templateDirs)
+	}
+}

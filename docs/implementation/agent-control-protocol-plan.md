@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval lifecycle 已合并；WS-E ACK 可靠性增量本地 Gate 通过，待 PR CI；ACP-4b Session Resume 见 PR #50，尚未进入本次 main 基线
+- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval lifecycle 已合并；WS-E ACK 增量见 PR #51，审批 Gate 已通过，集成仍有阻塞；ACP-4b Session Resume 见 PR #50，尚未进入本次 main 基线
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -558,6 +558,7 @@ agent-control-fencing
 认领：**WS-E Agent Control Approval / Integration / CI**。事实基线为
 `main da086cd749e2ffa93a5a5b9d7012799505764e9f`，依据并行开发计划第 7 节、ADR-008
 及本协议设计；保持单 Go Server、SQLite 和既有 durable execution truth。
+并行期间已无冲突同步 `main 343e32d` 的 WS-A 增量；本分支相对 main 仍仅修改 WS-E 的 7 个文件。
 
 ### 实施计划与代码事实
 
@@ -567,7 +568,7 @@ agent-control-fencing
 | Target State | 同结果终态 ACK 幂等；冲突结果拒绝；旧 Attempt/generation 或 released Attempt 的首次 ACK 不修改 approval、receipt、command 或 event |
 | Files / Packages | `internal/server/control_dispatch.go`、`internal/server/control_approval_test.go`、`internal/worker/control_*test.go`、既有审批 Gate、本实施文档与协议说明 |
 | Contract Changes | 无新增公共字段/错误码；既有错误为 `CAPABILITY_UNSUPPORTED`，并行计划中的 `CAPABILITY_UNAVAILABLE` 不应视为另一个已实现契约 |
-| Schema Changes | 无；代码实际 Server v12 / Worker v6。README 仍写 v11，留给共享文档 owner 在集成窗口同步；不抢占版本或修改 migration |
+| Schema Changes | 无；Server v12 / Worker v6；开工时 README 的 v11 已由共享文档 owner 在 `35c3360` 修正，本分支不修改 README 或 migration |
 | Tests | payload unit、HTTP projection/decision/retry、并发重复/冲突 ACK、stale/released ACK、Server SQLite 重开、Worker ledger 重开及 UNKNOWN 恢复、两种 builtin Runtime 的 Server/Worker unsupported matrix |
 | CI Gate | 复用 `agent-control-approval`，新增 `-race`；复用 V12 schema、V1 升级/drain、migration rollback、Worker v6 migration 测试；已在 main CI/package dependency 内，无新 workflow |
 | Risks | `control_dispatch.go` 与 Resume PR #50 有交集，合并需复核；过期代次 ACK 拒绝后不自动重新执行 Runtime 副作用 |
@@ -592,14 +593,24 @@ python3 scripts/ci_agent_control_approval.py --output /tmp/computecloud-wse-ci/r
 覆盖 Server/Worker restart、幂等、stale-generation 和既有 migration。
 这些 restart 测试关闭/重开真实 SQLite 并重建对象；独立进程 kill/断网故障注入仍属于后续验收，不能等同为已覆盖。
 
+集成证据：
+
+- [PR #51](https://github.com/tommyxie2026-tech/computecloud/pull/51) 首轮 [CI 36496960465](https://github.com/tommyxie2026-tech/computecloud/actions/runs/36496960465) 的 `agent-control-approval`、dispatch、fencing、negative、schema 均通过。
+- 首轮 vet 报告新增测试复制 protobuf 内部锁；已改为显式构造 ACK，本地 `go vet ./...` 通过。
+- 同步 `343e32d` 后本地审批 Gate 再次通过（含 race）。
+- **集成阻塞（WS-A）**：只读 prepared template 的测试清理失败：`TempDir RemoveAll cleanup: .../.git/objects/...: permission denied`。
+  同一问题已在 [main CI 36496434574](https://github.com/tommyxie2026-tech/computecloud/actions/runs/36496434574/job/109176980044)
+  与 PR CI 重现，影响 workspace / runtime / environment / read 等 Gate。本分支不修改 WS-A 文件、不跳过 Gate；由 WS-A 修复后再同步验收。
+
 ### Workstream 状态
 
 | 项目 | 状态 | 说明 |
 | --- | --- | --- |
 | ACP-A / ACP-B / ACP-C Runtime Approval | DONE（基线） | 已在 main，不重复建设 |
-| ACK 幂等 / generation 防护 / 双 Runtime 负向矩阵 | DONE（实现和本地 Gate） | PR CI / review 后合并 |
+| ACK 幂等 / generation 防护 / 双 Runtime 负向矩阵 | DONE（实现和审批 Gate） | 首轮 PR 审批 Gate 已通过，仍需完整 CI / review 后合并 |
 | ACP-D Goal Governance bridge | BLOCKED | main 只有 Re-plan Guard 的 `NEEDS_APPROVAL`，尚无 WS-D durable Goal Approval API |
 | ACP-E 全矩阵 | PARTIAL | Runtime Approval 已验证；Goal approval durable case 等待 WS-D |
+| main 集成 | BLOCKED | WS-A 只读 template 清理权限问题影响多项现有 Gate |
 | WS-E 整体 | PARTIAL | 不把上述依赖标为完成，不扩展到 PWA/Resume/Goal 决策实现 |
 
 ### 后续合并依赖

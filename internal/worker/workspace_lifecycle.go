@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
@@ -18,6 +20,40 @@ const workspaceGCInterval = 30 * time.Second
 
 func (w *Worker) workspaceRoot() string {
 	return filepath.Join(w.cfg.DataDir, "workspaces")
+}
+
+func (w *Worker) preparedWorkspaceRoot() string {
+	return filepath.Join(w.cfg.DataDir, "prepared-workspaces")
+}
+
+func preparedTemplateForAssignment(a *pb.Assignment, repoRef, base string) (workspace.WorkspaceTemplate, error) {
+	if a == nil || a.Spec == nil {
+		return workspace.WorkspaceTemplate{}, errors.New("assignment task spec required")
+	}
+	envName, err := requiredEnvironment(a)
+	if err != nil {
+		return workspace.WorkspaceTemplate{}, err
+	}
+	var tools []string
+	for _, capability := range a.Spec.RequiredCapabilities {
+		if strings.HasPrefix(capability, "tool:") {
+			tools = append(tools, capability)
+		}
+	}
+	sort.Strings(tools)
+	toolFingerprint := ""
+	if len(tools) != 0 {
+		toolFingerprint = store.Hash([]byte(strings.Join(tools, "\n")))
+	}
+	return workspace.WorkspaceTemplate{
+		TemplateID:             "repo-" + store.Hash([]byte(repoRef+"\x00"+base))[:16],
+		RepositoryRef:          repoRef,
+		BaseCommit:             base,
+		EnvironmentFingerprint: store.Hash([]byte(envName)),
+		RuntimeFingerprint:     store.Hash([]byte(a.Spec.RuntimeProfile+"\x00"+a.Spec.Model)),
+		ToolFingerprint:        toolFingerprint,
+		Version:                1,
+	}, nil
 }
 
 func (w *Worker) inputRoot() string {
@@ -81,9 +117,24 @@ func (w *Worker) prepareWorkspace(ctx context.Context, a *pb.Assignment) (string
 		return "", err
 	}
 
-	cwd, err := workspace.Prepare(ctx, root, a.AttemptId, source, base)
+	tmpl, err := preparedTemplateForAssignment(a, repoRef, base)
 	if err != nil {
-		_ = w.deleteWorkspace(ctx, a.AttemptId, "workspace prepare failed")
+		_ = w.deleteWorkspace(ctx, a.AttemptId, "workspace template invalid")
+		return "", err
+	}
+	preparedProvider, err := workspace.NewLocalPreparedProvider(w.preparedWorkspaceRoot())
+	if err != nil {
+		_ = w.deleteWorkspace(ctx, a.AttemptId, "prepared workspace provider unavailable")
+		return "", err
+	}
+	preparedRef, err := preparedProvider.PrepareTemplate(ctx, tmpl, source)
+	if err != nil {
+		_ = w.deleteWorkspace(ctx, a.AttemptId, "prepared workspace template failed")
+		return "", err
+	}
+	cwd, err := preparedProvider.MaterializeAttempt(ctx, tmpl, preparedRef, root, a.AttemptId)
+	if err != nil {
+		_ = w.deleteWorkspace(ctx, a.AttemptId, "workspace materialization failed")
 		return "", err
 	}
 	size, quotaErr := workspace.CheckQuota(cwd, w.cfg.WorkspaceMaxBytes)
