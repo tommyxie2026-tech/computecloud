@@ -7,7 +7,7 @@
 - 当前实现基线：v0.2.0
 - 长期路线：[长期演进路线图](../implementation/long-term-roadmap.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
-- 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
+- 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)\n- 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 
 ## 1. 产品定位
 
@@ -461,3 +461,30 @@ computecloud 的长期产品定义：
 ~~~
 
 而不是通过扩大领域模型变成通用 AI 基础设施。
+
+
+## 16. Goal-oriented Computing 扩展原则
+
+自 ADR-017 起，任何新的执行能力优先判断它属于哪一层：
+
+~~~text
+Goal / Plan Layer
+  objective / constraints / acceptance / plan revision
+
+Execution Graph Layer
+  dependency / node / graph generation / bounded dynamic expansion
+
+Durable Execution Layer
+  Job / Stage / Task / Attempt / retry / fencing
+
+Execution Plane
+  Scheduler / Worker / Runtime / Tool / Environment / Workspace
+
+Evidence Layer
+  Artifact / provenance / verifier evidence
+
+Feedback Layer
+  Evaluator / approval / retry / re-route / re-plan
+~~~
+
+Planner 和 Evaluator 的智能实现采用 Provider 边界；computecloud 负责持久化契约、状态机、可靠执行与审计，不要求所有智能能力都内置。
