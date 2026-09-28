@@ -235,6 +235,24 @@ func (s *Server) dispatchControlOperation(ctx context.Context, principalID, jobI
 		} else {
 			return readErr
 		}
+		if in.OperationType == "approval" {
+			res, err := q.ExecContext(ctx, `UPDATE approval_requests
+				SET decision=?,decided_by=?,decided_at=?
+				WHERE approval_id=? AND request_version=? AND attempt_id=? AND generation=?
+				  AND state='PENDING' AND decision=''`,
+				payload.Decision, principalID, store.Now(),
+				payload.ApprovalID, payload.RequestVersion, in.ExpectedAttemptID, in.ExpectedGeneration)
+			if err != nil {
+				return err
+			}
+			n, err := res.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if n != 1 {
+				return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
+			}
+		}
 		receipt := ControlOperationReceipt{
 			OperationID: in.OperationID, State: "DISPATCHED", JobID: jobID,
 			TaskID: in.TaskID, AttemptID: in.ExpectedAttemptID, Generation: in.ExpectedGeneration,
