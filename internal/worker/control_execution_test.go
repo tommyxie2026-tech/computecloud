@@ -14,13 +14,19 @@ import (
 )
 
 type controlWorkerFixture struct {
-	mu     sync.Mutex
-	inputs int
+	mu        sync.Mutex
+	profile   string
+	inputs    int
 	approvals int
-	resumes int
+	resumes   int
 }
 
-func (p *controlWorkerFixture) Profile() string { return "control_worker_fixture" }
+func (p *controlWorkerFixture) Profile() string {
+	if p.profile != "" {
+		return p.profile
+	}
+	return "control_worker_fixture"
+}
 func (p *controlWorkerFixture) Version(config.Runtime) string { return "fixture" }
 func (p *controlWorkerFixture) Transport() string { return "remote_api" }
 func (p *controlWorkerFixture) Probe(context.Context, config.Runtime) error { return nil }
@@ -240,12 +246,9 @@ func TestACP4ResumeFailsClosedWhenWorkspaceOrEnvironmentUnavailable(t *testing.T
 		t.Fatal(err)
 	}
 	defer d.Close()
-	provider := &controlWorkerFixture{}
+	provider := &controlWorkerFixture{profile: "control_worker_fixture_resume_negative"}
 	if err = adapter.Register(provider); err != nil {
-		// The fixture may already be registered by another test in this process.
-		if provider.Profile() != "control_worker_fixture" {
-			t.Fatal(err)
-		}
+		t.Fatal(err)
 	}
 	w := &Worker{db: d}
 	a := &pb.Assignment{
