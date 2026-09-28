@@ -31,6 +31,8 @@ type ReplanRequest struct {
 	ExpectedPlanRevision    int64
 	ExpectedGraphGeneration int64
 	ReasonCode              string
+	Evidence                ReplanEvidence
+	ProposedPlan            PlanCanonical
 }
 
 type ReplanDecision struct {
@@ -50,6 +52,8 @@ const (
 	DecisionDeadlineExceeded = "DEADLINE_EXCEEDED"
 	DecisionStaleGeneration  = "STALE_GENERATION"
 	DecisionGoalTerminal     = "GOAL_TERMINAL"
+	DecisionNoNewEvidence    = "NO_NEW_EVIDENCE"
+	DecisionDuplicatePlan    = "DUPLICATE_PLAN"
 )
 
 func Create(ctx context.Context, db *store.DB, in CreateGoal) error {
@@ -100,19 +104,43 @@ func ReserveAttempt(ctx context.Context, db *store.DB, goalID string) error {
 	})
 }
 
+func RegisterPlanFingerprint(ctx context.Context, db *store.DB, goalID string, revision int64, plan PlanCanonical) error {
+	if goalID == "" || revision < 1 {
+		return fmt.Errorf("goal id and positive plan revision are required")
+	}
+	if err := plan.Validate(); err != nil {
+		return err
+	}
+	_, err := db.SQL.ExecContext(ctx,
+		"INSERT INTO plan_fingerprints(goal_id,plan_revision,fingerprint,created) VALUES(?,?,?,?)",
+		goalID, revision, plan.Fingerprint(), store.Now())
+	return err
+}
+
 func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDecision, error) {
 	if in.ID == "" || in.GoalID == "" || in.EvaluationID == "" {
 		return ReplanDecision{}, fmt.Errorf("replan request id, goal id and evaluation id are required")
 	}
+	if err := in.Evidence.Validate(); err != nil {
+		return ReplanDecision{}, err
+	}
+	if err := in.ProposedPlan.Validate(); err != nil {
+		return ReplanDecision{}, err
+	}
+	evidenceFingerprint := in.Evidence.Fingerprint()
+	planFingerprint := in.ProposedPlan.Fingerprint()
 
 	var out ReplanDecision
 	err := db.Tx(ctx, func(q store.Query) error {
-		var existingState, existingCode string
+		var existingState, existingCode, existingEvidence, existingPlanFingerprint string
 		var existingPlan, existingGraph int64
 		err := q.QueryRowContext(ctx,
-			"SELECT state,decision_code,next_plan_revision,next_graph_generation FROM replan_requests WHERE goal_id=? AND evaluation_id=?",
-			in.GoalID, in.EvaluationID).Scan(&existingState, &existingCode, &existingPlan, &existingGraph)
+			"SELECT state,decision_code,next_plan_revision,next_graph_generation,evidence_fingerprint,proposed_plan_fingerprint FROM replan_requests WHERE goal_id=? AND evaluation_id=?",
+			in.GoalID, in.EvaluationID).Scan(&existingState, &existingCode, &existingPlan, &existingGraph, &existingEvidence, &existingPlanFingerprint)
 		if err == nil {
+			if existingEvidence != evidenceFingerprint || existingPlanFingerprint != planFingerprint {
+				return fmt.Errorf("IDEMPOTENCY_CONFLICT")
+			}
 			out.Existing = true
 			out.Allowed = existingState == DecisionAllowed
 			out.NeedsApproval = existingState == "NEEDS_APPROVAL"
@@ -141,6 +169,18 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 		code := DecisionAllowed
 		nextPlan, nextGraph := activePlan+1, activeGraph+1
 
+		var seenEvidence, seenPlan int
+		if err = q.QueryRowContext(ctx,
+			"SELECT count(*) FROM goal_evidence WHERE goal_id=? AND fingerprint=?",
+			in.GoalID, evidenceFingerprint).Scan(&seenEvidence); err != nil {
+			return err
+		}
+		if err = q.QueryRowContext(ctx,
+			"SELECT count(*) FROM plan_fingerprints WHERE goal_id=? AND fingerprint=?",
+			in.GoalID, planFingerprint).Scan(&seenPlan); err != nil {
+			return err
+		}
+
 		switch {
 		case terminal(state):
 			requestState, code = "REJECTED", DecisionGoalTerminal
@@ -160,16 +200,33 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 		case deadline > 0 && now >= deadline:
 			requestState, code = "NEEDS_APPROVAL", DecisionDeadlineExceeded
 			nextPlan, nextGraph = 0, 0
+		case seenEvidence != 0:
+			requestState, code = "NEEDS_APPROVAL", DecisionNoNewEvidence
+			nextPlan, nextGraph = 0, 0
+		case seenPlan != 0:
+			requestState, code = "NEEDS_APPROVAL", DecisionDuplicatePlan
+			nextPlan, nextGraph = 0, 0
 		}
 
 		if _, err = q.ExecContext(ctx,
-			"INSERT INTO replan_requests(id,goal_id,evaluation_id,expected_plan_revision,expected_graph_generation,reason_code,state,decision_code,next_plan_revision,next_graph_generation,created,decided) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+			"INSERT INTO replan_requests(id,goal_id,evaluation_id,expected_plan_revision,expected_graph_generation,reason_code,state,decision_code,next_plan_revision,next_graph_generation,created,decided,failure_class,evidence_fingerprint,proposed_plan_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 			in.ID, in.GoalID, in.EvaluationID, in.ExpectedPlanRevision, in.ExpectedGraphGeneration,
-			in.ReasonCode, requestState, code, nextPlan, nextGraph, now, now); err != nil {
+			in.ReasonCode, requestState, code, nextPlan, nextGraph, now, now,
+			string(in.Evidence.FailureClass), evidenceFingerprint, planFingerprint); err != nil {
 			return err
 		}
 
 		if requestState == DecisionAllowed {
+			if _, err = q.ExecContext(ctx,
+				"INSERT INTO goal_evidence(goal_id,fingerprint,evaluation_id,failure_class,created) VALUES(?,?,?,?,?)",
+				in.GoalID, evidenceFingerprint, in.EvaluationID, string(in.Evidence.FailureClass), now); err != nil {
+				return err
+			}
+			if _, err = q.ExecContext(ctx,
+				"INSERT INTO plan_fingerprints(goal_id,plan_revision,fingerprint,created) VALUES(?,?,?,?)",
+				in.GoalID, nextPlan, planFingerprint, now); err != nil {
+				return err
+			}
 			res, err := q.ExecContext(ctx,
 				"UPDATE goals SET state='REPLANNING',consumed_replans=consumed_replans+1,active_plan_revision=?,active_graph_generation=?,updated=?,version=version+1 WHERE id=? AND active_plan_revision=? AND active_graph_generation=? AND consumed_replans<? AND consumed_attempts<? AND state NOT IN ('SUCCEEDED','FAILED','CANCELED')",
 				nextPlan, nextGraph, now, in.GoalID,
