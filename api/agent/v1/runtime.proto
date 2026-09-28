@@ -68,7 +68,23 @@ message JobExecution {
 }
 message GatewayAccess { string base_url = 1; string token = 2; string route = 3; }
 message InputArtifactRequest { AttemptRef attempt = 1; string artifact_id = 2; }
-message Command { string command_id = 1; string kind = 2; Assignment assignment = 3; }
+message ControlCommand {
+  string operation_id = 1;
+  string operation_type = 2;
+  string job_id = 3;
+  string task_id = 4;
+  string attempt_id = 5;
+  int64 generation = 6;
+  string session_ref = 7;
+  string mode = 8;
+  bytes payload_json = 9;
+}
+message Command {
+  string command_id = 1;
+  string kind = 2;
+  Assignment assignment = 3;
+  ControlCommand control = 4;
+}
 message LeaseGrant { string attempt_id = 1; int64 ttl_ms = 2; bool valid = 3; }
 message ServerFrame { oneof body { Command command = 1; LeaseGrant lease = 2; } }
 message ReportRequest { AttemptRef attempt = 1; repeated Event events = 2; }
