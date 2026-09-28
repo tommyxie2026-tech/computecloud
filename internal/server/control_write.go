@@ -214,3 +214,104 @@ func (s *Server) acceptControlOperation(ctx context.Context, jobID string, in Co
 	}
 	return receipt, nil
 }
+
+
+func controlCommandID(principalID, operationID string) string {
+	return "control-" + store.Hash([]byte(principalID+"\x00"+operationID))[:32]
+}
+
+func (s *Server) dispatchControlOperation(ctx context.Context, jobID string, in ControlOperationRequest, receipt *ControlOperationReceipt) error {
+	p, err := rpcutil.Require(ctx, "jobs:control", false)
+	if err != nil {
+		return err
+	}
+	return s.db.Tx(ctx, func(q store.Query) error {
+		if err := validateControlFence(ctx, q, jobID, in); err != nil {
+			return err
+		}
+		if err := s.validateControlCapability(ctx, q, in); err != nil && in.OperationType != "cancel" {
+			return err
+		}
+		// Cancellation remains on the existing server-owned stop path. Interactive
+		// control uses the structured control command envelope below.
+		if in.OperationType == "cancel" {
+			receipt.State = "DISPATCHED"
+			raw := job.JSON(receipt)
+			_, err := q.ExecContext(ctx,
+				"UPDATE control_operations SET state='DISPATCHED',receipt_json=?,updated=? WHERE principal_id=? AND operation_id=?",
+				raw, store.Now(), p.Identity.Owner, in.OperationID)
+			return err
+		}
+
+		var workerID, leaseToken, nativeSession string
+		var generation int64
+		if err := q.QueryRowContext(ctx, `SELECT t.worker,a.token,a.generation,t.native_session
+			FROM tasks t JOIN attempts a ON a.id=t.attempt
+			WHERE t.id=? AND t.job_id=? AND a.id=? AND a.released=0`,
+			in.TaskID, jobID, in.ExpectedAttemptID,
+		).Scan(&workerID, &leaseToken, &generation, &nativeSession); err != nil {
+			return err
+		}
+		if generation != in.ExpectedGeneration {
+			return status.Error(codes.Aborted, control.ErrorAttemptFenced)
+		}
+		cc := &pb.ControlCommand{
+			OperationId: in.OperationID,
+			OperationType: in.OperationType,
+			JobId: jobID,
+			TaskId: in.TaskID,
+			AttemptId: in.ExpectedAttemptID,
+			Generation: in.ExpectedGeneration,
+			SessionRef: nativeSession,
+			PayloadJson: append([]byte(nil), in.Payload...),
+			LeaseToken: leaseToken,
+		}
+		if in.OperationType == "input" {
+			var payload struct{ Mode string `json:"mode"` }
+			if err := json.Unmarshal(in.Payload, &payload); err != nil {
+				return status.Error(codes.InvalidArgument, "invalid control input payload")
+			}
+			cc.Mode = payload.Mode
+		}
+		cmd := &pb.Command{
+			CommandId: controlCommandID(p.Identity.Owner, in.OperationID),
+			Kind: "control",
+			Control: cc,
+		}
+		body := encode(cmd)
+		var existing []byte
+		err := q.QueryRowContext(ctx, "SELECT body FROM commands WHERE id=?", cmd.CommandId).Scan(&existing)
+		switch {
+		case err == nil:
+			if store.Hash(existing) != store.Hash(body) {
+				return status.Error(codes.AlreadyExists, control.ErrorOperationConflict)
+			}
+		case errors.Is(err, sql.ErrNoRows):
+			if _, err = q.ExecContext(ctx,
+				"INSERT INTO commands(id,task,attempt,worker,kind,body) VALUES(?,?,?,?,?,?)",
+				cmd.CommandId, in.TaskID, in.ExpectedAttemptID, workerID, "control", body); err != nil {
+				return err
+			}
+		default:
+			return err
+		}
+
+		receipt.State = "DISPATCHED"
+		raw := job.JSON(receipt)
+		_, err = q.ExecContext(ctx,
+			"UPDATE control_operations SET state='DISPATCHED',receipt_json=?,updated=? WHERE principal_id=? AND operation_id=?",
+			raw, store.Now(), p.Identity.Owner, in.OperationID)
+		return err
+	})
+}
+
+func (s *Server) acceptAndDispatchControlOperation(ctx context.Context, jobID string, in ControlOperationRequest) (*ControlOperationReceipt, error) {
+	receipt, err := s.acceptControlOperation(ctx, jobID, in)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.dispatchControlOperation(ctx, jobID, in, receipt); err != nil {
+		return nil, dbErr(err)
+	}
+	return receipt, nil
+}
