@@ -11,7 +11,7 @@ var knownEventTypes = map[string]struct{}{
 	"session.completed": {}, "session.failed": {},
 	"message.started": {}, "message.delta": {}, "message.completed": {}, "plan.updated": {},
 	"tool.requested": {}, "tool.started": {}, "tool.completed": {}, "tool.failed": {},
-	"approval.requested": {}, "approval.accepted": {}, "approval.rejected": {}, "approval.expired": {},
+	"approval.requested": {}, "approval.accepted": {}, "approval.rejected": {}, "approval.expired": {}, "approval.superseded": {},
 	"file.changed": {}, "diff.updated": {}, "artifact.created": {},
 	"runtime.warning": {}, "runtime.disconnected": {}, "runtime.recovered": {},
 	"control.accepted": {}, "control.completed": {}, "control.rejected": {},
