@@ -29,7 +29,7 @@ def main():
     result = run([
         "go", "test",
         "./internal/server", "./internal/worker", "./internal/adapter",
-        "-run", "AgentControlDispatchResume|AgentControlWorkerResumesSession|AgentControlWorkerRejectsResume|AgentControlPersistsRuntimeSessionRefEarly|RuntimeParserEmitsNormalizedSessionStarted",
+        "-run", "AgentControlDispatchResume|AgentControlWorkerResumesSession|AgentControlWorkerRejectsResume|AgentControlPersistsRuntimeSessionRefEarly|AgentControlCompletionSessionRefResolution|RuntimeParserEmitsNormalizedSessionStarted",
         "-count=1", "-v",
     ])
 
