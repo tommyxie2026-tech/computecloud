@@ -368,6 +368,44 @@ func (s *Server) applyControlAck(ctx context.Context, workerID string, ack *pb.C
 			cmd.Control.PrincipalId, ack.OperationId).Scan(&jobID); err != nil {
 			return err
 		}
+		if cmd.Control.Action == "approval" {
+			approvalEvent := ""
+			switch {
+			case ack.State == "COMPLETED" && cmd.Control.Decision == "accept":
+				approvalEvent = "approval.accepted"
+			case ack.State == "COMPLETED" && cmd.Control.Decision == "reject":
+				approvalEvent = "approval.rejected"
+			case ack.State == "UNKNOWN":
+				approvalEvent = "approval.superseded"
+			}
+			if approvalEvent != "" {
+				if err := appendJobEvent(ctx, q, jobID, approvalEvent, map[string]any{
+					"protocol_version": control.ProtocolV1Alpha1,
+					"approval_id": cmd.Control.ApprovalId,
+					"request_version": cmd.Control.RequestVersion,
+					"operation_id": ack.OperationId,
+					"task_id": cmd.Control.TaskId,
+					"attempt_id": cmd.Control.AttemptId,
+					"generation": cmd.Control.Generation,
+				}, "approval-result:"+cmd.Control.ApprovalId+":"+fmtInt(cmd.Control.RequestVersion), store.Hash(job.JSON(map[string]any{
+					"event": approvalEvent, "operation_id": ack.OperationId,
+				}))); err != nil {
+					return err
+				}
+			}
+		}
+		if cmd.Control.Action == "resume" && ack.State == "COMPLETED" {
+			if err := appendJobEvent(ctx, q, jobID, "session.resumed", map[string]any{
+				"protocol_version": control.ProtocolV1Alpha1,
+				"session_ref": cmd.Control.SessionRef,
+				"operation_id": ack.OperationId,
+				"task_id": cmd.Control.TaskId,
+				"attempt_id": cmd.Control.AttemptId,
+				"generation": cmd.Control.Generation,
+			}, "session-resume:"+cmd.Control.PrincipalId+":"+ack.OperationId, store.Hash([]byte(cmd.Control.SessionRef))); err != nil {
+				return err
+			}
+		}
 		return appendJobEvent(ctx, q, jobID, eventType, map[string]any{
 			"protocol_version": control.ProtocolV1Alpha1,
 			"operation_id": ack.OperationId,
