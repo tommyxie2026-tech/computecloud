@@ -1,6 +1,6 @@
 # 版本记录
 
-## 未发布 — v0.4.4 EnvironmentProvider Execution
+## 未发布 — v0.4.4 EnvironmentProvider Execution（实现完成，待版本发布）
 
 - 新增独立 Environment Provider lifecycle：Descriptor / Prepare / Activate / Inspect / Release。
 - 新增 transport-neutral EnvironmentRef、EnvironmentState 与 CleanupState；Worker schema 升级到 v5，持久 environment provider/ref/state/cleanup。
