@@ -274,3 +274,22 @@ func TestAgentControlPersistsRuntimeSessionRefEarly(t *testing.T) {
 		t.Fatal("stale generation session ref accepted")
 	}
 }
+
+
+func TestAgentControlCompletionSessionRefResolution(t *testing.T) {
+	got, err := resolveRuntimeSessionRef("early-session", "")
+	if err != nil || got != "early-session" {
+		t.Fatalf("preserve early session got=%q err=%v", got, err)
+	}
+	got, err = resolveRuntimeSessionRef("early-session", "early-session")
+	if err != nil || got != "early-session" {
+		t.Fatalf("same completion session got=%q err=%v", got, err)
+	}
+	got, err = resolveRuntimeSessionRef("", "completion-session")
+	if err != nil || got != "completion-session" {
+		t.Fatalf("completion-only session got=%q err=%v", got, err)
+	}
+	if _, err = resolveRuntimeSessionRef("early-session", "different-session"); err == nil {
+		t.Fatal("conflicting completion session ref accepted")
+	}
+}
