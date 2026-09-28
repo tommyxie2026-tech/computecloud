@@ -173,3 +173,32 @@ func containsControlCapability(values []control.Capability, value control.Capabi
 	}
 	return false
 }
+
+
+func TestAgentControlCapabilityNamespaceProjection(t *testing.T) {
+	got := controlCapabilities([]string{
+		"runtime:event_stream",
+		"runtime:cancel",
+		"control:interactive_input",
+		"control:approval",
+		"control:session_resume",
+		"control:vendor_private",
+	})
+	for _, want := range []control.Capability{
+		control.CapabilityStreamOutput,
+		control.CapabilityStructuredOutput,
+		control.CapabilityCancel,
+		control.CapabilityInteractiveInput,
+		control.CapabilityApproval,
+		control.CapabilitySessionResume,
+	} {
+		if !containsControlCapability(got, want) {
+			t.Fatalf("missing capability %q in %v", want, got)
+		}
+	}
+	for _, value := range got {
+		if value == control.Capability("vendor_private") {
+			t.Fatalf("unknown control capability projected: %v", got)
+		}
+	}
+}
