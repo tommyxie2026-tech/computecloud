@@ -104,3 +104,21 @@ func environmentRefQuery(ctx context.Context, q store.Query, attempt string) (st
 	err := q.QueryRowContext(ctx, "SELECT environment_provider,environment_ref FROM runs WHERE id=?", attempt).Scan(&provider, &ref)
 	return provider, ref, err
 }
+
+
+func (w *Worker) releaseEnvironment(ctx context.Context, attempt string, provider envreg.Provider, ref envreg.Ref) envreg.ReleaseResult {
+	result, err := provider.Release(ctx, ref)
+	if err != nil {
+		result.Err = errors.Join(result.Err, err)
+		if result.State == "" {
+			result.State = envreg.StateUnknown
+		}
+		result.Cleanup = envreg.CleanupUnknown
+	}
+	if persistErr := w.recordEnvironmentTerminal(ctx, attempt, result); persistErr != nil {
+		result.Err = errors.Join(result.Err, persistErr)
+		result.State = envreg.StateUnknown
+		result.Cleanup = envreg.CleanupUnknown
+	}
+	return result
+}
