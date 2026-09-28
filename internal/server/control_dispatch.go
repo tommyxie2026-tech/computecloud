@@ -352,7 +352,7 @@ func (s *Server) applyControlAck(ctx context.Context, workerID string, ack *pb.C
 			cmd.Control.PrincipalId, ack.OperationId).Scan(&jobID); err != nil {
 			return err
 		}
-		return appendJobEvent(ctx, q, jobID, eventType, map[string]any{
+		if err := appendJobEvent(ctx, q, jobID, eventType, map[string]any{
 			"protocol_version": control.ProtocolV1Alpha1,
 			"operation_id": ack.OperationId,
 			"task_id": cmd.Control.TaskId,
@@ -363,6 +363,19 @@ func (s *Server) applyControlAck(ctx context.Context, workerID string, ack *pb.C
 			"error_message": message,
 		}, "control-result:"+cmd.Control.PrincipalId+":"+ack.OperationId, store.Hash(job.JSON(map[string]any{
 			"state": ledgerState, "error_code": code, "error_message": message,
-		})))
+		}))); err != nil {
+			return err
+		}
+		if cmd.Control.Action == "resume" && ack.State == "COMPLETED" {
+			return appendJobEvent(ctx, q, jobID, "session.resumed", map[string]any{
+				"protocol_version": control.ProtocolV1Alpha1,
+				"operation_id": ack.OperationId,
+				"task_id": cmd.Control.TaskId,
+				"attempt_id": cmd.Control.AttemptId,
+				"generation": cmd.Control.Generation,
+				"session_ref": cmd.Control.SessionRef,
+			}, "session-resumed:"+cmd.Control.PrincipalId+":"+ack.OperationId, "")
+		}
+		return nil
 	})
 }
