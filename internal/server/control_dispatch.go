@@ -21,6 +21,7 @@ type controlDispatchPayload struct {
 	ApprovalID     string `json:"approval_id,omitempty"`
 	RequestVersion int64  `json:"request_version,omitempty"`
 	Decision       string `json:"decision,omitempty"`
+	SessionRef     string `json:"session_ref,omitempty"`
 }
 
 func requiredControlCapability(in ControlOperationRequest) (control.Capability, controlDispatchPayload, error) {
@@ -48,6 +49,11 @@ func requiredControlCapability(in ControlOperationRequest) (control.Capability, 
 		}
 	case "interrupt":
 		return control.CapabilityInterrupt, payload, nil
+	case "resume":
+		if len(in.Payload) == 0 || json.Unmarshal(in.Payload, &payload) != nil || payload.SessionRef == "" {
+			return "", payload, status.Error(codes.InvalidArgument, "explicit session_ref required for resume")
+		}
+		return control.CapabilitySessionResume, payload, nil
 	case "approval":
 		var decision approvalDecisionPayload
 		if len(in.Payload) == 0 || json.Unmarshal(in.Payload, &decision) != nil {
@@ -197,6 +203,12 @@ func (s *Server) dispatchControlOperation(ctx context.Context, principalID, jobI
 		if err := q.QueryRowContext(ctx, "SELECT worker,native_session FROM tasks WHERE id=?", in.TaskID).
 			Scan(&workerID, &nativeSession); err != nil {
 			return err
+		}
+		if in.OperationType == "resume" {
+			if nativeSession == "" || payload.SessionRef == "" || nativeSession != payload.SessionRef {
+				return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
+			}
+			nativeSession = payload.SessionRef
 		}
 		cmd := &pb.Command{
 			CommandId: commandID,
