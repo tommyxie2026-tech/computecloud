@@ -2,14 +2,14 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 当前稳定发布基线：v0.3.2；main 功能基线：v0.4.2 ToolCapability Foundation
+- 当前稳定发布基线：v0.3.2；main 功能基线：v0.4.3 EnvironmentCapability Foundation
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
-- 当前实现依据：[v0.4.2 ToolCapability](v0.4.2-plan.md)、[ADR-014](../adr/0014-tool-capability.md)
-- 当前实施跟踪：[v0.4.3 EnvironmentCapability Foundation](v0.4.3-plan.md) / [Issue #31](https://github.com/tommyxie2026-tech/computecloud/issues/31)；v0.4.2 ToolCapability 已完成；v0.3.x Reliability Kernel 已完成；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实现依据：[v0.4.3 EnvironmentCapability](v0.4.3-plan.md)、[ADR-015](../adr/0015-environment-capability.md)
+- 当前实施跟踪：v0.4.3 EnvironmentCapability Foundation 已完成；下一主线进入 EnvironmentProvider execution；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -581,7 +581,7 @@ v0.4.1 不绑定具体商业 Agent API，也不提前实现 Session resume、App
 
 v0.4.2 只稳定 capability 与 policy contract，不提前实现通用 Shell/Browser/HTTP/MCP Tool execution proxy。具体 Tool execution、credential、network/isolation 与 approval 按后续能力分别设计。
 
-### 6.1.3 v0.4.3 EnvironmentCapability Foundation — 当前功能主线
+### 6.1.3 v0.4.3 EnvironmentCapability Foundation — 已完成
 
 把 Environment 从 Runtime Provider 附属字符串拆成独立 capability/policy contract：
 
@@ -597,6 +597,8 @@ v0.4.2 只稳定 capability 与 policy contract，不提前实现通用 Shell/Br
 - 独立 `environment-contract-flow` CI Gate。
 
 v0.4.3 只稳定 Environment capability/policy foundation。container/VM/external sandbox 的真实执行生命周期在后续 EnvironmentProvider 小版本实现。
+
+完成证据：PR #32 已合并为 `fb2ed88e1d0cebbe0268a0fde4fc889eb4e08f89`；PR-head CI `36358683344` 与 main CI `36358949361` 均通过，main package Gate 通过。
 
 
 RuntimeCapability 示例：
