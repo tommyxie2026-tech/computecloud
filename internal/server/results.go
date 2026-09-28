@@ -203,7 +203,14 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 				return e
 			}
 		}
-		if _, e = q.ExecContext(ctx, "UPDATE tasks SET result=?,native_session=? WHERE id=?", r.Result, r.NativeSessionId, t.TaskId); e != nil {
+		sessionRef := t.SessionRef
+		if r.NativeSessionId != "" {
+			if sessionRef != "" && sessionRef != r.NativeSessionId {
+				return status.Error(codes.AlreadyExists, "SESSION_REF_CONFLICT")
+			}
+			sessionRef = r.NativeSessionId
+		}
+		if _, e = q.ExecContext(ctx, "UPDATE tasks SET result=?,native_session=? WHERE id=?", r.Result, sessionRef, t.TaskId); e != nil {
 			return e
 		}
 		if e = appendEvent(ctx, q, &pb.Event{TaskId: t.TaskId, AttemptId: r.Attempt.AttemptId, Generation: a.generation, Type: "attempt.completed", PayloadJson: config.JSON(map[string]any{"success": r.Success, "cleanup_confirmed": true, "artifact_ids": r.ArtifactIds})}, nil); e != nil {
