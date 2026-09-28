@@ -81,7 +81,7 @@ func persistedControlCapabilities(ctx context.Context, q store.Query, workerID, 
 	return nil, nil
 }
 
-func containsControlCapability(values []control.Capability, want control.Capability) bool {
+func hasControlCapability(values []control.Capability, want control.Capability) bool {
 	for _, value := range values {
 		if value == want {
 			return true
@@ -186,7 +186,7 @@ func (s *Server) CancelJobSession(ctx context.Context, jobID, sessionID string, 
 		if err != nil {
 			return err
 		}
-		if !containsControlCapability(capabilities, control.CapabilityCancel) {
+		if !hasControlCapability(capabilities, control.CapabilityCancel) {
 			return status.Error(codes.FailedPrecondition, "CAPABILITY_UNSUPPORTED")
 		}
 
@@ -272,7 +272,7 @@ func (s *Server) rejectUnsupportedSessionControl(ctx context.Context, jobID, ses
 	if session.AttemptID != in.ExpectedAttemptID || session.Generation != in.ExpectedGeneration {
 		return status.Error(codes.Aborted, "ATTEMPT_FENCED")
 	}
-	if !containsControlCapability(session.Capabilities, capability) {
+	if !hasControlCapability(session.Capabilities, capability) {
 		return status.Error(codes.FailedPrecondition, "CAPABILITY_UNSUPPORTED")
 	}
 	// A Runtime must not advertise a capability until the Worker command path is
