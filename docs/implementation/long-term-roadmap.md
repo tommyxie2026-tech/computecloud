@@ -1489,10 +1489,12 @@ evidence fingerprint
 + exact duplicate plan fingerprint
 Implementation: [RPG-2 Evidence Guard](rpg-2-evidence-plan-guard.md)
 
-RPG-3
+RPG-3  🟡 implemented / CI pending
 short-cycle detection
++ repeated failure guard
 + progress guard
 + structured strategy_delta
+Implementation: [RPG-3 Loop / Progress Guard](rpg-3-loop-progress-guard.md)
 
 RPG-4
 human approval escalation
