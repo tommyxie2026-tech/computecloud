@@ -202,11 +202,11 @@ func (s *Server) acceptControlOperation(ctx context.Context, jobID string, in Co
 		_, err := q.ExecContext(ctx, `INSERT INTO control_operations(
 			principal_id,operation_id,operation_type,resource_type,resource_id,
 			job_id,task_id,expected_attempt_id,expected_generation,expected_resource_version,
-			request_hash,state,receipt_json,created,updated
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			request_hash,state,receipt_json,created,updated,request_json
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			p.Identity.Owner, in.OperationID, in.OperationType, in.ResourceType, in.ResourceID,
 			jobID, in.TaskID, in.ExpectedAttemptID, in.ExpectedGeneration, in.ExpectedResourceVersion,
-			hash, "ACCEPTED", raw, now, now)
+			hash, "ACCEPTED", raw, now, now, job.JSON(in))
 		return err
 	})
 	if err != nil {
