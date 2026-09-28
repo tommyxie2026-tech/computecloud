@@ -200,6 +200,24 @@ func (p codexProvider) Stop(_ context.Context, _ config.Runtime, ref ExecutionRe
 	return stopLocal(ref, grace), nil
 }
 
+func (p geminiProvider) Version(r config.Runtime) string { return r.Version }
+func (p geminiProvider) Transport() string               { return "local_cli" }
+func (p geminiProvider) Prepare(req PrepareRequest) (PreparedExecution, error) {
+	if req.Gateway != nil {
+		return PreparedExecution{}, errors.New("runtime provider does not support model gateway")
+	}
+	return prepareCLI(p, req)
+}
+func (p geminiProvider) Start(ctx context.Context, prepared PreparedExecution, started func(ExecutionRef) error) StartResult {
+	return startLocalCLI(ctx, p, prepared, started)
+}
+func (p geminiProvider) Inspect(_ context.Context, _ config.Runtime, ref ExecutionRef) (Inspection, error) {
+	return inspectLocal(ref), nil
+}
+func (p geminiProvider) Stop(_ context.Context, _ config.Runtime, ref ExecutionRef, grace time.Duration) (StopResult, error) {
+	return stopLocal(ref, grace), nil
+}
+
 func (p claudeProvider) Version(r config.Runtime) string { return r.Version }
 func (p claudeProvider) Transport() string               { return "local_cli" }
 func (p claudeProvider) Prepare(req PrepareRequest) (PreparedExecution, error) {
