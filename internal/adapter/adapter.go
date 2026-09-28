@@ -280,9 +280,14 @@ func (p *GeminiParser) Line(line []byte) error {
 	}
 	kind := str("type")
 	typ := "runtime.diagnostic"
+	payload := line
 	switch kind {
 	case "init":
 		p.outcome.Session = str("session_id")
+		if p.outcome.Session != "" {
+			typ = "session.started"
+			payload, _ = json.Marshal(map[string]string{"session_ref": p.outcome.Session})
+		}
 	case "message":
 		var role, content string
 		var delta bool
@@ -321,7 +326,7 @@ func (p *GeminiParser) Line(line []byte) error {
 	if p.Emit == nil {
 		return nil
 	}
-	return p.Emit(typ, line)
+	return p.Emit(typ, payload)
 }
 
 type Parser struct {
@@ -342,10 +347,15 @@ func (p *Parser) Line(line []byte) error {
 	str := func(k string) string { var s string; _ = json.Unmarshal(m[k], &s); return s }
 	kind := str("type")
 	typ := "runtime.diagnostic"
+	payload := line
 	if p.Profile == "codex_exec" {
 		switch kind {
 		case "thread.started":
 			p.outcome.Session = str("thread_id")
+			if p.outcome.Session != "" {
+				typ = "session.started"
+				payload, _ = json.Marshal(map[string]string{"session_ref": p.outcome.Session})
+			}
 		case "turn.completed":
 			p.outcome.Final = true
 			p.outcome.Success = p.outcome.Code == ""
@@ -374,6 +384,8 @@ func (p *Parser) Line(line []byte) error {
 		case "system":
 			if s := str("session_id"); s != "" {
 				p.outcome.Session = s
+				typ = "session.started"
+				payload, _ = json.Marshal(map[string]string{"session_ref": s})
 			}
 		case "assistant":
 			typ = "message.completed"
@@ -398,7 +410,7 @@ func (p *Parser) Line(line []byte) error {
 	if p.Emit == nil {
 		return nil
 	}
-	return p.Emit(typ, line)
+	return p.Emit(typ, payload)
 }
 
 func Args(spec *pb.TaskSpec, policy config.Policy) ([]string, error) {
