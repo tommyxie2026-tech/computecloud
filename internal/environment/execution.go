@@ -2,6 +2,7 @@ package environment
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -77,6 +78,27 @@ func validRef(ref Ref) error {
 		return fmt.Errorf("invalid environment provider reference: %q", ref.Provider)
 	}
 	return nil
+}
+
+func EncodeRef(ref Ref) ([]byte, error) {
+	if err := validRef(ref); err != nil {
+		return nil, err
+	}
+	return json.Marshal(ref)
+}
+
+func DecodeRef(b []byte) (Ref, error) {
+	var ref Ref
+	if len(b) == 0 {
+		return ref, errors.New("environment reference is empty")
+	}
+	if err := json.Unmarshal(b, &ref); err != nil {
+		return Ref{}, err
+	}
+	if err := validRef(ref); err != nil {
+		return Ref{}, err
+	}
+	return ref, nil
 }
 
 func RegisterProvider(p Provider) error {
@@ -190,8 +212,8 @@ func (processProvider) Inspect(_ context.Context, ref Ref) (Inspection, error) {
 	return Inspection{State: StateReleased, Cleanup: CleanupConfirmed}, nil
 }
 
-func (processProvider) Release(_ context.Context, ref Ref) (ReleaseResult, error) {
-	inspection, err := (processProvider{}).Inspect(context.Background(), ref)
+func (processProvider) Release(ctx context.Context, ref Ref) (ReleaseResult, error) {
+	inspection, err := (processProvider{}).Inspect(ctx, ref)
 	return ReleaseResult{State: inspection.State, Cleanup: inspection.Cleanup, Err: err}, err
 }
 
