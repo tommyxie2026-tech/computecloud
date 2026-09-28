@@ -203,12 +203,9 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 				return e
 			}
 		}
-		sessionRef := t.SessionRef
-		if r.NativeSessionId != "" {
-			if sessionRef != "" && sessionRef != r.NativeSessionId {
-				return status.Error(codes.AlreadyExists, "SESSION_REF_CONFLICT")
-			}
-			sessionRef = r.NativeSessionId
+		sessionRef, sessionErr := resolveRuntimeSessionRef(t.SessionRef, r.NativeSessionId)
+		if sessionErr != nil {
+			return sessionErr
 		}
 		if _, e = q.ExecContext(ctx, "UPDATE tasks SET result=?,native_session=? WHERE id=?", r.Result, sessionRef, t.TaskId); e != nil {
 			return e
@@ -286,4 +283,15 @@ func persistRuntimeSessionRef(ctx context.Context, q store.Query, ev *pb.Event) 
 		return status.Error(codes.Aborted, "SESSION_REF_FENCED")
 	}
 	return nil
+}
+
+
+func resolveRuntimeSessionRef(current, final string) (string, error) {
+	if final == "" {
+		return current, nil
+	}
+	if current != "" && current != final {
+		return "", status.Error(codes.AlreadyExists, "SESSION_REF_CONFLICT")
+	}
+	return final, nil
 }
