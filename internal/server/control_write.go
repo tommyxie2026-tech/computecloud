@@ -315,3 +315,44 @@ func (s *Server) acceptAndDispatchControlOperation(ctx context.Context, jobID st
 	}
 	return receipt, nil
 }
+
+
+func resolveControlOperationEvent(ctx context.Context, q store.Query, event *pb.Event) error {
+	if event == nil || (event.Type != "control.accepted" && event.Type != "control.rejected") {
+		return nil
+	}
+	var payload struct {
+		OperationID string `json:"operation_id"`
+	}
+	if err := json.Unmarshal(event.PayloadJson, &payload); err != nil || payload.OperationID == "" {
+		return status.Error(codes.InvalidArgument, "invalid control result event")
+	}
+	var principalID string
+	var raw []byte
+	err := q.QueryRowContext(ctx, `SELECT principal_id,receipt_json
+		FROM control_operations
+		WHERE operation_id=? AND task_id=? AND expected_attempt_id=? AND expected_generation=?`,
+		payload.OperationID, event.TaskId, event.AttemptId, event.Generation,
+	).Scan(&principalID, &raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var receipt ControlOperationReceipt
+	if err := json.Unmarshal(raw, &receipt); err != nil {
+		return err
+	}
+	next := "COMPLETED"
+	if event.Type == "control.rejected" {
+		next = "REJECTED"
+	}
+	receipt.State = next
+	receipt.Existing = false
+	_, err = q.ExecContext(ctx, `UPDATE control_operations
+		SET state=?,receipt_json=?,updated=?
+		WHERE principal_id=? AND operation_id=? AND state IN ('ACCEPTED','DISPATCHED')`,
+		next, job.JSON(receipt), store.Now(), principalID, payload.OperationID)
+	return err
+}
