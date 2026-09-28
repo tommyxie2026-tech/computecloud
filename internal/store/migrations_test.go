@@ -43,7 +43,7 @@ func TestV1UpgradeBackupAndDrainGate(t *testing.T) {
 		t.Fatal(e)
 	}
 	db.SQL.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 11 {
+	if v != 12 {
 		t.Fatalf("version %d", v)
 	}
 	var state, stage string
@@ -109,7 +109,7 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 	}
 	defer db.Close()
 	var v int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 11 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 12 {
 		t.Fatalf("version=%d err=%v", v, e)
 	}
 	// New schema must allow multiple historical attempts for one Task while
@@ -173,7 +173,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 11 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 12 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -504,7 +504,7 @@ func TestV8ControlOperationLedger(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 11 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 12 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	_, e = db.SQL.Exec(`INSERT INTO control_operations(
@@ -546,7 +546,7 @@ func TestV9GoalReplanGuardSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 11 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 12 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO goals(id,owner,project,state,max_replans,max_total_attempts,max_wall_time_ms,created,updated) VALUES('g','o','p','GOAL_CREATED',2,4,60000,1,1)"); e != nil {
@@ -570,7 +570,7 @@ func TestV10GoalEvidenceAndPlanFingerprintSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 11 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 12 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO goals(id,owner,project,state,max_replans,max_total_attempts,max_wall_time_ms,created,updated) VALUES('g10','o','p','GOAL_CREATED',3,5,60000,1,1)"); e != nil {
@@ -650,7 +650,7 @@ func TestV11ReplanHistorySchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 11 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 12 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO goals(id,owner,project,state,max_replans,max_total_attempts,max_wall_time_ms,created,updated) VALUES('g11','o','p','GOAL_CREATED',4,8,60000,1,1)"); e != nil {
@@ -664,5 +664,41 @@ func TestV11ReplanHistorySchema(t *testing.T) {
 	}
 	if _, e = db.SQL.Exec("INSERT INTO replan_history(goal_id,ordinal,evaluation_id,plan_revision,graph_generation,failure_class,evidence_fingerprint,plan_fingerprint,strategy_signature,progress_json,progressed,created) VALUES('g11',2,'e1',3,3,'TEST_FAILURE','ev2','p3','s3','{}',0,2)"); e == nil {
 		t.Fatal("duplicate evaluation history accepted")
+	}
+}
+
+
+func TestV12ApprovalLifecycleSchema(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(dir, ServerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	var version int
+	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 12 {
+		t.Fatalf("version=%d err=%v", version, err)
+	}
+	if _, err = db.SQL.Exec("INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism) VALUES('j12','o','p','i','rh','sh','{}','single','EXECUTING',1,1,9999999999999,1)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.SQL.Exec("INSERT INTO tasks(id,owner,project,idem,hash,spec,state,attempt,worker,created,updated,deadline,job_id,current_generation) VALUES('t12','o','p','ti','h','{}','RUNNING','a12','w',1,1,9999999999999,'j12',1)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.SQL.Exec(`INSERT INTO approval_requests(
+		approval_id,request_version,job_id,task_id,attempt_id,generation,session_id,
+		tool,action,risk_class,request_hash,requested_at,state
+	) VALUES('ap',1,'j12','t12','a12',1,'s','shell','run','HIGH','h',1,'PENDING')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.SQL.Exec(`INSERT INTO approval_requests(
+		approval_id,request_version,job_id,task_id,attempt_id,generation,session_id,
+		tool,action,risk_class,request_hash,requested_at,state
+	) VALUES('ap',1,'j12','t12','a12',1,'s','shell','run','HIGH','other',2,'PENDING')`); err == nil {
+		t.Fatal("duplicate approval version accepted")
+	}
+	if _, err = db.SQL.Exec("UPDATE approval_requests SET state='INVALID' WHERE approval_id='ap' AND request_version=1"); err == nil {
+		t.Fatal("invalid approval state accepted")
 	}
 }
