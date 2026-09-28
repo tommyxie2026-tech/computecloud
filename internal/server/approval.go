@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
-	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -151,7 +151,7 @@ func expireJobApprovals(ctx context.Context, q store.Query, jobID string) error 
 				"protocol_version": control.ProtocolV1Alpha1,
 				"approval_id": x.id, "request_version": x.version,
 				"task_id": x.task, "attempt_id": x.attempt, "generation": x.generation,
-			}, "approval-expired:"+x.id+":"+job.FormatInt(x.version), ""); err != nil {
+			}, "approval-expired:"+x.id+":"+strconv.FormatInt(x.version, 10), ""); err != nil {
 				return err
 			}
 		}
@@ -333,13 +333,3 @@ func (s *Server) httpApprovalDecision(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, code, receipt)
 }
 
-func currentApprovalState(ctx context.Context, q store.Query, approvalID string, version int64) (string, error) {
-	var state string
-	err := q.QueryRowContext(ctx, "SELECT state FROM approval_requests WHERE approval_id=? AND request_version=?", approvalID, version).Scan(&state)
-	return state, err
-}
-
-func requireApprovalPermission(ctx context.Context) error {
-	_, err := rpcutil.Require(ctx, "jobs:control", false)
-	return err
-}
