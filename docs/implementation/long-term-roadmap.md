@@ -1496,10 +1496,16 @@ short-cycle detection
 + structured strategy_delta
 Implementation: [RPG-3 Loop / Progress Guard](rpg-3-loop-progress-guard.md)
 
-RPG-4
+RPG-4  FINAL
 human approval escalation
 + token/cost accounting
 + project policy templates
++ approval/idempotency/audit
++ budget/constraint authorization
+
+RPG CLOSED
+→ no RPG-5
+→ capability becomes stable Goal Governance / Re-plan Guard core
 ~~~
 
 v1 实现不依赖 embedding/vector DB，优先采用 canonical structured plan、fingerprint、failure class 和确定性状态比较，以保持系统轻量、可测试、可审计。
@@ -1509,3 +1515,52 @@ v1 实现不依赖 embedding/vector DB，优先采用 canonical structured plan�
 > **先把 Goal/Plan/Graph/Evaluation 建成 durable state machine，再增加智能 Planner/Evaluator；先保证可恢复和可审计，再追求自治程度。**
 
 > **自动 Re-plan 永远必须是 bounded autonomy；Planner/Evaluator 不得自行扩大预算、修改 Goal 或绕过 Re-plan Guard。**
+
+
+### 19.2 RPG 收敛规则
+
+RPG 固定只有四个阶段：
+
+~~~text
+RPG-1  有界
+RPG-2  有证据
+RPG-3  有收敛
+RPG-4  有治理
+   ↓
+CLOSED
+~~~
+
+RPG-4 是最后阶段，不再继续 RPG-5 / RPG-6。
+
+RPG 关闭后能力归位：
+
+~~~text
+Re-plan Guard bugs / optimization
+    -> normal maintenance
+
+Approval / RBAC / Policy
+    -> Enterprise Governance
+
+Planner / Evaluator intelligence
+    -> Provider Contract
+
+History-based scheduling signal
+    -> Adaptive Scheduling
+
+Core invariant change
+    -> new ADR
+~~~
+
+因此不会把 RPG 演化成第二套长期 roadmap。
+
+RPG-4 的退出门槛：
+
+- NEEDS_APPROVAL 有 durable state；
+- approval command 幂等且有 actor / reason / audit；
+- token / cost budget 可累计且不会被 Re-plan 重置；
+- budget increase / constraint change 必须显式授权；
+- Planner / Evaluator 无权自批；
+- approval 后的新 generation 继续受 fencing；
+- reject / abort 能终止 Goal；
+- 关键 negative cases 纳入 CI；
+- RPG-1～3 最新主线 CI 全绿后再宣布 RPG CLOSED。
