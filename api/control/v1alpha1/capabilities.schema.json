@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://computecloud.dev/schema/control/v1alpha1/capabilities.schema.json",
+  "title": "computecloud Agent Control Capabilities",
+  "$defs": {
+    "capability": {
+      "enum": [
+        "stream_output", "structured_output", "session_resume", "interactive_input",
+        "queue_next_input", "steer_current", "approval", "interrupt", "cancel",
+        "plan", "diff", "file_read", "file_write", "terminal", "tool_events",
+        "usage", "artifact_export"
+      ]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "capabilities"],
+  "properties": {
+    "protocol_version": {"const": "control.v1alpha1"},
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/capability"}
+    }
+  }
+}
