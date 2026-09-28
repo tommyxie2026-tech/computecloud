@@ -338,7 +338,7 @@ func TestWorkerV3WorkspaceLifecycleSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 6 {
 		t.Fatalf("worker version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO runs(id,assignment,state) VALUES('a','{}','DONE')"); e != nil {
@@ -431,7 +431,7 @@ func TestWorkerV4RuntimeExecutionSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 6 {
 		t.Fatalf("worker version=%d err=%v", version, e)
 	}
 	var provider, transport, state, cleanup string
@@ -479,7 +479,7 @@ func TestWorkerV5EnvironmentExecutionSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 5 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 6 {
 		t.Fatalf("worker version=%d err=%v", version, e)
 	}
 	var provider, state, cleanup string
