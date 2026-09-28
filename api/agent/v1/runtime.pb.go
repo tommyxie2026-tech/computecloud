@@ -1762,6 +1762,7 @@ type ControlCommand struct {
 	SessionRef    string                 `protobuf:"bytes,7,opt,name=session_ref,json=sessionRef,proto3" json:"session_ref,omitempty"`
 	Mode          string                 `protobuf:"bytes,8,opt,name=mode,proto3" json:"mode,omitempty"`
 	PayloadJson   []byte                 `protobuf:"bytes,9,opt,name=payload_json,json=payloadJson,proto3" json:"payload_json,omitempty"`
+	LeaseToken    string                 `protobuf:"bytes,10,opt,name=lease_token,json=leaseToken,proto3" json:"lease_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1857,6 +1858,13 @@ func (x *ControlCommand) GetPayloadJson() []byte {
 		return x.PayloadJson
 	}
 	return nil
+}
+
+func (x *ControlCommand) GetLeaseToken() string {
+	if x != nil {
+		return x.LeaseToken
+	}
+	return ""
 }
 
 type Command struct {
@@ -2685,7 +2693,7 @@ const file_api_agent_v1_runtime_proto_rawDesc = "" +
 	"\x14InputArtifactRequest\x12;\n" +
 	"\aattempt\x18\x01 \x01(\v2!.computecloud.agent.v1.AttemptRefR\aattempt\x12\x1f\n" +
 	"\vartifact_id\x18\x02 \x01(\tR\n" +
-	"artifactId\"\xa1\x02\n" +
+	"artifactId\"\xc2\x02\n" +
 	"\x0eControlCommand\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12%\n" +
 	"\x0eoperation_type\x18\x02 \x01(\tR\roperationType\x12\x15\n" +
@@ -2699,7 +2707,10 @@ const file_api_agent_v1_runtime_proto_rawDesc = "" +
 	"\vsession_ref\x18\a \x01(\tR\n" +
 	"sessionRef\x12\x12\n" +
 	"\x04mode\x18\b \x01(\tR\x04mode\x12!\n" +
-	"\fpayload_json\x18\t \x01(\fR\vpayloadJson\"\xc0\x01\n" +
+	"\fpayload_json\x18\t \x01(\fR\vpayloadJson\x12\x1f\n" +
+	"\vlease_token\x18\n" +
+	" \x01(\tR\n" +
+	"leaseToken\"\xc0\x01\n" +
 	"\aCommand\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x12\n" +
