@@ -17,6 +17,7 @@ type sessionControlHTTPInput struct {
 	ExpectedResourceVersion int64  `json:"expected_resource_version"`
 	Mode                    string `json:"mode,omitempty"`
 	Content                 string `json:"content,omitempty"`
+	SessionRef              string `json:"session_ref,omitempty"`
 }
 
 func writeControlReceipt(w http.ResponseWriter, receipt *ControlOperationReceipt) {
@@ -88,6 +89,43 @@ func (s *Server) httpSessionInterrupt(w http.ResponseWriter, r *http.Request) {
 		ExpectedAttemptID: in.ExpectedAttemptID,
 		ExpectedGeneration: in.ExpectedGeneration,
 		ExpectedResourceVersion: in.ExpectedResourceVersion,
+	}
+	receipt, err := s.acceptAndDispatchControlOperation(r.Context(), r.PathValue("id"), req)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	writeControlReceipt(w, receipt)
+}
+
+
+func (s *Server) httpSessionResume(w http.ResponseWriter, r *http.Request) {
+	b, err := readJSONBody(w, r, 16<<10)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	var in sessionControlHTTPInput
+	if err = json.Unmarshal(b, &in); err != nil {
+		httpError(w, status.Error(codes.InvalidArgument, "invalid session resume JSON"))
+		return
+	}
+	sessionID := r.PathValue("session")
+	if sessionID == "" || in.ExpectedAttemptID != sessionID || in.SessionRef == "" {
+		httpError(w, status.Error(codes.InvalidArgument, "explicit session_ref and current session identity required"))
+		return
+	}
+	payload := job.JSON(controlDispatchPayload{SessionRef: in.SessionRef})
+	req := ControlOperationRequest{
+		OperationID: in.OperationID,
+		OperationType: "resume",
+		ResourceType: "session",
+		ResourceID: sessionID,
+		TaskID: in.TaskID,
+		ExpectedAttemptID: in.ExpectedAttemptID,
+		ExpectedGeneration: in.ExpectedGeneration,
+		ExpectedResourceVersion: in.ExpectedResourceVersion,
+		Payload: payload,
 	}
 	receipt, err := s.acceptAndDispatchControlOperation(r.Context(), r.PathValue("id"), req)
 	if err != nil {
