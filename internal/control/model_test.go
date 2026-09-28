@@ -55,3 +55,28 @@ func TestNormalizeCapabilitiesIsStable(t *testing.T) {
 		t.Fatalf("unexpected order: %v", got)
 	}
 }
+
+
+func TestAgentControlOperationReceiptValidation(t *testing.T) {
+	now := time.Now().UTC()
+	receipt := OperationReceipt{
+		ProtocolVersion: ProtocolV1Alpha1,
+		OperationID: "op1",
+		OperationType: "cancel",
+		JobID: "j1",
+		SessionID: "s1",
+		TaskID: "t1",
+		AttemptID: "a1",
+		Generation: 1,
+		State: OperationAccepted,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := receipt.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	receipt.Generation = 0
+	if err := receipt.Validate(); err == nil {
+		t.Fatal("zero generation accepted")
+	}
+}
