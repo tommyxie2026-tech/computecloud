@@ -7,7 +7,9 @@
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
-- 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)\n- 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
+- 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
+- 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
+- Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
 - 当前实现依据：[v0.4.3 EnvironmentCapability](v0.4.3-plan.md)、[ADR-015](../adr/0015-environment-capability.md)
 - 当前实施跟踪：v0.4.4 EnvironmentProvider Execution 已完成；下一功能主线进入 Prepared Workspace / Workspace Template；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
@@ -1361,7 +1363,8 @@ L4 Real Runtime / Multi-host
 10. ADR-012：Runtime API v2 Provider Registry；
 11. ADR-013：Transport-neutral Runtime Execution；
 12. ADR-014：ToolCapability Registry / Policy；
-13. ADR-015：EnvironmentCapability Registry / Policy；\n14. ADR-016：EnvironmentProvider Execution；\n15. ADR-017：Goal-oriented Computing Model。
+13. ADR-015：EnvironmentCapability Registry / Policy；\n14. ADR-016：EnvironmentProvider Execution；\n15. ADR-017：Goal-oriented Computing Model；
+16. ADR-018：Re-plan Guard 与自治循环防护。
 
 后续建议：
 
@@ -1451,15 +1454,43 @@ Graph schema + compile + generation + ready-node controller
 Phase G4  Evaluation
 Artifact evidence + Evaluator provider + structured verdict
 
-Phase G5  Re-plan
-RE_PLAN verdict -> new Plan revision -> new Graph generation
-+ graph-generation fencing + budget/max_replans
+Phase G5  Re-plan Guard
+RE_PLAN proposal -> budget/evidence/loop/progress/generation guards
+-> allowed -> new Plan revision + new Graph generation
+-> denied -> NEEDS_APPROVAL / FAILED
 
 Phase G6  Adaptive Scheduling
 evaluation history / runtime capability / cost / latency
 作为可解释调度信号，但不允许 Scheduler 修改 Plan
 ~~~
 
+### 19.1 Re-plan Guard 实施切片
+
+~~~text
+RPG-1
+max_replans / total attempts / wall-time budget
++ current graph generation guard
+
+RPG-2
+evidence fingerprint
++ failure_class
++ exact duplicate plan fingerprint
+
+RPG-3
+short-cycle detection
++ progress guard
++ structured strategy_delta
+
+RPG-4
+human approval escalation
++ token/cost accounting
++ project policy templates
+~~~
+
+v1 实现不依赖 embedding/vector DB，优先采用 canonical structured plan、fingerprint、failure class 和确定性状态比较，以保持系统轻量、可测试、可审计。
+
 实施原则：
 
 > **先把 Goal/Plan/Graph/Evaluation 建成 durable state machine，再增加智能 Planner/Evaluator；先保证可恢复和可审计，再追求自治程度。**
+
+> **自动 Re-plan 永远必须是 bounded autonomy；Planner/Evaluator 不得自行扩大预算、修改 Goal 或绕过 Re-plan Guard。**
