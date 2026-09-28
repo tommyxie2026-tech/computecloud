@@ -7,7 +7,7 @@
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
 - 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
-- 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
+- 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)\n- 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 - 当前实现依据：[v0.4.3 EnvironmentCapability](v0.4.3-plan.md)、[ADR-015](../adr/0015-environment-capability.md)
 - 当前实施跟踪：v0.4.4 EnvironmentProvider Execution 已完成；下一功能主线进入 Prepared Workspace / Workspace Template；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
@@ -124,7 +124,28 @@ custom enterprise agent
 
 因此 Runtime API v2 必须避免把“本地子进程”写死在公共协议中。
 
-### 2.5 Prepared Workspace 成为重要优化方向
+### 2.5 Goal-oriented Computing 成为最高层计算语义
+
+computecloud 不再把 Map/Reduce、Stage 或 Job 当成最高层计算抽象。最高层统一采用：
+
+~~~text
+Goal -> Plan -> Execution Graph -> Scheduler -> Worker -> Artifact -> Evaluator -> Re-plan
+~~~
+
+其中：
+
+- Goal 描述目标与验收标准；
+- Plan 是可版本化求解策略；
+- Execution Graph 是 Plan 编译后的受控执行图；
+- Scheduler 只调度 Ready Graph Node；
+- Worker 负责实际 Attempt 执行；
+- Artifact 是结果与证据；
+- Evaluator 判断是否满足 Goal；
+- Re-plan 产生新的 Plan revision 和 Graph generation。
+
+Planner/Evaluator 可由 Provider 实现，避免把 computecloud 扩大成必须自带全部智能能力的 AI Execution OS。
+
+### 2.6 Prepared Workspace 成为重要优化方向
 
 参考远程 Coding Agent 产品，Workspace 长期不仅是临时目录，还需要支持：
 
@@ -1340,7 +1361,7 @@ L4 Real Runtime / Multi-host
 10. ADR-012：Runtime API v2 Provider Registry；
 11. ADR-013：Transport-neutral Runtime Execution；
 12. ADR-014：ToolCapability Registry / Policy；
-13. ADR-015：EnvironmentCapability Registry / Policy。
+13. ADR-015：EnvironmentCapability Registry / Policy；\n14. ADR-016：EnvironmentProvider Execution；\n15. ADR-017：Goal-oriented Computing Model。
 
 后续建议：
 
@@ -1408,3 +1429,37 @@ v0.7  大规模长期运行
   ↓
 v1.0  稳定 Agent-aware Distributed Job Execution Platform
 ~~~
+
+
+## 19. Goal-oriented Computing 实施主线
+
+ADR-017 不要求一次性重写现有系统，而采用向上兼容演进：
+
+~~~text
+Phase G0  Compatibility
+Legacy Job -> Synthetic Goal/Plan/Graph
+
+Phase G1  Goal Contract
+Goal schema + acceptance criteria + lifecycle
+
+Phase G2  Plan Revision
+Plan provider contract + revision/provenance
+
+Phase G3  Execution Graph
+Graph schema + compile + generation + ready-node controller
+
+Phase G4  Evaluation
+Artifact evidence + Evaluator provider + structured verdict
+
+Phase G5  Re-plan
+RE_PLAN verdict -> new Plan revision -> new Graph generation
++ graph-generation fencing + budget/max_replans
+
+Phase G6  Adaptive Scheduling
+evaluation history / runtime capability / cost / latency
+作为可解释调度信号，但不允许 Scheduler 修改 Plan
+~~~
+
+实施原则：
+
+> **先把 Goal/Plan/Graph/Evaluation 建成 durable state machine，再增加智能 Planner/Evaluator；先保证可恢复和可审计，再追求自治程度。**
