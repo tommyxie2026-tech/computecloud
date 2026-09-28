@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
@@ -155,5 +156,85 @@ func TestAgentControlOperationUnsupportedCapabilityFailsClosed(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("unsupported operation was persisted: count=%d", count)
+	}
+}
+
+
+func TestAgentControlDispatchPersistsStructuredCommand(t *testing.T) {
+	h, jobID, taskID, version := controlHarness(t)
+	h.s.mu.Lock()
+	h.s.peers["fixture-worker"] = &session{hello: &pb.WorkerHello{
+		WorkerId: "fixture-worker",
+		Epoch: "epoch-1",
+		Runtimes: []*pb.Runtime{{
+			Profile: "codex_exec",
+			Version: "fixture-1",
+			Capabilities: []string{
+				"runtime:event_stream",
+				"control:interactive_input",
+			},
+		}},
+	}}
+	h.s.mu.Unlock()
+
+	in := ControlOperationRequest{
+		OperationID: "control-op-dispatch",
+		OperationType: "input",
+		ResourceType: "session",
+		ResourceID: "control-attempt-1",
+		TaskID: taskID,
+		ExpectedAttemptID: "control-attempt-1",
+		ExpectedGeneration: 1,
+		ExpectedResourceVersion: version,
+		Payload: json.RawMessage(`{"mode":"queue_next","content":"continue"}`),
+	}
+	receipt, err := h.s.acceptAndDispatchControlOperation(h.ctx, jobID, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.State != "DISPATCHED" {
+		t.Fatalf("receipt=%+v", receipt)
+	}
+
+	var raw []byte
+	if err = h.s.db.SQL.QueryRow("SELECT body FROM commands WHERE kind='control' AND attempt=?", in.ExpectedAttemptID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	cmd := new(pb.Command)
+	if err = decode(raw, cmd); err != nil {
+		t.Fatal(err)
+	}
+	cc := cmd.GetControl()
+	if cc == nil || cc.OperationId != in.OperationID || cc.TaskId != taskID ||
+		cc.AttemptId != in.ExpectedAttemptID || cc.Generation != in.ExpectedGeneration ||
+		cc.LeaseToken != "token-1" || cc.Mode != "queue_next" {
+		t.Fatalf("control command=%+v", cc)
+	}
+	ok, err := commandDeliverable(h.ctx, h.s.db.SQL, cmd, "fixture-worker", "epoch-1")
+	if err != nil || !ok {
+		t.Fatalf("current control deliverable=%v err=%v", ok, err)
+	}
+	cc.Generation++
+	ok, err = commandDeliverable(h.ctx, h.s.db.SQL, cmd, "fixture-worker", "epoch-1")
+	if err != nil || ok {
+		t.Fatalf("stale control deliverable=%v err=%v", ok, err)
+	}
+
+	// A retry of the same user operation must converge on the same durable
+	// command instead of creating a second runtime side effect.
+	cc.Generation--
+	receipt, err = h.s.acceptAndDispatchControlOperation(h.ctx, jobID, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Existing || receipt.State != "DISPATCHED" {
+		t.Fatalf("replayed receipt=%+v", receipt)
+	}
+	var count int
+	if err = h.s.db.SQL.QueryRow("SELECT count(*) FROM commands WHERE kind='control' AND attempt=?", in.ExpectedAttemptID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("control commands=%d want=1", count)
 	}
 }
