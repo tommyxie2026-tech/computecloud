@@ -57,6 +57,14 @@ func httpError(w http.ResponseWriter, e error) {
 		code = 408
 	}
 	message := cleanCode(e)
+	switch message {
+	case "ATTEMPT_FENCED", "OPERATION_CONFLICT", "RESOURCE_VERSION_CONFLICT":
+		code = http.StatusConflict
+	case "CAPABILITY_UNSUPPORTED":
+		code = http.StatusUnprocessableEntity
+	case "EXECUTION_UNVERIFIABLE":
+		code = http.StatusServiceUnavailable
+	}
 	if code == 500 {
 		message = "INTERNAL_ERROR"
 	}
@@ -160,6 +168,9 @@ func (s *Server) HTTPHandler() http.Handler {
 	mux.HandleFunc("GET /v1/control/bootstrap", s.httpControlBootstrap)
 	mux.HandleFunc("GET /v1/jobs/{id}/sessions", s.httpJobSessions)
 	mux.HandleFunc("GET /v1/jobs/{id}/sessions/{session}", s.httpJobSession)
+	mux.HandleFunc("POST /v1/jobs/{id}/sessions/{session}/cancel", s.httpCancelJobSession)
+	mux.HandleFunc("POST /v1/jobs/{id}/sessions/{session}/inputs", s.httpSessionInput)
+	mux.HandleFunc("POST /v1/jobs/{id}/sessions/{session}/interrupt", s.httpSessionInterrupt)
 	mux.HandleFunc("GET /v1/jobs/{id}/events/stream", s.httpJobEventStream)
 	mux.HandleFunc("GET /v1/jobs/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		limit, e := pageLimit(r, 100, 500)
