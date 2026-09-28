@@ -4,6 +4,7 @@
 - 状态：Accepted
 - 依赖：[ADR-003：Agent Job Executor 产品边界](0003-agent-job-executor-product-scope.md)、[ADR-004：Agent-aware 执行语义](0004-agent-aware-execution-semantics.md)
 - 影响范围：领域模型、执行图、调度、Artifact、Evaluator、Retry/Re-plan、长期路线图
+- 后续防护：[ADR-018：Re-plan Guard 与自治循环防护](0018-replan-guard-loop-prevention.md)
 
 ## Context
 
@@ -232,7 +233,9 @@ Re-plan 必须满足：
 - graph generation fencing；
 - 已接受 Artifact 可按 provenance 被新 Plan 引用；
 - 不允许旧 generation 的迟到结果污染新 generation；
-- 受 max_replans / budget / deadline / policy 限制；
+- 受 max_replans / attempts / wall time / token-cost / deadline / policy 限制；
+- 必须经过 ADR-018 定义的 Re-plan Guard；
+- 无新 evidence、无实质 strategy delta、检测到 loop/no-progress 时不得自动 Re-plan；
 - 必要时进入 human approval。
 
 ### 9. 两层稳定模型
