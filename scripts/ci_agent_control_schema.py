@@ -11,6 +11,7 @@ SCHEMAS = [
     pathlib.Path("api/control/v1alpha1/event.schema.json"),
     pathlib.Path("api/control/v1alpha1/approval.schema.json"),
     pathlib.Path("api/control/v1alpha1/capabilities.schema.json"),
+    pathlib.Path("api/control/v1alpha1/operation.schema.json"),
 ]
 
 def run(cmd):
@@ -55,6 +56,7 @@ def main():
     event = loaded.get(str(SCHEMAS[1]), {})
     approval = loaded.get(str(SCHEMAS[2]), {})
     capabilities = loaded.get(str(SCHEMAS[3]), {})
+    operation = loaded.get(str(SCHEMAS[4]), {})
     if control.get("properties", {}).get("protocol_version", {}).get("const") != "control.v1alpha1":
         violations.append("control schema must freeze control.v1alpha1")
     if "generation" not in control.get("required", []):
@@ -63,6 +65,10 @@ def main():
         violations.append("event envelope must require generation")
     if "request_version" not in approval.get("required", []):
         violations.append("approval must require request_version")
+    if "generation" not in operation.get("required", []):
+        violations.append("control operation must require generation")
+    if "operation_id" not in operation.get("required", []):
+        violations.append("control operation must require operation_id")
     caps = capabilities.get("$defs", {}).get("capability", {}).get("enum", [])
     for required in ("session_resume", "interactive_input", "approval", "cancel"):
         if required not in caps:
@@ -88,6 +94,7 @@ def main():
             "runtime_neutral_public_schema": not any("runtime-specific" in v for v in violations),
             "optional_runtime_control_extension": True,
             "fake_runtime_control_contract": True,
+            "durable_operation_receipt_shape": True,
         },
         "violations": violations,
         "command": result["command"],
