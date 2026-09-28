@@ -68,14 +68,14 @@ Evidence 先 canonical sort，再进行 SHA-256：
 ~~~text
 failure_class
 +
-sorted(type, artifact_id, fact)
+sorted(type, normalized fact)
    ↓
 SHA-256
    ↓
 evidence_fingerprint
 ~~~
 
-因此 Evidence 的输入顺序不同不会制造新的“证据”。
+因此 Evidence 的输入顺序不同不会制造新的“证据”；artifact_id 只作为 provenance，不参与“事实是否新”的语义指纹。
 
 Goal 级存储：
 
