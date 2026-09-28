@@ -1472,10 +1472,11 @@ max_replans / total attempts / wall-time budget
 + current graph generation guard
 Implementation: [RPG-1 Re-plan Guard Foundation](rpg-1-replan-guard-foundation.md)
 
-RPG-2
+RPG-2  ✅ implemented
 evidence fingerprint
 + failure_class
 + exact duplicate plan fingerprint
+Implementation: [RPG-2 Evidence Guard](rpg-2-evidence-plan-guard.md)
 
 RPG-3
 short-cycle detection
