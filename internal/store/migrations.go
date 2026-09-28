@@ -139,6 +139,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 5
 	}
+	if schema == WorkerSchema && version < 6 {
+		if _, err = tx.Exec(workerV6); err != nil {
+			return err
+		}
+		version = 6
+	}
 	rows, err := tx.Query("PRAGMA foreign_key_check")
 	if err != nil {
 		return err
@@ -637,4 +643,13 @@ CREATE TABLE plan_fingerprints (
   PRIMARY KEY(goal_id,plan_revision),
   UNIQUE(goal_id,fingerprint)
 );
+`;
+
+
+const workerV6 = `ALTER TABLE commands ADD COLUMN state TEXT NOT NULL DEFAULT 'COMPLETED'
+  CHECK (state IN ('PENDING','EXECUTING','COMPLETED','REJECTED','UNKNOWN'));
+ALTER TABLE commands ADD COLUMN attempt TEXT NOT NULL DEFAULT '';
+ALTER TABLE commands ADD COLUMN operation_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE commands ADD COLUMN updated INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX commands_control_state ON commands(state,attempt,operation_id);
 `;
