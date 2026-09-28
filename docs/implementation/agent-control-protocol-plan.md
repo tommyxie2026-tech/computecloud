@@ -224,9 +224,9 @@ Interrupt
 本轮收敛范围：
 - Server schema v8 `control_operations` durable receipt；
 - `(principal_id, operation_id)` 幂等；
-- `expected_attempt_id + expected_generation` fencing；
-- session-scoped cancel；
-- `ATTEMPT_FENCED / OPERATION_CONFLICT / CAPABILITY_UNSUPPORTED` 稳定错误语义；
+- Session input/interrupt 使用 `expected_attempt_id + expected_generation` fencing；
+- Job cancel 复用 `POST /v1/jobs/{id}/cancel`，现代客户端使用 `expected_version` 做资源版本 fencing；
+- `RESOURCE_VERSION_CONFLICT / ATTEMPT_FENCED / OPERATION_CONFLICT / CAPABILITY_UNSUPPORTED` 稳定错误语义；
 - input / interrupt 在 Runtime 未认证前返回 `CAPABILITY_UNSUPPORTED`；
 - 新增 `agent-control-safe-write` CI Gate。
 
