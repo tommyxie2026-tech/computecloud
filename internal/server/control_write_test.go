@@ -33,48 +33,44 @@ func waitControlSession(t *testing.T, h *jobHarness, jobID string) control.Agent
 	}
 }
 
-func TestAgentControlSafeCancelIdempotentAndFenced(t *testing.T) {
+func TestAgentControlSafeCancelIdempotentAndVersionFenced(t *testing.T) {
 	h := newJobHarness(t, true)
 	spec := h.spec("single")
 	spec.Input.Text = "slow-job"
 
-	j, err := h.s.SubmitJob(h.ctx, "control-safe-cancel", job.JSON(spec))
+	submitted, err := h.s.SubmitJob(h.ctx, "control-safe-cancel", job.JSON(spec))
 	if err != nil {
 		t.Fatal(err)
 	}
-	session := waitControlSession(t, h, j.ID)
+	_ = waitControlSession(t, h, submitted.ID)
+	current, err := h.s.GetJob(h.ctx, submitted.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	req := SessionControlRequest{
-		OperationID:        "cancel-op-1",
-		ExpectedAttemptID:  session.AttemptID,
-		ExpectedGeneration: session.Generation,
-		Reason:             "user requested",
+	req := CancelJobRequest{
+		ControlID:       "cancel-op-1",
+		ExpectedVersion: current.Version,
+		Reason:          "user requested",
 	}
 	raw, _ := json.Marshal(req)
-	path := "/v1/jobs/" + j.ID + "/sessions/" + session.SessionID + "/cancel"
+	path := "/v1/jobs/" + submitted.ID + "/cancel"
 
 	code, body := h.request(t, http.MethodPost, path, "", raw)
 	if code != http.StatusAccepted {
 		t.Fatalf("first cancel: %d %s", code, body)
-	}
-	var receipt control.OperationReceipt
-	if err = json.Unmarshal(body, &receipt); err != nil {
-		t.Fatal(err)
-	}
-	if receipt.State != control.OperationAccepted || receipt.Existing ||
-		receipt.AttemptID != session.AttemptID || receipt.Generation != session.Generation {
-		t.Fatalf("unexpected receipt: %+v", receipt)
 	}
 
 	code, body = h.request(t, http.MethodPost, path, "", raw)
 	if code != http.StatusOK {
 		t.Fatalf("replay cancel: %d %s", code, body)
 	}
-	if err = json.Unmarshal(body, &receipt); err != nil {
+	var replay Job
+	if err = json.Unmarshal(body, &replay); err != nil {
 		t.Fatal(err)
 	}
-	if !receipt.Existing {
-		t.Fatalf("replay was not identified: %+v", receipt)
+	if !replay.Existing {
+		t.Fatalf("replay was not identified: %+v", replay)
 	}
 
 	conflict := req
@@ -85,7 +81,7 @@ func TestAgentControlSafeCancelIdempotentAndFenced(t *testing.T) {
 		t.Fatalf("operation conflict: %d %s", code, body)
 	}
 
-	finished := h.wait(t, j.ID)
+	finished := h.wait(t, submitted.ID)
 	if finished.State != "CANCELED" {
 		t.Fatalf("job state=%s stop_reason=%s", finished.State, finished.StopReason)
 	}
@@ -98,28 +94,33 @@ func TestAgentControlSafeCancelIdempotentAndFenced(t *testing.T) {
 	}
 }
 
-func TestAgentControlRejectsStaleGenerationBeforeMutation(t *testing.T) {
+func TestAgentControlRejectsStaleJobVersionBeforeMutation(t *testing.T) {
 	h := newJobHarness(t, true)
 	spec := h.spec("single")
 	spec.Input.Text = "slow-job"
 
-	j, err := h.s.SubmitJob(h.ctx, "control-stale-generation", job.JSON(spec))
+	submitted, err := h.s.SubmitJob(h.ctx, "control-stale-version", job.JSON(spec))
 	if err != nil {
 		t.Fatal(err)
 	}
-	session := waitControlSession(t, h, j.ID)
-
-	req := SessionControlRequest{
-		OperationID:        "stale-op-1",
-		ExpectedAttemptID:  session.AttemptID,
-		ExpectedGeneration: session.Generation + 1,
-		Reason:             "stale client",
+	_ = waitControlSession(t, h, submitted.ID)
+	current, err := h.s.GetJob(h.ctx, submitted.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := current.Version - 1
+	if stale < 1 {
+		stale = current.Version + 1
+	}
+	req := CancelJobRequest{
+		ControlID:       "stale-op-1",
+		ExpectedVersion: stale,
+		Reason:          "stale client",
 	}
 	raw, _ := json.Marshal(req)
-	path := "/v1/jobs/" + j.ID + "/sessions/" + session.SessionID + "/cancel"
-	code, body := h.request(t, http.MethodPost, path, "", raw)
-	if code != http.StatusConflict || !jsonBodyHasErrorCode(body, "ATTEMPT_FENCED") {
-		t.Fatalf("stale generation: %d %s", code, body)
+	code, body := h.request(t, http.MethodPost, "/v1/jobs/"+submitted.ID+"/cancel", "", raw)
+	if code != http.StatusConflict || !jsonBodyHasErrorCode(body, "RESOURCE_VERSION_CONFLICT") {
+		t.Fatalf("stale job version: %d %s", code, body)
 	}
 
 	var count int
@@ -130,26 +131,26 @@ func TestAgentControlRejectsStaleGenerationBeforeMutation(t *testing.T) {
 		t.Fatalf("fenced operation persisted count=%d", count)
 	}
 
-	if _, err = h.s.CancelJob(h.ctx, j.ID, CancelJobRequest{ControlID: "cleanup-stale-job", Reason: "test cleanup"}); err != nil {
+	if _, err = h.s.CancelJob(h.ctx, submitted.ID, CancelJobRequest{ControlID: "cleanup-stale-job", Reason: "test cleanup"}); err != nil {
 		t.Fatal(err)
 	}
-	if finished := h.wait(t, j.ID); finished.State != "CANCELED" {
+	if finished := h.wait(t, submitted.ID); finished.State != "CANCELED" {
 		t.Fatalf("cleanup state=%s", finished.State)
 	}
 }
 
-func TestAgentControlUnsupportedInteractiveActionsFailClosed(t *testing.T) {
+func TestAgentControlUnsupportedInteractiveActionsFailClosedAndFenceAttempt(t *testing.T) {
 	h := newJobHarness(t, true, func(c *config.Server) {
 		c.Users[0].Scopes = append(c.Users[0].Scopes, "jobs:control")
 	})
 	spec := h.spec("single")
 	spec.Input.Text = "slow-job"
 
-	j, err := h.s.SubmitJob(h.ctx, "control-unsupported-input", job.JSON(spec))
+	submitted, err := h.s.SubmitJob(h.ctx, "control-unsupported-input", job.JSON(spec))
 	if err != nil {
 		t.Fatal(err)
 	}
-	session := waitControlSession(t, h, j.ID)
+	session := waitControlSession(t, h, submitted.ID)
 	req := SessionControlRequest{
 		OperationID:        "input-op-1",
 		ExpectedAttemptID:  session.AttemptID,
@@ -161,16 +162,26 @@ func TestAgentControlUnsupportedInteractiveActionsFailClosed(t *testing.T) {
 
 	for _, suffix := range []string{"inputs", "interrupt"} {
 		code, body := h.request(t, http.MethodPost,
-			"/v1/jobs/"+j.ID+"/sessions/"+session.SessionID+"/"+suffix, "", raw)
+			"/v1/jobs/"+submitted.ID+"/sessions/"+session.SessionID+"/"+suffix, "", raw)
 		if code != http.StatusUnprocessableEntity || !jsonBodyHasErrorCode(body, "CAPABILITY_UNSUPPORTED") {
 			t.Fatalf("%s: %d %s", suffix, code, body)
 		}
 	}
 
-	if _, err = h.s.CancelJob(h.ctx, j.ID, CancelJobRequest{ControlID: "cleanup-unsupported-job", Reason: "test cleanup"}); err != nil {
+	stale := req
+	stale.OperationID = "input-stale-op"
+	stale.ExpectedGeneration++
+	staleRaw, _ := json.Marshal(stale)
+	code, body := h.request(t, http.MethodPost,
+		"/v1/jobs/"+submitted.ID+"/sessions/"+session.SessionID+"/inputs", "", staleRaw)
+	if code != http.StatusConflict || !jsonBodyHasErrorCode(body, "ATTEMPT_FENCED") {
+		t.Fatalf("stale input: %d %s", code, body)
+	}
+
+	if _, err = h.s.CancelJob(h.ctx, submitted.ID, CancelJobRequest{ControlID: "cleanup-unsupported-job", Reason: "test cleanup"}); err != nil {
 		t.Fatal(err)
 	}
-	if finished := h.wait(t, j.ID); finished.State != "CANCELED" {
+	if finished := h.wait(t, submitted.ID); finished.State != "CANCELED" {
 		t.Fatalf("cleanup state=%s", finished.State)
 	}
 }
