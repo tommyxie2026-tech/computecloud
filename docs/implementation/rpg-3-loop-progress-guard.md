@@ -218,7 +218,7 @@ project-level policy template
 
 前两项当前仍刻意避免，以保持 Guard deterministic。
 
-## 12. 下一步 RPG-4
+## 12. 最终阶段 RPG-4
 
 ~~~text
 Human Approval API
@@ -231,4 +231,4 @@ Approval Audit
 
 原则：
 
-> RPG-1 保证“有限”；RPG-2 保证“有新证据”；RPG-3 保证“正在收敛”；RPG-4 负责“越过自治边界后如何安全交给人”。
+> RPG-1 保证“有限”；RPG-2 保证“有新证据”；RPG-3 保证“正在收敛”；RPG-4 负责“越过自治边界后如何安全交给人”。RPG-4 完成后 RPG 正式关闭，不再新增 RPG-5。
