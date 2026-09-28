@@ -281,10 +281,8 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 			"cleanup_confirmed": runtimeCleanupConfirmed(run.Cleanup),
 		}))
 	}
-	environmentReleased := w.releaseEnvironment(persistCtx, a.AttemptId, environmentProvider, environmentPrepared.Ref)
 	out := run.Outcome
 	success := run.Err == nil && run.ExitCode == 0 && runtimeCleanupConfirmed(run.Cleanup) &&
-		environmentCleanupConfirmed(environmentReleased.Cleanup) && environmentReleased.Err == nil &&
 		run.ProtocolErr == nil && out.Final && out.Success
 	code, msg := "", ""
 	if !success {
@@ -304,12 +302,8 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 				code = "DEADLINE_EXCEEDED"
 			}
 		}
-		if !runtimeCleanupConfirmed(run.Cleanup) || !environmentCleanupConfirmed(environmentReleased.Cleanup) {
+		if !runtimeCleanupConfirmed(run.Cleanup) {
 			code = "CLEANUP_UNCONFIRMED"
-		}
-		if environmentReleased.Err != nil && code == "RUNTIME_FAILED" {
-			code = "ENVIRONMENT_RELEASE_FAILED"
-			msg = environmentReleased.Err.Error()
 		}
 	}
 	verification := []map[string]any{}
@@ -381,7 +375,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		}
 		msg = qe.Error()
 	}
-	report := config.JSON(map[string]any{"task_id": a.TaskId, "attempt_id": a.AttemptId, "base_commit": a.Spec.Workspace.BaseCommit, "model": a.Spec.Model, "runtime_version": provider.Version(r), "environment_provider": environmentPrepared.Ref.Provider, "environment_cleanup": string(environmentReleased.Cleanup), "template_digest": a.GetJob().GetTemplateDigest(), "native_final": out.Final, "native_success": out.Success, "exit_code": run.ExitCode, "cleanup_confirmed": runtimeCleanupConfirmed(run.Cleanup) && environmentCleanupConfirmed(environmentReleased.Cleanup), "verification": verification, "result": string(redact([]byte(out.Result), secrets)), "stderr_truncated": stderr.truncated, "manifest_sha256": a.GetJob().GetInputManifestSha256()})
+	report := config.JSON(map[string]any{"task_id": a.TaskId, "attempt_id": a.AttemptId, "base_commit": a.Spec.Workspace.BaseCommit, "model": a.Spec.Model, "runtime_version": provider.Version(r), "environment_provider": environmentPrepared.Ref.Provider, "template_digest": a.GetJob().GetTemplateDigest(), "native_final": out.Final, "native_success": out.Success, "exit_code": run.ExitCode, "runtime_cleanup": string(run.Cleanup), "verification": verification, "result": string(redact([]byte(out.Result), secrets)), "stderr_truncated": stderr.truncated, "manifest_sha256": a.GetJob().GetInputManifestSha256()})
 	files["report.json"] = report
 	files["changes.patch"] = redact(diff, secrets)
 	files["stderr.log"] = redact(stderr.Bytes(), secrets)
@@ -394,7 +388,18 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 	} else {
 		ids = []string{artifact.ArtifactId}
 	}
-	complete(&pb.CompleteRequest{Success: success, CleanupConfirmed: runtimeCleanupConfirmed(run.Cleanup) && environmentCleanupConfirmed(environmentReleased.Cleanup), ErrorCode: code, ErrorMessage: msg, Result: string(redact([]byte(out.Result), secrets)), NativeSessionId: out.Session, ArtifactIds: ids})
+	environmentReleased := w.releaseEnvironment(persistCtx, a.AttemptId, environmentProvider, environmentPrepared.Ref)
+	cleanupConfirmed := runtimeCleanupConfirmed(run.Cleanup) && environmentCleanupConfirmed(environmentReleased.Cleanup)
+	if !cleanupConfirmed {
+		success = false
+		code = "CLEANUP_UNCONFIRMED"
+		if environmentReleased.Err != nil {
+			msg = environmentReleased.Err.Error()
+		} else {
+			msg = "runtime or environment cleanup unconfirmed"
+		}
+	}
+	complete(&pb.CompleteRequest{Success: success, CleanupConfirmed: cleanupConfirmed, ErrorCode: code, ErrorMessage: msg, Result: string(redact([]byte(out.Result), secrets)), NativeSessionId: out.Session, ArtifactIds: ids})
 }
 func choose(a, b string) string {
 	if a != "" {
