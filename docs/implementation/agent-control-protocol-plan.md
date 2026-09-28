@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1/ACP-2 已完成并通过 main CI；ACP-3 durable operation/fencing 已实现待 Gate
+- 状态：实施中；ACP-0/ACP-1/ACP-2 已完成；ACP-3a durable acceptance / fencing / negative contract 已实现，ACP-3b Worker control dispatch 待实施
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -30,7 +30,7 @@
 | ACP-0 | 当前 | Schema/contract 基线 | **已完成**：control.v1alpha1、事件 schema、Provider extension、独立 CI |
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
-| ACP-3 | v0.4.x | 安全写控制 | **进行中**：schema v8 durable operation ledger + idempotency/fencing 已实现；Worker control dispatch/input/interrupt 尚未开放 |
+| ACP-3 | v0.4.x | 安全写控制 | **ACP-3a 已实现**：durable ledger、idempotency、fencing、稳定错误码、negative contract；**ACP-3b 待实现**：Worker control envelope/dispatch/input/interrupt |
 | ACP-4 | v0.4.x | Approval + Resume | approval lifecycle、session resume |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
 | ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
@@ -68,9 +68,9 @@ internal/runtime/
 - [x] 定义 Control Event envelope。
 - [x] 定义 ApprovalRequest。
 - [x] 定义 ControlOperation receipt。
-- [ ] 定义标准错误码。
+- [x] 定义标准错误码。
 - [x] JSON Schema validation tests。
-- [ ] Go model 与 JSON schema round-trip tests。
+- [x] Go model 与 JSON schema round-trip tests。
 
 ### 3.3 CI
 
@@ -238,9 +238,9 @@ POST /v1/jobs/{job}/cancel
 
 ### 6.4 负向测试
 
-- [ ] old generation input -> ATTEMPT_FENCED。
-- [ ] duplicate same op -> same receipt。
-- [ ] duplicate different payload -> OPERATION_CONFLICT。
+- [x] old generation control -> ATTEMPT_FENCED。
+- [x] duplicate same op -> same receipt。
+- [x] duplicate different payload -> OPERATION_CONFLICT。
 - [ ] unsupported input -> CAPABILITY_UNSUPPORTED。
 - [ ] response lost + retry -> no duplicate side effect。
 - [ ] offline client stale cancel -> rejected。
@@ -248,7 +248,7 @@ POST /v1/jobs/{job}/cancel
 ### 6.5 CI
 
 `agent-control-fencing`
-`agent-control-negative`
+`agent-control-negative`（ACP-3a 已接入）
 
 ## 7. ACP-4 — Approval 与 Session Resume
 
@@ -520,8 +520,8 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. ACP-3：通过 `agent-control-fencing` Gate 并合入 durable acceptance foundation。
-2. ACP-3b：扩展 Worker control command envelope，结构化携带 input/interrupt；不得复用 Assignment 字段做隐式编码。
+1. ACP-3b：扩展 Worker control command envelope，结构化携带 input/interrupt；不得复用 Assignment 字段做隐式编码。
+2. 使用 canonical protobuf toolchain 重新生成 Go wire code，并保持旧 Worker 协议兼容门槛。
 3. 用 fixture SessionControlProvider 完成 Server -> Worker -> Adapter E2E；只有通过后才开放 HTTP write endpoint。
 4. Codex/Claude 不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过。
 5. Prepared Workspace 主线继续推进；ACP-4 在 Session/Approval 原生能力稳定后接入。
