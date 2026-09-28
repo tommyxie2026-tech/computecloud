@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
@@ -99,6 +100,49 @@ func validateControlFence(ctx context.Context, q store.Query, jobID string, in C
 	return nil
 }
 
+
+func hasControlCapability(values []control.Capability, want control.Capability) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) validateControlCapability(ctx context.Context, q store.Query, in ControlOperationRequest) error {
+	if in.OperationType == "cancel" {
+		// Cancel is backed by the existing server-owned stop command path and does
+		// not require an interactive SessionControlProvider.
+		return nil
+	}
+	var raw []byte
+	var workerID string
+	if err := q.QueryRowContext(ctx, "SELECT spec,worker FROM tasks WHERE id=?", in.TaskID).Scan(&raw, &workerID); err != nil {
+		return err
+	}
+	spec := new(pb.TaskSpec)
+	if err := decode(raw, spec); err != nil {
+		return status.Error(codes.Unavailable, "invalid persisted task spec")
+	}
+	_, capabilities := s.runtimeProjection(workerID, spec.RuntimeProfile)
+	required := control.Capability("")
+	switch in.OperationType {
+	case "input":
+		required = control.CapabilityInteractiveInput
+	case "interrupt":
+		required = control.CapabilityInterrupt
+	case "approval":
+		required = control.CapabilityApproval
+	case "resume":
+		required = control.CapabilitySessionResume
+	}
+	if required == "" || !hasControlCapability(capabilities, required) {
+		return status.Error(codes.FailedPrecondition, control.ErrorCapabilityUnsupported)
+	}
+	return nil
+}
+
 // acceptControlOperation provides the durable exactly-once acceptance boundary
 // for interactive control. Dispatch is deliberately a separate phase: a
 // persisted ACCEPTED receipt never implies that a Runtime has executed it.
@@ -148,6 +192,9 @@ func (s *Server) acceptControlOperation(ctx context.Context, jobID string, in Co
 			return readErr
 		}
 		if err := validateControlFence(ctx, q, jobID, in); err != nil {
+			return err
+		}
+		if err := s.validateControlCapability(ctx, q, in); err != nil {
 			return err
 		}
 		raw := job.JSON(receipt)
