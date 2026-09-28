@@ -135,6 +135,7 @@ func TestApprovalExpiryAndAttemptFencing(t *testing.T) {
 			"action": "run",
 			"risk_class": "MEDIUM",
 			"request_version": 1,
+			"requested_at_ms": store.Now()-1000,
 			"expires_at_ms": store.Now()-1,
 		}),
 	}
