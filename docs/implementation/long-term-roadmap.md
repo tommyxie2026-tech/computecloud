@@ -202,8 +202,9 @@ v1.0
 
 - ACP-0/1/2：Protocol、read/replay、Runtime Adapter contract 已完成；
 - ACP-3：durable write、generation fencing、Worker structured dispatch、result ACK、HTTP input/interrupt 已完成；
-- ACP-4a durable Approval：已实现，进入 CI/PR Gate；
-- ACP-4b Session Resume：下一阶段，必须先定义 Attempt/Workspace/Environment 恢复兼容语义；
+- ACP-4a durable Approval：已完成，PR #48 合并为 `da086cd749e2ffa93a5a5b9d7012799505764e9f`；
+- ACP-4b Session Reconnect：已实现待 CI；限定为 current active Attempt 内 explicit SessionRef reconnect，不 reopen terminal Job；
+- terminal continuation / new generation：归入 Prepared Workspace / Continuation 契约，不借 Resume 绕过 Artifact/Stage 终态；
 - Codex/Claude 的交互 capability 继续 fail-closed，只有 Runtime 原生 contract 通过后才广告。
 
 
