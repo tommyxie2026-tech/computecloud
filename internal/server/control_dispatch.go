@@ -329,34 +329,8 @@ func (s *Server) applyControlAck(ctx context.Context, workerID string, ack *pb.C
 			return err
 		}
 		if cmd.Control.Action == "approval" {
-			if ack.State == "COMPLETED" {
-				next := "ACCEPTED"
-				if cmd.Control.Decision == "reject" {
-					next = "REJECTED"
-				}
-				res, err := q.ExecContext(ctx, `UPDATE approval_requests SET state=?,decided_at=?,actor=?,decision_operation_id=?
-					WHERE approval_id=? AND request_version=? AND attempt_id=? AND generation=? AND state='PENDING' AND decision_operation_id=?`,
-					next, store.Now(), cmd.Control.PrincipalId, ack.OperationId,
-					cmd.Control.ApprovalId, cmd.Control.RequestVersion, cmd.Control.AttemptId, cmd.Control.Generation, ack.OperationId)
-				if err != nil {
-					return err
-				}
-				n, err := res.RowsAffected()
-				if err != nil || n != 1 {
-					return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
-				}
-			} else if ack.State == "UNKNOWN" {
-				if _, err := q.ExecContext(ctx, `UPDATE approval_requests SET state='SUPERSEDED',decided_at=?
-					WHERE approval_id=? AND request_version=? AND state='PENDING' AND decision_operation_id=?`,
-					store.Now(), cmd.Control.ApprovalId, cmd.Control.RequestVersion, ack.OperationId); err != nil {
-					return err
-				}
-			} else {
-				if _, err := q.ExecContext(ctx, `UPDATE approval_requests SET actor='',decision_operation_id=''
-					WHERE approval_id=? AND request_version=? AND state='PENDING' AND decision_operation_id=?`,
-					cmd.Control.ApprovalId, cmd.Control.RequestVersion, ack.OperationId); err != nil {
-					return err
-				}
+			if err := applyApprovalControlResult(ctx, q, cmd.Control, ack); err != nil {
+				return err
 			}
 		}
 		if _, err := q.ExecContext(ctx, "UPDATE commands SET acked=1 WHERE id=? AND worker=?",
