@@ -43,7 +43,7 @@ func TestV1UpgradeBackupAndDrainGate(t *testing.T) {
 		t.Fatal(e)
 	}
 	db.SQL.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 7 {
+	if v != 8 {
 		t.Fatalf("version %d", v)
 	}
 	var state, stage string
@@ -109,7 +109,7 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 	}
 	defer db.Close()
 	var v int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 7 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 8 {
 		t.Fatalf("version=%d err=%v", v, e)
 	}
 	// New schema must allow multiple historical attempts for one Task while
@@ -173,7 +173,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 7 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 8 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -491,5 +491,47 @@ func TestWorkerV5EnvironmentExecutionSchema(t *testing.T) {
 	if provider != "" || len(ref) != 0 || state != "" || cleanup != "" {
 		t.Fatalf("legacy environment metadata changed provider=%q ref=%q state=%q cleanup=%q",
 			provider, ref, state, cleanup)
+	}
+}
+
+
+func TestV8ControlOperationLedger(t *testing.T) {
+	dir := t.TempDir()
+	db, e := Open(dir, ServerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+
+	var version int
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 8 {
+		t.Fatalf("version=%d err=%v", version, e)
+	}
+	_, e = db.SQL.Exec(`INSERT INTO control_operations(
+		principal_id,operation_id,operation_type,resource_type,resource_id,
+		job_id,task_id,expected_attempt_id,expected_generation,expected_resource_version,
+		request_hash,state,receipt_json,created,updated
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		"owner", "op-1", "input", "session", "session-1",
+		"job-1", "task-1", "attempt-1", 2, 3,
+		"hash", "ACCEPTED", []byte(`{"accepted":true}`), 1, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec(`INSERT INTO control_operations(
+		principal_id,operation_id,operation_type,resource_type,resource_id,
+		request_hash,state,receipt_json,created,updated
+	) VALUES('owner','op-1','input','session','other','other','ACCEPTED','{}',1,1)`); e == nil {
+		t.Fatal("duplicate principal/operation id accepted")
+	}
+	var attempt string
+	var generation, resourceVersion int64
+	if e = db.SQL.QueryRow(`SELECT expected_attempt_id,expected_generation,expected_resource_version
+		FROM control_operations WHERE principal_id='owner' AND operation_id='op-1'`).
+		Scan(&attempt, &generation, &resourceVersion); e != nil {
+		t.Fatal(e)
+	}
+	if attempt != "attempt-1" || generation != 2 || resourceVersion != 3 {
+		t.Fatalf("fencing tuple=%s/%d/%d", attempt, generation, resourceVersion)
 	}
 }
