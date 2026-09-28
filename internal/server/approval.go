@@ -219,9 +219,6 @@ func validateApprovalDecision(ctx context.Context, q store.Query, jobID string, 
 	if in.ResourceType != "approval" || in.ResourceID != payload.ApprovalID {
 		return status.Error(codes.InvalidArgument, "approval resource mismatch")
 	}
-	if in.ExpectedResourceVersion != payload.RequestVersion {
-		return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
-	}
 	if err := expireJobApprovals(ctx, q, jobID); err != nil {
 		return err
 	}
@@ -300,6 +297,7 @@ func (s *Server) httpApprovalDecision(w http.ResponseWriter, r *http.Request) {
 		TaskID             string `json:"task_id"`
 		ExpectedAttemptID  string `json:"expected_attempt_id"`
 		ExpectedGeneration int64  `json:"expected_generation"`
+		ExpectedResourceVersion int64 `json:"expected_resource_version"`
 		RequestVersion     int64  `json:"request_version"`
 		Decision           string `json:"decision"`
 	}
@@ -318,7 +316,7 @@ func (s *Server) httpApprovalDecision(w http.ResponseWriter, r *http.Request) {
 		TaskID: in.TaskID,
 		ExpectedAttemptID: in.ExpectedAttemptID,
 		ExpectedGeneration: in.ExpectedGeneration,
-		ExpectedResourceVersion: in.RequestVersion,
+		ExpectedResourceVersion: in.ExpectedResourceVersion,
 		Payload: raw,
 	}
 	receipt, err := s.acceptAndDispatchControlOperation(r.Context(), r.PathValue("id"), req)
