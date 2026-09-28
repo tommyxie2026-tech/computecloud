@@ -54,6 +54,9 @@ func (s *Server) ReportEvents(ctx context.Context, r *pb.ReportRequest) (*pb.Ack
 			if e = appendEvent(ctx, q, ev, &wseq); e != nil {
 				return e
 			}
+			if e = mirrorRuntimeEventToJob(ctx, q, ev); e != nil {
+				return e
+			}
 			through = wseq
 			if ev.Type == "attempt.started" {
 				t, _, e := readTask(ctx, q, a.task)

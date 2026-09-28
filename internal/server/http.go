@@ -157,6 +157,10 @@ func (s *Server) HTTPHandler() http.Handler {
 		}
 		jsonResponse(w, code, j)
 	})
+	mux.HandleFunc("GET /v1/control/bootstrap", s.httpControlBootstrap)
+	mux.HandleFunc("GET /v1/jobs/{id}/sessions", s.httpJobSessions)
+	mux.HandleFunc("GET /v1/jobs/{id}/sessions/{session}", s.httpJobSession)
+	mux.HandleFunc("GET /v1/jobs/{id}/events/stream", s.httpJobEventStream)
 	mux.HandleFunc("GET /v1/jobs/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		limit, e := pageLimit(r, 100, 500)
 		if e != nil {
@@ -228,14 +232,18 @@ func (s *Server) HTTPHandler() http.Handler {
 			httpError(w, e)
 			return
 		}
+		streaming := strings.HasSuffix(r.URL.Path, "/events/stream")
 		timeout := 10 * time.Second
 		if strings.Contains(r.URL.Path, "/artifacts/") {
 			timeout = 5 * time.Minute
 		}
-		ctx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
+		if !streaming {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(timeout))
+		}
 		_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Second))
-		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(timeout))
 		r = r.WithContext(ctx)
 		if r.URL.Path == "/mcp" && r.Method == "POST" {
 			b, e := readJSONBody(w, r, s.cfg.Jobs.MaxRequestBytes+4096)
