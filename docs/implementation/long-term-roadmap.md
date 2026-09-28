@@ -198,6 +198,15 @@ v1.0
 
 ### 3.1 Control 客户端横向能力线
 
+当前 Control Protocol 进度（2026-09-28）：
+
+- ACP-0/1/2：Protocol、read/replay、Runtime Adapter contract 已完成；
+- ACP-3：durable write、generation fencing、Worker structured dispatch、result ACK、HTTP input/interrupt 已完成；
+- ACP-4a durable Approval：已实现，进入 CI/PR Gate；
+- ACP-4b Session Resume：下一阶段，必须先定义 Attempt/Workspace/Environment 恢复兼容语义；
+- Codex/Claude 的交互 capability 继续 fail-closed，只有 Runtime 原生 contract 通过后才广告。
+
+
 Control/Protocol 的可执行拆分以 [Agent Control Protocol 实施计划](agent-control-protocol-plan.md) 为准。该计划作为横向能力线与 Prepared Workspace、Runtime/Tool/Environment 和 Scheduler 主线并行，不能替代主版本目标；写控制能力必须等待对应 Runtime capability 通过 contract test 后才能开放。
 
 Control 是既有 Agent Job Executor 的产品表面，不是第二个调度器，也不建立独立事实源。Server 继续负责 Job、Stage、Task、Attempt、Worker、租约、Artifact 和审计；客户端仅持有可重建投影。保持单 Go Server + SQLite 的轻量部署，首版不引入独立 BFF、PostgreSQL、Redis 或消息队列。
