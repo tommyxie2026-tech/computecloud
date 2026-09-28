@@ -24,6 +24,21 @@ func controlCapability(cmd *pb.ControlCommand) (control.Capability, error) {
 	if cmd == nil {
 		return "", errors.New("control command required")
 	}
+	if cmd.Action == "resume" {
+		var workspaceState, environmentState string
+		var environmentRef []byte
+		err = w.db.SQL.QueryRowContext(ctx, `SELECT w.state,r.environment_state,r.environment_ref
+			FROM runs r JOIN workspaces w ON w.attempt=r.id WHERE r.id=? AND r.completion IS NULL`,
+			cmd.AttemptId).Scan(&workspaceState, &environmentState, &environmentRef)
+		if err != nil || workspaceState != "IN_USE" || environmentState != "ACTIVE" || len(environmentRef) == 0 {
+			message := "workspace/environment is not compatible with session resume"
+			if err != nil {
+				message = err.Error()
+			}
+			return w.finishControl(ctx, c, "REJECTED", control.ErrorExecutionUnverifiable.String(), message)
+		}
+	}
+
 	switch cmd.Action {
 	case "input":
 		switch cmd.Mode {
@@ -38,6 +53,16 @@ func controlCapability(cmd *pb.ControlCommand) (control.Capability, error) {
 		}
 	case "interrupt":
 		return control.CapabilityInterrupt, nil
+	case "approval":
+		if cmd.ApprovalId == "" || cmd.RequestVersion < 1 || (cmd.Decision != "accept" && cmd.Decision != "reject") {
+			return "", errors.New("invalid approval decision")
+		}
+		return control.CapabilityApproval, nil
+	case "resume":
+		if cmd.SessionRef == "" {
+			return "", errors.New("explicit session reference required")
+		}
+		return control.CapabilitySessionResume, nil
 	default:
 		return "", errors.New("unsupported control action")
 	}
@@ -112,12 +137,18 @@ func (w *Worker) executeControl(ctx context.Context, c *pb.Command) (*pb.Command
 		if a.TaskId != cmd.TaskId || a.AttemptId != cmd.AttemptId || a.Generation != cmd.Generation {
 			return errors.New("control attempt identity conflict")
 		}
-		if runtimeProvider == "" || len(runtimeRefRaw) == 0 || runtimeState != string(adapter.RuntimeRunning) {
+		if runtimeProvider == "" || len(runtimeRefRaw) == 0 ||
+			(cmd.Action != "resume" && runtimeState != string(adapter.RuntimeRunning)) ||
+			(cmd.Action == "resume" && runtimeState == string(adapter.RuntimeRunning)) {
+			message := "runtime is not in a controllable running state"
+			if cmd.Action == "resume" && runtimeState == string(adapter.RuntimeRunning) {
+				message = "runtime is already running"
+			}
 			_, e = q.ExecContext(ctx, "INSERT INTO commands(id,hash,state,attempt,operation_id,updated,error_code,error_message) VALUES(?,?,?,?,?,?,?,?)",
 				c.CommandId, hash, "REJECTED", cmd.AttemptId, cmd.OperationId, store.Now(),
-				control.ErrorExecutionUnverifiable.String(), "runtime is not in a controllable running state")
+				control.ErrorExecutionUnverifiable.String(), message)
 			if e == nil {
-				replay = w.controlAck(c.CommandId, cmd, "REJECTED", control.ErrorExecutionUnverifiable.String(), "runtime is not in a controllable running state")
+				replay = w.controlAck(c.CommandId, cmd, "REJECTED", control.ErrorExecutionUnverifiable.String(), message)
 			}
 			return e
 		}
@@ -181,6 +212,29 @@ func (w *Worker) executeControl(ctx context.Context, c *pb.Command) (*pb.Command
 			Ref: ref, SessionRef: cmd.SessionRef, AttemptID: cmd.AttemptId,
 			Generation: cmd.Generation,
 		})
+	case "approval":
+		err = sessionProvider.Approve(ctx, adapter.ControlApprovalRequest{
+			Ref: ref, SessionRef: cmd.SessionRef, AttemptID: cmd.AttemptId,
+			Generation: cmd.Generation, ApprovalID: cmd.ApprovalId,
+			RequestVersion: cmd.RequestVersion, Decision: cmd.Decision,
+		})
+	case "resume":
+		var resumed adapter.ExecutionRef
+		resumed, err = sessionProvider.Resume(ctx, adapter.ControlResumeRequest{
+			Ref: ref, SessionRef: cmd.SessionRef, AttemptID: cmd.AttemptId,
+			Generation: cmd.Generation,
+		})
+		if err == nil {
+			if resumed.Provider != runtimeProvider || resumed.ID == "" {
+				err = errors.New("resume returned invalid runtime reference")
+			} else if raw, encodeErr := adapter.EncodeExecutionRef(resumed); encodeErr != nil {
+				err = encodeErr
+			} else {
+				_, err = w.db.SQL.ExecContext(ctx, `UPDATE runs SET runtime_transport=?,runtime_ref=?,runtime_state=?,runtime_cleanup=?
+					WHERE id=? AND completion IS NULL`,
+					resumed.Transport, raw, string(adapter.RuntimeRunning), string(adapter.CleanupPending), cmd.AttemptId)
+			}
+		}
 	default:
 		err = adapter.ErrControlCapabilityUnsupported
 	}
