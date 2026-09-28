@@ -30,13 +30,20 @@
 | ACP-0 | 当前 | Schema/contract 基线 | **已完成**：control.v1alpha1、事件 schema、Provider extension、独立 CI |
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **实现完成待 Gate**：Codex + Claude certified control descriptor / contract tests |
-| ACP-3 | v0.4.x | 安全写控制 | input/interrupt/cancel + operation/fencing |
+| ACP-3 | v0.4.x | 安全写控制 | durable operation/fencing + certified cancel；input/interrupt fail-closed；**PR #41 验证中** |
 | ACP-4 | v0.4.x | Approval + Resume | approval lifecycle、session resume |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
 | ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
 
 ## 3. ACP-0 — 协议基线
+
+**状态：已完成。**
+
+完成证据：
+- `api/control/v1alpha1/{control,event,approval,capabilities,operation}.schema.json`；
+- `internal/control/model.go`；
+- `agent-control-schema` CI Gate。
 
 ### 3.1 代码
 
@@ -92,6 +99,14 @@ internal/runtime/
 
 ## 4. ACP-1 — 只读 Agent Control 面
 
+**状态：已完成。**
+
+完成证据：
+- `GET /v1/control/bootstrap`；
+- Job Session projection；
+- durable Job event replay + SSE / Last-Event-ID；
+- `agent-control-read` CI Gate。
+
 ### 4.1 Server
 
 实现：
@@ -134,6 +149,14 @@ PWA/CLI 能只读显示：
 - Artifact/Diff 链接。
 
 ## 5. ACP-2 — Runtime Adapter Contract
+
+**状态：已完成 foundation。**
+
+完成证据：
+- `internal/adapter/control_contract.go`；
+- Codex / Claude ControlDescriptor；
+- 未认证 interactive capability fail closed；
+- `runtime-adapter-contract` CI Gate。
 
 ### 5.1 Refactor
 
@@ -195,6 +218,19 @@ Interrupt
 新增 Runtime 不需要修改 Job Controller/Scheduler 状态机。
 
 ## 6. ACP-3 — 安全写控制
+
+**状态：PR #41 验证中。**
+
+本轮收敛范围：
+- Server schema v8 `control_operations` durable receipt；
+- `(principal_id, operation_id)` 幂等；
+- `expected_attempt_id + expected_generation` fencing；
+- session-scoped cancel；
+- `ATTEMPT_FENCED / OPERATION_CONFLICT / CAPABILITY_UNSUPPORTED` 稳定错误语义；
+- input / interrupt 在 Runtime 未认证前返回 `CAPABILITY_UNSUPPORTED`；
+- 新增 `agent-control-safe-write` CI Gate。
+
+说明：原计划中 input/interrupt 的真正下发不会为了完成阶段编号而伪实现。ACP-3 的“安全写基础”先稳定；只有 Runtime Adapter 与 Worker command transport 都完成原生能力后，才将相应 capability 从 fail-closed 改为 enabled。
 
 ### 6.1 Store
 
@@ -511,6 +547,16 @@ agent-control-fencing
 - Runtime 切换不要求改客户端。
 
 ## 16. 当前最小下一步
+
+截至 2026-09-28：
+1. ACP-0 已完成。
+2. ACP-1 已完成。
+3. ACP-2 foundation 已完成。
+4. ACP-3 Safe Control Foundation 正在 PR #41 做 CI/Review。
+5. PR #41 合并后，恢复主线 Prepared Workspace；同时设计 ACP-4 所需 Runtime-native Session/Approval transport。
+6. 只有 Codex/Claude 的 resume/input/approval/interrupt 通过 contract test 后，才开放相应 Control API。
+
+### 原始起步计划
 
 建议紧接当前工作执行：
 
