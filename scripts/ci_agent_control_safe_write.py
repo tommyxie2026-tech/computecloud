@@ -46,7 +46,8 @@ def main():
         if required not in session_source:
             violations.append("session control source missing: " + required)
     for required in [
-        "control_operations",
+        "readExistingControlOperation",
+        "insertControlOperation",
         "OPERATION_CONFLICT",
         "RESOURCE_VERSION_CONFLICT",
         "ExpectedVersion",
