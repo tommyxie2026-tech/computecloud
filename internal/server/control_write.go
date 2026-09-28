@@ -225,21 +225,22 @@ func (s *Server) dispatchControlOperation(ctx context.Context, jobID string, in 
 	if err != nil {
 		return err
 	}
+	return s.dispatchControlOperationPrincipal(ctx, p.Identity.Owner, jobID, in, receipt)
+}
+
+func (s *Server) dispatchControlOperationPrincipal(ctx context.Context, principalID, jobID string, in ControlOperationRequest, receipt *ControlOperationReceipt) error {
 	return s.db.Tx(ctx, func(q store.Query) error {
 		if err := validateControlFence(ctx, q, jobID, in); err != nil {
 			return err
 		}
-		if err := s.validateControlCapability(ctx, q, in); err != nil && in.OperationType != "cancel" {
-			return err
-		}
-		// Cancellation remains on the existing server-owned stop path. Interactive
-		// control uses the structured control command envelope below.
+		// Capability and authorization were checked at the durable acceptance
+		// boundary. Recovery must not depend on the Worker still being online.
 		if in.OperationType == "cancel" {
 			receipt.State = "DISPATCHED"
 			raw := job.JSON(receipt)
 			_, err := q.ExecContext(ctx,
 				"UPDATE control_operations SET state='DISPATCHED',receipt_json=?,updated=? WHERE principal_id=? AND operation_id=?",
-				raw, store.Now(), p.Identity.Owner, in.OperationID)
+				raw, store.Now(), principalID, in.OperationID)
 			return err
 		}
 
@@ -274,7 +275,7 @@ func (s *Server) dispatchControlOperation(ctx context.Context, jobID string, in 
 			cc.Mode = payload.Mode
 		}
 		cmd := &pb.Command{
-			CommandId: controlCommandID(p.Identity.Owner, in.OperationID),
+			CommandId: controlCommandID(principalID, in.OperationID),
 			Kind: "control",
 			Control: cc,
 		}
@@ -300,9 +301,64 @@ func (s *Server) dispatchControlOperation(ctx context.Context, jobID string, in 
 		raw := job.JSON(receipt)
 		_, err = q.ExecContext(ctx,
 			"UPDATE control_operations SET state='DISPATCHED',receipt_json=?,updated=? WHERE principal_id=? AND operation_id=?",
-			raw, store.Now(), p.Identity.Owner, in.OperationID)
+			raw, store.Now(), principalID, in.OperationID)
 		return err
 	})
+}
+
+func (s *Server) recoverAcceptedControlOperations(ctx context.Context) error {
+	rows, err := s.db.SQL.QueryContext(ctx, `SELECT principal_id,job_id,request_json,receipt_json
+		FROM control_operations WHERE state='ACCEPTED' ORDER BY created LIMIT 64`)
+	if err != nil {
+		return err
+	}
+	type pending struct {
+		principal, jobID string
+		request, receipt []byte
+	}
+	var list []pending
+	for rows.Next() {
+		var item pending
+		if err = rows.Scan(&item.principal, &item.jobID, &item.request, &item.receipt); err != nil {
+			break
+		}
+		list = append(list, item)
+	}
+	rowErr := rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if rowErr != nil {
+		return rowErr
+	}
+	for _, item := range list {
+		var in ControlOperationRequest
+		var receipt ControlOperationReceipt
+		if err = json.Unmarshal(item.request, &in); err != nil {
+			return err
+		}
+		if err = json.Unmarshal(item.receipt, &receipt); err != nil {
+			return err
+		}
+		if err = s.dispatchControlOperationPrincipal(ctx, item.principal, item.jobID, in, &receipt); err != nil {
+			switch status.Code(err) {
+			case codes.Aborted, codes.FailedPrecondition, codes.NotFound:
+				receipt.State = "REJECTED"
+				_ = s.db.Tx(ctx, func(q store.Query) error {
+					_, updateErr := q.ExecContext(ctx, `UPDATE control_operations
+						SET state='REJECTED',receipt_json=?,updated=?
+						WHERE principal_id=? AND operation_id=? AND state='ACCEPTED'`,
+						job.JSON(receipt), store.Now(), item.principal, in.OperationID)
+					return updateErr
+				})
+				continue
+			default:
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Server) acceptAndDispatchControlOperation(ctx context.Context, jobID string, in ControlOperationRequest) (*ControlOperationReceipt, error) {
