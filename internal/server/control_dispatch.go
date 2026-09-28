@@ -321,6 +321,22 @@ func (s *Server) applyControlAck(ctx context.Context, workerID string, ack *pb.C
 		if err := json.Unmarshal(oldReceipt, &receipt); err != nil {
 			return err
 		}
+		if receipt.State == ledgerState {
+			if receipt.ErrorCode != code || receipt.ErrorMessage != message {
+				return status.Error(codes.AlreadyExists, control.ErrorOperationConflict.String())
+			}
+			if cmd.Control.Action == "approval" {
+				if err := applyApprovalControlResult(ctx, q, cmd.Control, ack); err != nil {
+					return err
+				}
+			}
+			_, err := q.ExecContext(ctx, "UPDATE commands SET acked=1 WHERE id=? AND worker=?",
+				ack.CommandId, workerID)
+			return err
+		}
+		if receipt.State == "COMPLETED" || receipt.State == "REJECTED" {
+			return status.Error(codes.AlreadyExists, control.ErrorOperationConflict.String())
+		}
 		receipt.State = ledgerState
 		receipt.ErrorCode = code
 		receipt.ErrorMessage = message
