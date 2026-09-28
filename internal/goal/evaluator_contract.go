@@ -82,6 +82,7 @@ func (r ReplanEvidence) Fingerprint() string {
 
 type PlanCanonical struct {
 	Strategy             string
+	StrategyClass        string
 	DependencySignature  string
 	RequiredCapabilities []string
 	KeyAssumptions       []string
@@ -90,10 +91,10 @@ type PlanCanonical struct {
 }
 
 func (p PlanCanonical) Validate() error {
-	if strings.TrimSpace(p.Strategy) == "" || strings.TrimSpace(p.DependencySignature) == "" {
-		return fmt.Errorf("plan strategy and dependency signature are required")
+	if strings.TrimSpace(p.Strategy) == "" || strings.TrimSpace(p.StrategyClass) == "" || strings.TrimSpace(p.DependencySignature) == "" {
+		return fmt.Errorf("plan strategy, strategy class and dependency signature are required")
 	}
-	if len(p.Strategy) > 4096 || len(p.DependencySignature) > 4096 || len(p.EvaluationStrategy) > 1024 || len(p.SideEffectClass) > 128 {
+	if len(p.Strategy) > 4096 || len(p.StrategyClass) > 128 || len(p.DependencySignature) > 4096 || len(p.EvaluationStrategy) > 1024 || len(p.SideEffectClass) > 128 {
 		return fmt.Errorf("plan canonical field too large")
 	}
 	if len(p.RequiredCapabilities) > 64 || len(p.KeyAssumptions) > 64 {
@@ -109,13 +110,14 @@ func (p PlanCanonical) Fingerprint() string {
 	sort.Strings(assumptions)
 	raw, _ := json.Marshal(struct {
 		Strategy             string
+		StrategyClass        string
 		DependencySignature  string
 		RequiredCapabilities []string
 		KeyAssumptions       []string
 		EvaluationStrategy   string
 		SideEffectClass      string
 	}{
-		Strategy: p.Strategy, DependencySignature: p.DependencySignature,
+		Strategy: p.Strategy, StrategyClass: p.StrategyClass, DependencySignature: p.DependencySignature,
 		RequiredCapabilities: caps, KeyAssumptions: assumptions,
 		EvaluationStrategy: p.EvaluationStrategy, SideEffectClass: p.SideEffectClass,
 	})
@@ -132,4 +134,62 @@ func validFailureClass(v FailureClass) bool {
 	default:
 		return false
 	}
+}
+
+
+type StrategyDelta struct {
+	ChangedDimensions []string
+	Summary           string
+}
+
+func (d StrategyDelta) Validate() error {
+	if len(d.ChangedDimensions) == 0 || len(d.ChangedDimensions) > 16 {
+		return fmt.Errorf("strategy_delta requires 1..16 changed dimensions")
+	}
+	if strings.TrimSpace(d.Summary) == "" || len(d.Summary) > 2048 {
+		return fmt.Errorf("strategy_delta summary required and bounded")
+	}
+	for _, v := range d.ChangedDimensions {
+		if strings.TrimSpace(v) == "" || len(v) > 64 {
+			return fmt.Errorf("invalid strategy_delta dimension")
+		}
+	}
+	return nil
+}
+
+func (p PlanCanonical) StrategySignature() string {
+	raw, _ := json.Marshal(struct {
+		StrategyClass       string
+		DependencySignature string
+		SideEffectClass     string
+	}{
+		StrategyClass: strings.TrimSpace(p.StrategyClass),
+		DependencySignature: strings.TrimSpace(p.DependencySignature),
+		SideEffectClass: strings.TrimSpace(p.SideEffectClass),
+	})
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+type ProgressSnapshot struct {
+	AcceptedChecks       int
+	FailedChecks         int
+	UnknownChecks        int
+	ResolvedAssumptions  int
+	UnresolvedBlockers   int
+}
+
+func (p ProgressSnapshot) Validate() error {
+	if p.AcceptedChecks < 0 || p.FailedChecks < 0 || p.UnknownChecks < 0 || p.ResolvedAssumptions < 0 || p.UnresolvedBlockers < 0 {
+		return fmt.Errorf("progress counters must be non-negative")
+	}
+	return nil
+}
+
+func (p ProgressSnapshot) ImprovedOver(prev ProgressSnapshot) bool {
+	return p.AcceptedChecks > prev.AcceptedChecks ||
+		p.FailedChecks < prev.FailedChecks ||
+		p.UnknownChecks < prev.UnknownChecks ||
+		p.ResolvedAssumptions > prev.ResolvedAssumptions ||
+		p.UnresolvedBlockers < prev.UnresolvedBlockers
 }
