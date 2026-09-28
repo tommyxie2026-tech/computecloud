@@ -197,6 +197,9 @@ func (s *Server) acceptControlOperation(ctx context.Context, jobID string, in Co
 		if err := s.validateControlCapability(ctx, q, in); err != nil {
 			return err
 		}
+		if err := validateApprovalDecision(ctx, q, in); err != nil {
+			return err
+		}
 		raw := job.JSON(receipt)
 		now := store.Now()
 		_, err := q.ExecContext(ctx, `INSERT INTO control_operations(
@@ -406,9 +409,19 @@ func resolveControlOperationEvent(ctx context.Context, q store.Query, event *pb.
 	}
 	receipt.State = next
 	receipt.Existing = false
-	_, err = q.ExecContext(ctx, `UPDATE control_operations
+	result, err := q.ExecContext(ctx, `UPDATE control_operations
 		SET state=?,receipt_json=?,updated=?
 		WHERE principal_id=? AND operation_id=? AND state IN ('ACCEPTED','DISPATCHED')`,
 		next, job.JSON(receipt), store.Now(), principalID, payload.OperationID)
-	return err
+	if err != nil {
+		return err
+	}
+	if event.Type == "control.accepted" {
+		if n, rowsErr := result.RowsAffected(); rowsErr != nil {
+			return rowsErr
+		} else if n > 0 {
+			return resolveApprovalDecision(ctx, q, principalID, payload.OperationID)
+		}
+	}
+	return nil
 }
