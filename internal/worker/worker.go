@@ -226,15 +226,22 @@ func (w *Worker) connect(parent context.Context) error {
 		if cmd == nil {
 			return errors.New("unknown server frame")
 		}
-		launch, e := w.accept(ctx, cmd)
+		fresh, e := w.accept(ctx, cmd)
 		if e != nil {
 			return e
 		}
-		if launch {
+		if cmd.Kind == "start" && fresh {
 			w.start(parent, cmd.Assignment)
 		}
 		if e = send(&pb.WorkerFrame{Body: &pb.WorkerFrame_Ack{Ack: &pb.CommandAck{CommandId: cmd.CommandId, State: "RECEIVED"}}}); e != nil {
 			return e
+		}
+		if cmd.Kind == "control" && fresh {
+			w.wg.Add(1)
+			go func(command *pb.Command) {
+				defer w.wg.Done()
+				w.applyControlCommand(parent, command)
+			}(cmd)
 		}
 		if cmd.Kind == "stop" {
 			w.mu.Lock()
