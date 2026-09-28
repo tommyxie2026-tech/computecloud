@@ -8,6 +8,19 @@
 - 并行旁路：RPG-4 FINAL / Goal Governance 收尾、Agent Control Approval
 - 原则：**并行开发不等于架构拆服务；继续保持单 Go Server + SQLite，优先通过 package / contract / CI Gate 隔离并行工作。**
 
+## 0. 当前认领状态
+
+~~~text
+WS-A Prepared Workspace Core
+Owner: active implementation
+Status: code + ADR + dedicated CI Gate implemented, CI validation pending
+
+WS-B / WS-C / WS-D / WS-E
+Follow current repository facts before claiming; parallel agents may update main independently.
+~~~
+
+认领者必须先检查 main 最近提交，避免依据静态文档重复实现。
+
 ## 1. 目标
 
 本计划解决一个工程组织问题：
