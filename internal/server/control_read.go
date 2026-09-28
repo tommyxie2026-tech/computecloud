@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strings"
 	"strconv"
 	"time"
 
@@ -45,6 +46,13 @@ func controlCapabilities(runtimeCapabilities []string) []control.Capability {
 			add(control.CapabilityStructuredOutput)
 		case "cancel", "runtime:cancel":
 			add(control.CapabilityCancel)
+		default:
+			if strings.HasPrefix(value, "control:") {
+				capability := control.Capability(strings.TrimPrefix(value, "control:"))
+				if control.ValidateCapabilities([]control.Capability{capability}) == nil {
+					add(capability)
+				}
+			}
 		}
 	}
 	out := make([]control.Capability, 0, len(seen))
