@@ -177,3 +177,84 @@ func TestACP4SessionResumeRequiresExplicitCurrentSessionRef(t *testing.T) {
 		t.Fatalf("wrong session ref err=%v", err)
 	}
 }
+
+
+func TestACP4ApprovalNewVersionSupersedesPending(t *testing.T) {
+	h, jobID, taskID, _ := controlHarness(t)
+	first := &pb.Event{
+		TaskId: taskID, AttemptId: "control-attempt-1", Generation: 1,
+		Type: "approval.requested",
+		PayloadJson: []byte(`{"approval_id":"approval-versioned","tool":"shell","action":"run","risk_class":"HIGH","request_version":1}`),
+	}
+	second := &pb.Event{
+		TaskId: taskID, AttemptId: "control-attempt-1", Generation: 1,
+		Type: "approval.requested",
+		PayloadJson: []byte(`{"approval_id":"approval-versioned","tool":"shell","action":"run changed","risk_class":"HIGH","request_version":2}`),
+	}
+	for _, ev := range []*pb.Event{first, second} {
+		if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+			return persistAgentControlRuntimeState(context.Background(), q, ev)
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	items, err := h.s.JobApprovals(h.ctx, jobID)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("approvals=%+v err=%v", items, err)
+	}
+	if items[0].RequestVersion != 1 || items[0].State != "SUPERSEDED" ||
+		items[1].RequestVersion != 2 || items[1].State != "PENDING" {
+		t.Fatalf("versioned approvals=%+v", items)
+	}
+	var superseded int
+	if err = h.s.db.SQL.QueryRow("SELECT count(*) FROM job_events WHERE job_id=? AND type='approval.superseded'", jobID).Scan(&superseded); err != nil {
+		t.Fatal(err)
+	}
+	if superseded != 1 {
+		t.Fatalf("approval.superseded events=%d want=1", superseded)
+	}
+
+	jump := &pb.Event{
+		TaskId: taskID, AttemptId: "control-attempt-1", Generation: 1,
+		Type: "approval.requested",
+		PayloadJson: []byte(`{"approval_id":"approval-versioned","tool":"shell","action":"jump","risk_class":"HIGH","request_version":4}`),
+	}
+	err = h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistAgentControlRuntimeState(context.Background(), q, jump)
+	})
+	if status.Code(err) != codes.Aborted || status.Convert(err).Message() != "RESOURCE_VERSION_CONFLICT" {
+		t.Fatalf("approval version jump err=%v", err)
+	}
+}
+
+func TestACP4RuntimeSessionRefIsImmutableWithinAttempt(t *testing.T) {
+	h, _, taskID, _ := controlHarness(t)
+	first := &pb.Event{
+		TaskId: taskID, AttemptId: "control-attempt-1", Generation: 1,
+		Type: "session.started", PayloadJson: []byte(`{"session_ref":"native-session-1"}`),
+	}
+	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistAgentControlRuntimeState(context.Background(), q, first)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	replay := &pb.Event{
+		TaskId: taskID, AttemptId: "control-attempt-1", Generation: 1,
+		Type: "session.started", PayloadJson: []byte(`{"session_ref":"native-session-1"}`),
+	}
+	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistAgentControlRuntimeState(context.Background(), q, replay)
+	}); err != nil {
+		t.Fatalf("same session ref replay rejected: %v", err)
+	}
+	conflict := &pb.Event{
+		TaskId: taskID, AttemptId: "control-attempt-1", Generation: 1,
+		Type: "session.started", PayloadJson: []byte(`{"session_ref":"native-session-2"}`),
+	}
+	err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistAgentControlRuntimeState(context.Background(), q, conflict)
+	})
+	if status.Code(err) != codes.FailedPrecondition || status.Convert(err).Message() != "ATTEMPT_FENCED" {
+		t.Fatalf("session ref mutation err=%v", err)
+	}
+}
