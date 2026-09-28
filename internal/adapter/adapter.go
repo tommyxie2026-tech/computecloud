@@ -187,6 +187,35 @@ func (codexProvider) Capabilities() CapabilitySet {
 }
 func (codexProvider) SupportsGateway() bool { return true }
 
+type geminiProvider struct{}
+
+func (geminiProvider) Profile() string { return "gemini_cli" }
+func (geminiProvider) Probe(ctx context.Context, r config.Runtime) error { return probeCLI(ctx, r) }
+func (geminiProvider) Args(spec *pb.TaskSpec, _ config.Policy) ([]string, error) {
+	if strings.TrimSpace(spec.Model) == "" {
+		return nil, errors.New("gemini model required")
+	}
+	// Gemini CLI treats piped stdin as non-interactive input. Keep the prompt out
+	// of argv and use stream-json for a runtime-neutral event stream.
+	return []string{
+		"--model", spec.Model,
+		"--output-format", "stream-json",
+		"--approval-mode", "plan",
+	}, nil
+}
+func (geminiProvider) Parser(emit func(string, []byte) error) StreamParser {
+	return &GeminiParser{Emit: emit}
+}
+func (geminiProvider) Capabilities() CapabilitySet {
+	return CapabilitySet{
+		Runtime:     []string{"event_stream", "cancel", "local_cli"},
+		Tools:       []string{"job_io_v1", "artifact_inputs_v1"},
+		Environment: []string{"process"},
+		Legacy:      []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1"},
+	}
+}
+func (geminiProvider) SupportsGateway() bool { return false }
+
 type claudeProvider struct{}
 
 func (claudeProvider) Profile() string { return "claude_print" }
@@ -215,11 +244,84 @@ func (claudeProvider) Capabilities() CapabilitySet {
 func (claudeProvider) SupportsGateway() bool { return false }
 
 func init() {
-	for _, p := range []Provider{codexProvider{}, claudeProvider{}} {
+	for _, p := range []Provider{codexProvider{}, claudeProvider{}, geminiProvider{}} {
 		if err := Register(p); err != nil {
 			panic(err)
 		}
 	}
+}
+
+type GeminiParser struct {
+	outcome Outcome
+	result  strings.Builder
+	Emit    func(string, []byte) error
+}
+
+func (p *GeminiParser) Outcome() Outcome {
+	out := p.outcome
+	if out.Result == "" {
+		out.Result = p.result.String()
+	}
+	return out
+}
+
+func (p *GeminiParser) Line(line []byte) error {
+	if len(bytes.TrimSpace(line)) == 0 {
+		return nil
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(line, &m); err != nil {
+		return fmt.Errorf("PROTOCOL_ERROR: %w", err)
+	}
+	str := func(k string) string {
+		var s string
+		_ = json.Unmarshal(m[k], &s)
+		return s
+	}
+	kind := str("type")
+	typ := "runtime.diagnostic"
+	switch kind {
+	case "init":
+		p.outcome.Session = str("session_id")
+	case "message":
+		var role, content string
+		var delta bool
+		_ = json.Unmarshal(m["role"], &role)
+		_ = json.Unmarshal(m["content"], &content)
+		_ = json.Unmarshal(m["delta"], &delta)
+		if role == "assistant" {
+			p.result.WriteString(content)
+			if delta {
+				typ = "message.delta"
+			} else {
+				typ = "message.completed"
+			}
+		}
+	case "tool_use":
+		typ = "tool.started"
+	case "tool_result":
+		typ = "tool.completed"
+	case "error":
+		p.outcome.Final = true
+		p.outcome.Success = false
+		p.outcome.Code = "RUNTIME_FAILED"
+		typ = "runtime.warning"
+	case "result":
+		p.outcome.Final = true
+		p.outcome.Success = str("status") == "success"
+		p.outcome.Result = p.result.String()
+		if !p.outcome.Success {
+			p.outcome.Code = "RUNTIME_FAILED"
+		}
+		typ = "runtime.result"
+	}
+	if len(p.result.String()) > 1<<20 {
+		return errors.New("PROTOCOL_LIMIT: result exceeds 1 MiB")
+	}
+	if p.Emit == nil {
+		return nil
+	}
+	return p.Emit(typ, line)
 }
 
 type Parser struct {
