@@ -27,14 +27,16 @@ type ControlOperationRequest struct {
 }
 
 type ControlOperationReceipt struct {
-	OperationID   string `json:"operation_id"`
-	State         string `json:"state"`
-	Existing      bool   `json:"existing"`
-	JobID         string `json:"job_id"`
-	TaskID        string `json:"task_id"`
-	AttemptID     string `json:"attempt_id"`
-	Generation    int64  `json:"generation"`
-	ResourceVersion int64 `json:"resource_version"`
+	OperationID     string `json:"operation_id"`
+	State           string `json:"state"`
+	Existing        bool   `json:"existing"`
+	JobID           string `json:"job_id"`
+	TaskID          string `json:"task_id"`
+	AttemptID       string `json:"attempt_id"`
+	Generation      int64  `json:"generation"`
+	ResourceVersion int64  `json:"resource_version"`
+	ErrorCode       string `json:"error_code,omitempty"`
+	ErrorMessage    string `json:"error_message,omitempty"`
 }
 
 func validateControlOperationRequest(in ControlOperationRequest) error {
