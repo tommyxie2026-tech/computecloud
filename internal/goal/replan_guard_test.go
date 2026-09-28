@@ -25,48 +25,63 @@ func createTestGoal(t *testing.T, db *store.DB, id string, budget Budget) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := RegisterPlanFingerprint(context.Background(), db, id, 1, plan("initial")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func plan(strategy string) PlanCanonical {
+	return PlanCanonical{
+		Strategy: strategy, DependencySignature: "scan>implement>test",
+		RequiredCapabilities: []string{"runtime:codex", "tool:git"},
+		KeyAssumptions: []string{"repository accessible"},
+		EvaluationStrategy: "tests", SideEffectClass: "workspace",
+	}
+}
+
+func request(id, eval string, planRev, graphGen int64, evidenceFact, strategy string) ReplanRequest {
+	return ReplanRequest{
+		ID: id, GoalID: "g", EvaluationID: eval,
+		ExpectedPlanRevision: planRev, ExpectedGraphGeneration: graphGen,
+		ReasonCode: "ASSUMPTION_INVALIDATED",
+		Evidence: ReplanEvidence{
+			FailureClass: FailureInvalidAssumption,
+			Evidence: []Evidence{{Type: "test_failure", ArtifactID: "artifact-" + eval, Fact: evidenceFact}},
+		},
+		ProposedPlan: plan(strategy),
+	}
 }
 
 func TestGuardReplanAllowsAndAdvancesGeneration(t *testing.T) {
 	db := newGoalDB(t)
 	createTestGoal(t, db, "g", Budget{MaxReplans: 2, MaxTotalAttempts: 4, MaxWallTime: time.Hour})
-
-	got, err := GuardReplan(context.Background(), db, ReplanRequest{
-		ID: "r1", GoalID: "g", EvaluationID: "e1",
-		ExpectedPlanRevision: 1, ExpectedGraphGeneration: 1,
-	})
+	got, err := GuardReplan(context.Background(), db, request("r1", "e1", 1, 1, "jwt middleware conflicts", "oauth-adapter"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !got.Allowed || got.Code != DecisionAllowed || got.NextPlanRevision != 2 || got.NextGraphGeneration != 2 {
 		t.Fatalf("unexpected decision: %+v", got)
 	}
-
-	var plan, graph int64
+	var planRev, graph int64
 	var replans int
-	if err = db.SQL.QueryRow("SELECT active_plan_revision,active_graph_generation,consumed_replans FROM goals WHERE id='g'").Scan(&plan, &graph, &replans); err != nil {
+	if err = db.SQL.QueryRow("SELECT active_plan_revision,active_graph_generation,consumed_replans FROM goals WHERE id='g'").Scan(&planRev, &graph, &replans); err != nil {
 		t.Fatal(err)
 	}
-	if plan != 2 || graph != 2 || replans != 1 {
-		t.Fatalf("goal state plan=%d graph=%d replans=%d", plan, graph, replans)
+	if planRev != 2 || graph != 2 || replans != 1 {
+		t.Fatalf("goal state plan=%d graph=%d replans=%d", planRev, graph, replans)
 	}
 }
 
 func TestGuardReplanIsIdempotentPerEvaluation(t *testing.T) {
 	db := newGoalDB(t)
 	createTestGoal(t, db, "g", Budget{MaxReplans: 2, MaxTotalAttempts: 4, MaxWallTime: time.Hour})
-	req := ReplanRequest{
-		ID: "r1", GoalID: "g", EvaluationID: "e1",
-		ExpectedPlanRevision: 1, ExpectedGraphGeneration: 1,
-	}
+	req := request("r1", "e1", 1, 1, "jwt middleware conflicts", "oauth-adapter")
 	first, err := GuardReplan(context.Background(), db, req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := GuardReplan(context.Background(), db, ReplanRequest{
-		ID: "different-delivery-id", GoalID: "g", EvaluationID: "e1",
-		ExpectedPlanRevision: 1, ExpectedGraphGeneration: 1,
-	})
+	req.ID = "different-delivery-id"
+	second, err := GuardReplan(context.Background(), db, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,19 +99,27 @@ func TestGuardReplanIsIdempotentPerEvaluation(t *testing.T) {
 	}
 }
 
-func TestGuardReplanRejectsStaleGeneration(t *testing.T) {
+func TestGuardReplanRejectsIdempotencyConflict(t *testing.T) {
 	db := newGoalDB(t)
 	createTestGoal(t, db, "g", Budget{MaxReplans: 2, MaxTotalAttempts: 4, MaxWallTime: time.Hour})
-	if _, err := GuardReplan(context.Background(), db, ReplanRequest{
-		ID: "r1", GoalID: "g", EvaluationID: "e1",
-		ExpectedPlanRevision: 1, ExpectedGraphGeneration: 1,
-	}); err != nil {
+	req := request("r1", "e1", 1, 1, "fact-a", "strategy-a")
+	if _, err := GuardReplan(context.Background(), db, req); err != nil {
 		t.Fatal(err)
 	}
-	got, err := GuardReplan(context.Background(), db, ReplanRequest{
-		ID: "r2", GoalID: "g", EvaluationID: "late-eval",
-		ExpectedPlanRevision: 1, ExpectedGraphGeneration: 1,
-	})
+	req.ID = "r2"
+	req.Evidence.Evidence[0].Fact = "fact-b"
+	if _, err := GuardReplan(context.Background(), db, req); err == nil || err.Error() != "IDEMPOTENCY_CONFLICT" {
+		t.Fatalf("expected idempotency conflict, got %v", err)
+	}
+}
+
+func TestGuardReplanRejectsStaleGeneration(t *testing.T) {
+	db := newGoalDB(t)
+	createTestGoal(t, db, "g", Budget{MaxReplans: 3, MaxTotalAttempts: 4, MaxWallTime: time.Hour})
+	if _, err := GuardReplan(context.Background(), db, request("r1", "e1", 1, 1, "fact-a", "strategy-a")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := GuardReplan(context.Background(), db, request("r2", "late-eval", 1, 1, "fact-b", "strategy-b"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,25 +131,67 @@ func TestGuardReplanRejectsStaleGeneration(t *testing.T) {
 func TestGuardReplanStopsAtMaxReplans(t *testing.T) {
 	db := newGoalDB(t)
 	createTestGoal(t, db, "g", Budget{MaxReplans: 1, MaxTotalAttempts: 4, MaxWallTime: time.Hour})
-	first, err := GuardReplan(context.Background(), db, ReplanRequest{
-		ID: "r1", GoalID: "g", EvaluationID: "e1",
-		ExpectedPlanRevision: 1, ExpectedGraphGeneration: 1,
-	})
+	first, err := GuardReplan(context.Background(), db, request("r1", "e1", 1, 1, "fact-a", "strategy-a"))
 	if err != nil || !first.Allowed {
 		t.Fatalf("first=%+v err=%v", first, err)
 	}
 	if _, err = db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
 		t.Fatal(err)
 	}
-	second, err := GuardReplan(context.Background(), db, ReplanRequest{
-		ID: "r2", GoalID: "g", EvaluationID: "e2",
-		ExpectedPlanRevision: 2, ExpectedGraphGeneration: 2,
-	})
+	second, err := GuardReplan(context.Background(), db, request("r2", "e2", 2, 2, "fact-b", "strategy-b"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if second.Allowed || !second.NeedsApproval || second.Code != DecisionBudgetExhausted {
 		t.Fatalf("budget guard failed: %+v", second)
+	}
+}
+
+func TestGuardReplanRequiresNewEvidence(t *testing.T) {
+	db := newGoalDB(t)
+	createTestGoal(t, db, "g", Budget{MaxReplans: 3, MaxTotalAttempts: 5, MaxWallTime: time.Hour})
+	if _, err := GuardReplan(context.Background(), db, request("r1", "e1", 1, 1, "same-fact", "strategy-a")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := GuardReplan(context.Background(), db, request("r2", "e2", 2, 2, "same-fact", "strategy-b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Allowed || !got.NeedsApproval || got.Code != DecisionNoNewEvidence {
+		t.Fatalf("duplicate evidence accepted: %+v", got)
+	}
+}
+
+func TestGuardReplanRejectsDuplicatePlan(t *testing.T) {
+	db := newGoalDB(t)
+	createTestGoal(t, db, "g", Budget{MaxReplans: 3, MaxTotalAttempts: 5, MaxWallTime: time.Hour})
+	if _, err := GuardReplan(context.Background(), db, request("r1", "e1", 1, 1, "fact-a", "strategy-a")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := GuardReplan(context.Background(), db, request("r2", "e2", 2, 2, "fact-b", "strategy-a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Allowed || !got.NeedsApproval || got.Code != DecisionDuplicatePlan {
+		t.Fatalf("duplicate plan accepted: %+v", got)
+	}
+}
+
+func TestGuardReplanRejectsInitialPlanFingerprint(t *testing.T) {
+	db := newGoalDB(t)
+	createTestGoal(t, db, "g", Budget{MaxReplans: 2, MaxTotalAttempts: 4, MaxWallTime: time.Hour})
+	got, err := GuardReplan(context.Background(), db, request("r1", "e1", 1, 1, "fact-a", "initial"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Allowed || !got.NeedsApproval || got.Code != DecisionDuplicatePlan {
+		t.Fatalf("initial plan reused: %+v", got)
 	}
 }
 
@@ -150,14 +215,34 @@ func TestGuardReplanStopsAfterDeadline(t *testing.T) {
 		MaxReplans: 2, MaxTotalAttempts: 4, MaxWallTime: time.Hour,
 		DeadlineMS: store.Now() - 1,
 	})
-	got, err := GuardReplan(context.Background(), db, ReplanRequest{
-		ID: "r1", GoalID: "g", EvaluationID: "e1",
-		ExpectedPlanRevision: 1, ExpectedGraphGeneration: 1,
-	})
+	got, err := GuardReplan(context.Background(), db, request("r1", "e1", 1, 1, "fact-a", "strategy-a"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Allowed || !got.NeedsApproval || got.Code != DecisionDeadlineExceeded {
 		t.Fatalf("deadline guard failed: %+v", got)
+	}
+}
+
+func TestEvidenceFingerprintOrderIndependent(t *testing.T) {
+	a := ReplanEvidence{FailureClass: FailureTest, Evidence: []Evidence{
+		{Type: "test", ArtifactID: "b", Fact: "B"},
+		{Type: "test", ArtifactID: "a", Fact: "A"},
+	}}
+	b := ReplanEvidence{FailureClass: FailureTest, Evidence: []Evidence{
+		{Type: "test", ArtifactID: "a", Fact: "A"},
+		{Type: "test", ArtifactID: "b", Fact: "B"},
+	}}
+	if a.Fingerprint() != b.Fingerprint() {
+		t.Fatal("evidence fingerprint depends on input order")
+	}
+}
+
+func TestPlanFingerprintCanonicalizesSetFields(t *testing.T) {
+	a := plan("same")
+	b := plan("same")
+	b.RequiredCapabilities = []string{"tool:git", "runtime:codex"}
+	if a.Fingerprint() != b.Fingerprint() {
+		t.Fatal("plan fingerprint depends on capability order")
 	}
 }
