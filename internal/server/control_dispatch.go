@@ -321,6 +321,29 @@ func (s *Server) applyControlAck(ctx context.Context, workerID string, ack *pb.C
 		if err := json.Unmarshal(oldReceipt, &receipt); err != nil {
 			return err
 		}
+		// A terminal receipt is immutable. In particular, replaying a successful
+		// approval ACK must not try to transition an already decided request.
+		if receipt.State == "COMPLETED" || receipt.State == "REJECTED" {
+			if receipt.State != ledgerState || receipt.ErrorCode != code || receipt.ErrorMessage != message {
+				return status.Error(codes.AlreadyExists, control.ErrorOperationConflict.String())
+			}
+			return nil
+		}
+		// Check the execution identity in the same transaction as the result.
+		// The Job version may legitimately advance while a command is in flight;
+		// only the current, unreleased Attempt can commit a new control result.
+		var current int
+		if err := q.QueryRowContext(ctx, `SELECT count(*) FROM tasks t
+			JOIN attempts a ON a.id=t.attempt AND a.task=t.id
+			WHERE t.id=? AND t.attempt=? AND t.current_generation=?
+			AND a.generation=? AND a.released=0 AND a.worker=?`,
+			cmd.Control.TaskId, cmd.Control.AttemptId, cmd.Control.Generation,
+			cmd.Control.Generation, workerID).Scan(&current); err != nil {
+			return err
+		}
+		if current != 1 {
+			return status.Error(codes.Aborted, control.ErrorAttemptFenced.String())
+		}
 		receipt.State = ledgerState
 		receipt.ErrorCode = code
 		receipt.ErrorMessage = message

@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval lifecycle 已实现待 CI；ACP-4b Session Resume 待实施
+- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval lifecycle 已合并；WS-E ACK 可靠性增量本地 Gate 通过，待 PR CI；ACP-4b Session Resume 见 PR #50，尚未进入本次 main 基线
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -31,7 +31,7 @@
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
 | ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
-| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已实现待 CI**：durable approval request/version/state、expiry/supersede、Worker Approve dispatch/ACK、HTTP decision；**ACP-4b 待实施**：session resume |
+| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已合并**：durable approval request/version/state、expiry/supersede、Worker Approve dispatch/ACK、HTTP decision；**ACP-4b 已有 PR #50**：current-Attempt resume，独立验收 |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
 | ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
@@ -259,7 +259,7 @@ POST /v1/jobs/{job}/cancel
 
 ## 7. ACP-4 — Approval 与 Session Resume
 
-### 7.1 Approval — ACP-4a 已实现待 CI
+### 7.1 Approval — ACP-4a 已合并
 
 已实现：
 - Server schema v12 `approval_requests`；
@@ -289,7 +289,7 @@ PENDING
 
 审批必须 audit。
 
-### 7.2 Resume — ACP-4b 待实施
+### 7.2 Resume — ACP-4b 独立 PR #50
 
 Resume 不与 Approval 混在同一提交中。现有 Attempt completion 会 release Attempt，Worker restart 也会先 reconciliation/cleanup，因此不能简单把 Resume 实现成“对已释放 Attempt 再发一条控制命令”。
 
@@ -545,10 +545,66 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. ACP-4a：通过 `agent-control-approval` PR CI 并合并；Package Gate 必须依赖该 Gate。
-2. ACP-4b：先定义 Resume Attempt transition / Workspace / Environment compatibility，再实现 Worker Resume dispatch。
+1. ACP-4a 已在 `da086cd` 合并，Package Gate 已依赖 `agent-control-approval`；继续验收下述 WS-E ACK 可靠性增量。
+2. ACP-4b 已有 [PR #50](https://github.com/tommyxie2026-tech/computecloud/pull/50)，本次不重复实现 Resume；合并时核对共享 dispatch 文件。
 3. 增加 multi-process fault injection：approval decision commit 后重启、Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
 4. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
 5. Prepared Workspace 主线继续推进；Resume 必须复用其 fingerprint/compatibility 语义，不能建立第二套 Workspace 状态机。
 
 这一顺序可以最小化返工，同时确保 Control App 不先于服务端语义成熟。
+
+## 17. WS-E 认领与进度（2026-09-29）
+
+认领：**WS-E Agent Control Approval / Integration / CI**。事实基线为
+`main da086cd749e2ffa93a5a5b9d7012799505764e9f`，依据并行开发计划第 7 节、ADR-008
+及本协议设计；保持单 Go Server、SQLite 和既有 durable execution truth。
+
+### 实施计划与代码事实
+
+| 项目 | 核对结果 / 本次目标 |
+| --- | --- |
+| Current State | ACP-A Runtime projection、ACP-B decision ledger、ACP-C capability fencing 已存在；重复成功 Approval ACK 会对已结束审批再次转移并报冲突；首次 ACK 缺少当前 Attempt 复核 |
+| Target State | 同结果终态 ACK 幂等；冲突结果拒绝；旧 Attempt/generation 或 released Attempt 的首次 ACK 不修改 approval、receipt、command 或 event |
+| Files / Packages | `internal/server/control_dispatch.go`、`internal/server/control_approval_test.go`、`internal/worker/control_*test.go`、既有审批 Gate、本实施文档与协议说明 |
+| Contract Changes | 无新增公共字段/错误码；既有错误为 `CAPABILITY_UNSUPPORTED`，并行计划中的 `CAPABILITY_UNAVAILABLE` 不应视为另一个已实现契约 |
+| Schema Changes | 无；代码实际 Server v12 / Worker v6。README 仍写 v11，留给共享文档 owner 在集成窗口同步；不抢占版本或修改 migration |
+| Tests | payload unit、HTTP projection/decision/retry、并发重复/冲突 ACK、stale/released ACK、Server SQLite 重开、Worker ledger 重开及 UNKNOWN 恢复、两种 builtin Runtime 的 Server/Worker unsupported matrix |
+| CI Gate | 复用 `agent-control-approval`，新增 `-race`；复用 V12 schema、V1 升级/drain、migration rollback、Worker v6 migration 测试；已在 main CI/package dependency 内，无新 workflow |
+| Risks | `control_dispatch.go` 与 Resume PR #50 有交集，合并需复核；过期代次 ACK 拒绝后不自动重新执行 Runtime 副作用 |
+| Merge Dependencies | 本增量只依赖已合并 ACP-4a；ACP-D bridge 依赖 WS-D C4 Goal Approval API/持久化契约 |
+
+### 已实施增量
+
+- 在 ACK 事务中先检查终态回执：相同规范化结果直接返回，冲突结果为 `OPERATION_CONFLICT`。
+- 首次 ACK 落库前检查当前 Task/Attempt/generation、Worker 归属和 released 标记，失败为 `ATTEMPT_FENCED`。
+- ACK 不比较旧 Job resource version：命令飞行期间 Job 版本可以合法前进，执行代次仍必须一致。
+- 复用既有 ledger 与审计事件，不新增缓存事实源、自动 retry、Runtime 名称分支或外部基础设施。
+
+### 验收证据
+
+本地 Go 1.27.1：
+
+```sh
+python3 scripts/ci_agent_control_approval.py --output /tmp/computecloud-wse-ci/report.json
+```
+
+结果：**PASS**，16 个顶层测试（含子用例），`-race`，无真实模型调用。
+覆盖 Server/Worker restart、幂等、stale-generation 和既有 migration。
+这些 restart 测试关闭/重开真实 SQLite 并重建对象；独立进程 kill/断网故障注入仍属于后续验收，不能等同为已覆盖。
+
+### Workstream 状态
+
+| 项目 | 状态 | 说明 |
+| --- | --- | --- |
+| ACP-A / ACP-B / ACP-C Runtime Approval | DONE（基线） | 已在 main，不重复建设 |
+| ACK 幂等 / generation 防护 / 双 Runtime 负向矩阵 | DONE（实现和本地 Gate） | PR CI / review 后合并 |
+| ACP-D Goal Governance bridge | BLOCKED | main 只有 Re-plan Guard 的 `NEEDS_APPROVAL`，尚无 WS-D durable Goal Approval API |
+| ACP-E 全矩阵 | PARTIAL | Runtime Approval 已验证；Goal approval durable case 等待 WS-D |
+| WS-E 整体 | PARTIAL | 不把上述依赖标为完成，不扩展到 PWA/Resume/Goal 决策实现 |
+
+### 后续合并依赖
+
+WS-D 需先交付 C4 的 Goal approval read/decision API、actor/reason/audit、
+plan revision / graph generation fencing 和幂等语义；如 C5 envelope 需要新增字段，
+先单独提出 **CONTRACT CHANGE REQUIRED**，说明 WS-D/WS-E 影响、向后兼容和 migration，
+经过约定的 contract review 后再实施 bridge。Goal 决策仍调用 Governance API，禁止转换成 Runtime `Approve()`。
