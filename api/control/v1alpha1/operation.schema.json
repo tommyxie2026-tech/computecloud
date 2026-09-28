@@ -8,27 +8,81 @@
     "protocol_version",
     "operation_id",
     "operation_type",
+    "resource_type",
+    "resource_id",
     "job_id",
-    "session_id",
-    "task_id",
-    "attempt_id",
-    "generation",
     "state",
     "created_at"
   ],
   "properties": {
-    "protocol_version": {"const": "control.v1alpha1"},
-    "operation_id": {"type": "string", "minLength": 1},
-    "operation_type": {"enum": ["cancel", "input", "interrupt", "approval", "resume"]},
-    "job_id": {"type": "string", "minLength": 1},
-    "session_id": {"type": "string", "minLength": 1},
-    "task_id": {"type": "string", "minLength": 1},
-    "attempt_id": {"type": "string", "minLength": 1},
-    "generation": {"type": "integer", "minimum": 1},
-    "state": {"enum": ["ACCEPTED", "REJECTED", "COMPLETED"]},
-    "existing": {"type": "boolean"},
-    "created_at": {"type": "string", "format": "date-time"},
-    "updated_at": {"type": "string", "format": "date-time"},
-    "message": {"type": "string"}
+    "protocol_version": {
+      "const": "control.v1alpha1"
+    },
+    "operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operation_type": {
+      "enum": [
+        "cancel",
+        "input",
+        "interrupt",
+        "approval",
+        "resume"
+      ]
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "attempt_id": {
+      "type": "string"
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "state": {
+      "enum": [
+        "ACCEPTED",
+        "REJECTED",
+        "COMPLETED"
+      ]
+    },
+    "existing": {
+      "type": "boolean"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "message": {
+      "type": "string"
+    },
+    "resource_type": {
+      "enum": [
+        "job",
+        "session",
+        "approval"
+      ]
+    },
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resource_version": {
+      "type": "integer",
+      "minimum": 0
+    }
   }
 }
