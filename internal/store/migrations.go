@@ -100,6 +100,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 7
 	}
+	if schema == ServerSchema && version < 8 {
+		if _, err = tx.Exec(serverV8); err != nil {
+			return err
+		}
+		version = 8
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -529,4 +535,25 @@ ALTER TABLE runs ADD COLUMN environment_cleanup TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX runs_environment_recovery
   ON runs(completed,environment_provider,environment_state,id);
+`
+
+
+const serverV8 = `CREATE TABLE control_operations (
+  principal_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  operation_type TEXT NOT NULL,
+  job_id TEXT NOT NULL REFERENCES jobs(id),
+  session_id TEXT NOT NULL,
+  task_id TEXT NOT NULL REFERENCES tasks(id),
+  attempt_id TEXT NOT NULL REFERENCES attempts(id),
+  generation INTEGER NOT NULL,
+  request_hash TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('ACCEPTED','REJECTED','COMPLETED')),
+  receipt BLOB NOT NULL DEFAULT '{}',
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  PRIMARY KEY(principal_id,operation_id)
+);
+CREATE INDEX control_operations_job ON control_operations(job_id,created,operation_id);
+CREATE INDEX control_operations_attempt ON control_operations(attempt_id,generation,created);
 `
