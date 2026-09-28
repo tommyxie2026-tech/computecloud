@@ -173,7 +173,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 8 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 9 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -504,7 +504,7 @@ func TestV8ControlOperationLedger(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 8 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 9 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	_, e = db.SQL.Exec(`INSERT INTO control_operations(
@@ -561,5 +561,31 @@ func TestWorkerV6ControlCommandJournal(t *testing.T) {
 	}
 	if kind != "control" || state != "UNKNOWN" {
 		t.Fatalf("control journal=%s/%s", kind, state)
+	}
+}
+
+
+func TestServerV9ControlDispatchLedger(t *testing.T) {
+	dir := t.TempDir()
+	db, e := Open(dir, ServerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	var version int
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 9 {
+		t.Fatalf("server version=%d err=%v", version, e)
+	}
+	if _, e = db.SQL.Exec(`INSERT INTO control_operations(
+		principal_id,operation_id,operation_type,resource_type,resource_id,
+		request_hash,state,receipt_json,command_id,created,updated)
+		VALUES('owner','op','input','session','s','h','UNKNOWN','{}','cmd',1,1)`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec(`INSERT INTO control_operations(
+		principal_id,operation_id,operation_type,resource_type,resource_id,
+		request_hash,state,receipt_json,command_id,created,updated)
+		VALUES('owner2','op','input','session','s','h','ACCEPTED','{}','cmd',1,1)`); e == nil {
+		t.Fatal("duplicate control command mapping accepted")
 	}
 }
