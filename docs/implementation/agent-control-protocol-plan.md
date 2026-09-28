@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1 已完成并合入 main，ACP-2 已实现待 CI/合并
+- 状态：实施中；ACP-0/ACP-1/ACP-2 已完成并通过 main CI；ACP-3 durable operation/fencing 已实现待 Gate
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -29,8 +29,8 @@
 | --- | --- | --- | --- |
 | ACP-0 | 当前 | Schema/contract 基线 | **已完成**：control.v1alpha1、事件 schema、Provider extension、独立 CI |
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
-| ACP-2 | v0.4.x | Runtime Adapter 统一 | **实现完成待 Gate**：Codex + Claude certified control descriptor / contract tests |
-| ACP-3 | v0.4.x | 安全写控制 | input/interrupt/cancel + operation/fencing |
+| ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
+| ACP-3 | v0.4.x | 安全写控制 | **进行中**：schema v8 durable operation ledger + idempotency/fencing 已实现；Worker control dispatch/input/interrupt 尚未开放 |
 | ACP-4 | v0.4.x | Approval + Resume | approval lifecycle、session resume |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
 | ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
@@ -198,11 +198,17 @@ Interrupt
 
 ### 6.1 Store
 
-新增：
+新增：`control_operations`（schema v8，已实现）
 
-`control_operations`
+当前已完成：
+- `PRIMARY KEY(principal_id, operation_id)`；
+- request hash；
+- expected Attempt / generation / resource version；
+- durable `ACCEPTED` receipt；
+- released Attempt fail-closed；
+- duplicate same request replay / different request conflict。
 
-约束：
+约束:
 - unique(principal_id, operation_id)；
 - request_hash；
 - expected attempt/generation；
@@ -514,10 +520,10 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. ACP-2：通过 `runtime-adapter-contract` 全量 Gate 并合入 main。
-2. ACP-3：新增 durable `control_operations`、operation-id 幂等与 generation fencing；先用 fixture Runtime 验证。
-3. 不给 Codex/Claude 暴露 Input/Approval/Resume，直到原生能力 contract 通过。
-4. Prepared Workspace 主线继续推进，不与 Control 事实源耦合。
-5. ACP-4 在 Session/Approval 原生能力稳定后接入。
+1. ACP-3：通过 `agent-control-fencing` Gate 并合入 durable acceptance foundation。
+2. ACP-3b：扩展 Worker control command envelope，结构化携带 input/interrupt；不得复用 Assignment 字段做隐式编码。
+3. 用 fixture SessionControlProvider 完成 Server -> Worker -> Adapter E2E；只有通过后才开放 HTTP write endpoint。
+4. Codex/Claude 不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过。
+5. Prepared Workspace 主线继续推进；ACP-4 在 Session/Approval 原生能力稳定后接入。
 
 这一顺序可以最小化返工，同时确保 Control App 不先于服务端语义成熟。
