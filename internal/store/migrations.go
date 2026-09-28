@@ -106,6 +106,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 8
 	}
+	if schema == ServerSchema && version < 9 {
+		if _, err = tx.Exec(serverV9); err != nil {
+			return err
+		}
+		version = 9
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -560,4 +566,34 @@ ALTER TABLE runs ADD COLUMN environment_cleanup TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX runs_environment_recovery
   ON runs(completed,environment_provider,environment_state,id);
+`
+
+
+const serverV9 = `ALTER TABLE control_operations
+  ADD COLUMN request_json BLOB NOT NULL DEFAULT '{}';
+
+CREATE TABLE approval_requests (
+  approval_id TEXT NOT NULL,
+  request_version INTEGER NOT NULL CHECK (request_version >= 1),
+  job_id TEXT NOT NULL REFERENCES jobs(id),
+  task_id TEXT NOT NULL REFERENCES tasks(id),
+  attempt_id TEXT NOT NULL REFERENCES attempts(id),
+  generation INTEGER NOT NULL CHECK (generation >= 1),
+  session_id TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  action TEXT NOT NULL,
+  risk_class TEXT NOT NULL CHECK (risk_class IN ('LOW','MEDIUM','HIGH','CRITICAL')),
+  arguments_summary TEXT NOT NULL DEFAULT '',
+  policy_context_json BLOB NOT NULL DEFAULT '{}',
+  requested INTEGER NOT NULL,
+  expires INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL CHECK (state IN ('PENDING','ACCEPTED','REJECTED','EXPIRED','SUPERSEDED')),
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  PRIMARY KEY(approval_id,request_version)
+);
+CREATE INDEX approval_requests_job_state
+  ON approval_requests(job_id,state,requested);
+CREATE INDEX approval_requests_attempt
+  ON approval_requests(attempt_id,generation,state);
 `
