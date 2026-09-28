@@ -11,7 +11,7 @@
 - 当前实现依据：[v0.4.3 EnvironmentCapability](v0.4.3-plan.md)、[ADR-015](../adr/0015-environment-capability.md)
 - 当前实施跟踪：v0.4.4 EnvironmentProvider Execution 已完成；下一功能主线进入 Prepared Workspace / Workspace Template；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
-- 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[ADR-008](../adr/0008-client-control-plane.md)
+- 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
 > 本路线图继续坚持 v0.2 的 Agent Job Executor 本质，不再向 AI Execution OS 演变。长期差异化来自 **Agent-aware execution semantics**，而不是扩大成通用 AI 基础设施。
 
@@ -174,6 +174,8 @@ v1.0
 | v1.0 | Stable Platform | 稳定协议、SDK、兼容矩阵、SLO、运维体系 |
 
 ### 3.1 Control 客户端横向能力线
+
+Control/Protocol 的可执行拆分以 [Agent Control Protocol 实施计划](agent-control-protocol-plan.md) 为准。该计划作为横向能力线与 Prepared Workspace、Runtime/Tool/Environment 和 Scheduler 主线并行，不能替代主版本目标；写控制能力必须等待对应 Runtime capability 通过 contract test 后才能开放。
 
 Control 是既有 Agent Job Executor 的产品表面，不是第二个调度器，也不建立独立事实源。Server 继续负责 Job、Stage、Task、Attempt、Worker、租约、Artifact 和审计；客户端仅持有可重建投影。保持单 Go Server + SQLite 的轻量部署，首版不引入独立 BFF、PostgreSQL、Redis 或消息队列。
 
