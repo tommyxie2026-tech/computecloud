@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1/ACP-2 已完成；ACP-3a 已合并；ACP-3b structured Worker control dispatch / result ACK 已实现，待 CI/PR 合并
+- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval lifecycle 已实现待 CI；ACP-4b Session Resume 待实施
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -30,8 +30,8 @@
 | ACP-0 | 当前 | Schema/contract 基线 | **已完成**：control.v1alpha1、事件 schema、Provider extension、独立 CI |
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
-| ACP-3 | v0.4.x | 安全写控制 | **ACP-3a 已合并**：durable ledger、idempotency、fencing、稳定错误码、negative contract；**ACP-3b 已实现待合并**：structured Worker control envelope、dispatch、SessionControlProvider、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed |
-| ACP-4 | v0.4.x | Approval + Resume | approval lifecycle、session resume |
+| ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
+| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已实现待 CI**：durable approval request/version/state、expiry/supersede、Worker Approve dispatch/ACK、HTTP decision；**ACP-4b 待实施**：session resume |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
 | ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
@@ -259,9 +259,25 @@ POST /v1/jobs/{job}/cancel
 
 ## 7. ACP-4 — Approval 与 Session Resume
 
-### 7.1 Approval
+### 7.1 Approval — ACP-4a 已实现待 CI
 
-实现完整状态：
+已实现：
+- Server schema v12 `approval_requests`；
+- Runtime `approval.requested` -> durable request；
+- `approval_id + request_version` 版本身份；
+- 新版本自动 supersede 旧 PENDING；
+- expiry 只处理尚未被 decision 占用的 PENDING；
+- Job version + Attempt generation + approval request_version 三层 fencing；
+- decision durable reservation，避免 ACK 延迟与 expiry 竞态；
+- structured Worker `ControlCommand(action=approval)`；
+- `SessionControlProvider.Approve()`；
+- Worker at-most-once control ledger；
+- terminal ACK 后才转 ACCEPTED/REJECTED；
+- `GET /v1/jobs/{job}/approvals`；
+- `POST /v1/jobs/{job}/approvals/{approval}`；
+- 独立 `agent-control-approval` CI Gate。
+
+完整状态：
 
 ```text
 PENDING
@@ -273,9 +289,11 @@ PENDING
 
 审批必须 audit。
 
-### 7.2 Resume
+### 7.2 Resume — ACP-4b 待实施
 
-实现：
+Resume 不与 Approval 混在同一提交中。现有 Attempt completion 会 release Attempt，Worker restart 也会先 reconciliation/cleanup，因此不能简单把 Resume 实现成“对已释放 Attempt 再发一条控制命令”。
+
+实现目标：
 
 `POST /v1/jobs/{job}/sessions/{session}/resume`
 
@@ -527,10 +545,10 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. 完成 ACP-3b PR CI 并合并；Package Gate 必须依赖 `agent-control-dispatch`。
-2. ACP-3c：在当前 durable/dispatch 语义之上开放 HTTP input/interrupt endpoint；HTTP 层不得绕过 `acceptAndDispatchControlOperation`。
-3. 增加 multi-process fault injection：Server intent commit 后重启、Worker Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
+1. ACP-4a：通过 `agent-control-approval` PR CI 并合并；Package Gate 必须依赖该 Gate。
+2. ACP-4b：先定义 Resume Attempt transition / Workspace / Environment compatibility，再实现 Worker Resume dispatch。
+3. 增加 multi-process fault injection：approval decision commit 后重启、Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
 4. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
-5. ACP-4 再接 Approval + Resume；Prepared Workspace 主线继续推进，不与 Control write plane 混成同一状态机。
+5. Prepared Workspace 主线继续推进；Resume 必须复用其 fingerprint/compatibility 语义，不能建立第二套 Workspace 状态机。
 
 这一顺序可以最小化返工，同时确保 Control App 不先于服务端语义成熟。

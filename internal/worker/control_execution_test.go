@@ -14,11 +14,18 @@ import (
 )
 
 type controlWorkerFixture struct {
-	mu     sync.Mutex
-	inputs int
+	mu        sync.Mutex
+	profile   string
+	inputs    int
+	approvals int
 }
 
-func (p *controlWorkerFixture) Profile() string { return "control_worker_fixture" }
+func (p *controlWorkerFixture) Profile() string {
+	if p.profile != "" {
+		return p.profile
+	}
+	return "control_worker_fixture"
+}
 func (p *controlWorkerFixture) Version(config.Runtime) string { return "fixture" }
 func (p *controlWorkerFixture) Transport() string { return "remote_api" }
 func (p *controlWorkerFixture) Probe(context.Context, config.Runtime) error { return nil }
@@ -47,6 +54,7 @@ func (p *controlWorkerFixture) ControlDescriptor() adapter.ControlDescriptor {
 			control.CapabilityInteractiveInput,
 			control.CapabilityQueueNextInput,
 			control.CapabilityInterrupt,
+			control.CapabilityApproval,
 		},
 	}
 }
@@ -59,8 +67,14 @@ func (p *controlWorkerFixture) Input(_ context.Context, _ adapter.ControlInputRe
 	p.inputs++
 	return nil
 }
-func (p *controlWorkerFixture) Approve(context.Context, adapter.ControlApprovalRequest) error {
-	return adapter.ErrControlCapabilityUnsupported
+func (p *controlWorkerFixture) Approve(_ context.Context, req adapter.ControlApprovalRequest) error {
+	if req.ApprovalID == "" || req.RequestVersion < 1 || (req.Decision != "ACCEPT" && req.Decision != "REJECT") {
+		return adapter.ErrControlCapabilityUnsupported
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.approvals++
+	return nil
 }
 func (p *controlWorkerFixture) Interrupt(context.Context, adapter.ControlInterruptRequest) error { return nil }
 
@@ -160,5 +174,57 @@ func TestAgentControlWorkerFailsClosedForUncertifiedRuntime(t *testing.T) {
 	}
 	if ack.State != "REJECTED" || ack.ErrorCode != control.ErrorCapabilityUnsupported.String() {
 		t.Fatalf("ack=%+v", ack)
+	}
+}
+
+
+func TestAgentControlWorkerExecutesApprovalAtMostOnce(t *testing.T) {
+	d, err := store.Open(t.TempDir(), store.WorkerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	provider := &controlWorkerFixture{profile: "control_worker_approval_fixture"}
+	if err = adapter.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	w := &Worker{db: d}
+	a := &pb.Assignment{
+		TaskId: "task-approval", AttemptId: "attempt-approval", Generation: 3, LeaseToken: "lease",
+		Spec: &pb.TaskSpec{RuntimeProfile: provider.Profile()},
+	}
+	ref := adapter.ExecutionRef{Provider: provider.Profile(), Transport: "remote_api", ID: "runtime-approval"}
+	rawRef, err := adapter.EncodeExecutionRef(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = d.SQL.Exec("INSERT INTO runs(id,assignment,state,runtime_provider,runtime_transport,runtime_ref,runtime_state,runtime_cleanup) VALUES(?,?,?,?,?,?,?,?)",
+		a.AttemptId, enc(a), "RUNNING", provider.Profile(), "remote_api", rawRef, string(adapter.RuntimeRunning), string(adapter.CleanupPending)); err != nil {
+		t.Fatal(err)
+	}
+	cmd := &pb.Command{
+		CommandId: "approval-command-1", Kind: "control",
+		Control: &pb.ControlCommand{
+			PrincipalId: "owner", OperationId: "approval-operation-1",
+			TaskId: a.TaskId, AttemptId: a.AttemptId, Generation: a.Generation,
+			Action: "approval", ApprovalId: "approval-1", RequestVersion: 2, Decision: "ACCEPT",
+		},
+	}
+	first, err := w.executeControl(context.Background(), cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := w.executeControl(context.Background(), cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.State != "COMPLETED" || second.State != "COMPLETED" {
+		t.Fatalf("acks first=%+v second=%+v", first, second)
+	}
+	provider.mu.Lock()
+	approvals := provider.approvals
+	provider.mu.Unlock()
+	if approvals != 1 {
+		t.Fatalf("approval side effects=%d want=1", approvals)
 	}
 }
