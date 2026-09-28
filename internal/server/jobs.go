@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
@@ -318,24 +320,46 @@ func (s *Server) GetJob(ctx context.Context, id string) (*Job, error) {
 }
 
 type CancelJobRequest struct {
-	ControlID string `json:"control_id"`
-	Reason    string `json:"reason"`
+	ControlID       string `json:"control_id"`
+	Reason          string `json:"reason"`
+	ExpectedVersion int64  `json:"expected_version,string,omitempty"`
 }
 
 func (s *Server) CancelJob(ctx context.Context, id string, in CancelJobRequest) (*Job, error) {
-	if !job.ValidKey(in.ControlID) || len(in.Reason) > 1000 {
+	if !job.ValidKey(in.ControlID) || len(in.Reason) > 1000 || in.ExpectedVersion < 0 {
 		return nil, status.Error(codes.InvalidArgument, "invalid cancellation")
 	}
 	if _, e := s.jobAuthorized(ctx, id, "jobs:cancel"); e != nil {
 		return nil, e
 	}
+	principal, e := rpcutil.User(ctx)
+	if e != nil {
+		return nil, e
+	}
 	replayed := false
-	e := s.db.Tx(ctx, func(q store.Query) error {
+	e = s.db.Tx(ctx, func(q store.Query) error {
 		digest := job.Hash(job.JSON(in))
+		modern := in.ExpectedVersion > 0
+
+		if modern {
+			existing, found, err := readExistingControlOperation(ctx, q, principal.Identity.Owner, in.ControlID, digest)
+			if err != nil {
+				return err
+			}
+			if found {
+				replayed = true
+				_ = existing
+				return nil
+			}
+		}
+
 		var old string
 		e := q.QueryRowContext(ctx, "SELECT operation_hash FROM job_events WHERE job_id=? AND operation_key=?", id, in.ControlID).Scan(&old)
 		if e == nil {
 			if old != digest {
+				if modern {
+					return status.Error(codes.AlreadyExists, "OPERATION_CONFLICT")
+				}
 				return status.Error(codes.AlreadyExists, "IDEMPOTENCY_CONFLICT")
 			}
 			replayed = true
@@ -344,16 +368,64 @@ func (s *Server) CancelJob(ctx context.Context, id string, in CancelJobRequest) 
 		if !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
-		j, e := readJob(ctx, q, id)
-		if e != nil {
-			return e
+
+		j, err := readJob(ctx, q, id)
+		if err != nil {
+			return err
 		}
-		if !terminal(j.State) && j.StopReason == "" {
-			if e = jobState(ctx, q, j, "STOPPING", "USER_CANCEL", ""); e != nil {
-				return e
+		if modern && j.Version != in.ExpectedVersion {
+			return status.Error(codes.Aborted, "RESOURCE_VERSION_CONFLICT")
+		}
+
+		terminalBefore := terminal(j.State)
+		if !terminalBefore && j.StopReason == "" {
+			if err = jobState(ctx, q, j, "STOPPING", "USER_CANCEL", ""); err != nil {
+				return err
 			}
 		}
-		return appendJobEvent(ctx, q, id, "job.cancel_requested", map[string]string{"reason": in.Reason}, in.ControlID, digest)
+		if err = appendJobEvent(ctx, q, id, "job.cancel_requested", map[string]string{"reason": in.Reason}, in.ControlID, digest); err != nil {
+			return err
+		}
+
+		if modern {
+			now := time.UnixMilli(store.Now()).UTC()
+			state := control.OperationAccepted
+			message := "cancel accepted"
+			if terminalBefore {
+				state = control.OperationCompleted
+				message = "job already terminal"
+			}
+			receipt := control.OperationReceipt{
+				ProtocolVersion: control.ProtocolV1Alpha1,
+				OperationID: in.ControlID,
+				OperationType: "cancel",
+				ResourceType: "job",
+				ResourceID: id,
+				ResourceVersion: in.ExpectedVersion,
+				JobID: id,
+				State: state,
+				CreatedAt: now,
+				UpdatedAt: now,
+				Message: message,
+			}
+			if err = receipt.Validate(); err != nil {
+				return err
+			}
+			if err = insertControlOperation(ctx, q, principal.Identity.Owner, digest, receipt); err != nil {
+				return err
+			}
+			if err = appendJobEvent(ctx, q, id, "control.accepted", map[string]any{
+				"operation_id": receipt.OperationID,
+				"operation_type": receipt.OperationType,
+				"resource_type": receipt.ResourceType,
+				"resource_id": receipt.ResourceID,
+				"resource_version": receipt.ResourceVersion,
+				"state": receipt.State,
+			}, "", ""); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if e != nil {
 		return nil, dbErr(e)
