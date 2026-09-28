@@ -39,6 +39,13 @@ func controlCapabilities(runtimeCapabilities []string) []control.Capability {
 		}
 	}
 	for _, value := range runtimeCapabilities {
+		if len(value) > len("control:") && value[:len("control:")] == "control:" {
+			capability := control.Capability(value[len("control:"):])
+			if err := control.ValidateCapabilities([]control.Capability{capability}); err == nil {
+				add(capability)
+			}
+			continue
+		}
 		switch value {
 		case "event_stream", "runtime:event_stream":
 			add(control.CapabilityStreamOutput)
