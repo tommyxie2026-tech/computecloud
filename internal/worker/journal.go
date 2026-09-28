@@ -15,7 +15,10 @@ import (
 )
 
 func (w *Worker) accept(ctx context.Context, c *pb.Command) (bool, error) {
-	if c.Assignment == nil || c.Assignment.AttemptId == "" || c.Assignment.TaskId == "" || c.Assignment.Generation < 1 || c.Assignment.LeaseToken == "" || (c.Kind != "start" && c.Kind != "stop") {
+	if c != nil && c.Kind == "control" {
+		return w.acceptControlCommand(ctx, c)
+	}
+	if c == nil || c.Assignment == nil || c.Assignment.AttemptId == "" || c.Assignment.TaskId == "" || c.Assignment.Generation < 1 || c.Assignment.LeaseToken == "" || (c.Kind != "start" && c.Kind != "stop") {
 		return false, errors.New("invalid command")
 	}
 	a := c.Assignment
@@ -123,6 +126,9 @@ func (w *Worker) failUnstarted(ctx context.Context, a *pb.Assignment, code, msg 
 	return w.completion(ctx, a, &pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: code, ErrorMessage: msg})
 }
 func (w *Worker) recover(ctx context.Context) error {
+	if err := w.reconcileControlJournal(ctx); err != nil {
+		return err
+	}
 	rows, e := w.db.SQL.QueryContext(ctx, "SELECT assignment,state,pid,start_id,completion,runtime_provider,runtime_ref,environment_provider,environment_ref FROM runs WHERE completed=0")
 	if e != nil {
 		return e
