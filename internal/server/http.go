@@ -160,6 +160,8 @@ func (s *Server) HTTPHandler() http.Handler {
 	mux.HandleFunc("GET /v1/control/bootstrap", s.httpControlBootstrap)
 	mux.HandleFunc("GET /v1/jobs/{id}/sessions", s.httpJobSessions)
 	mux.HandleFunc("GET /v1/jobs/{id}/sessions/{session}", s.httpJobSession)
+	mux.HandleFunc("GET /v1/jobs/{id}/approvals", s.httpJobApprovals)
+	mux.HandleFunc("POST /v1/jobs/{id}/approvals/{approval}", s.httpApprovalDecision)
 	mux.HandleFunc("GET /v1/jobs/{id}/events/stream", s.httpJobEventStream)
 	mux.HandleFunc("GET /v1/jobs/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		limit, e := pageLimit(r, 100, 500)
