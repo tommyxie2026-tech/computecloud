@@ -26,6 +26,7 @@ type approvalRuntimePayload struct {
 	ArgumentsSummary string         `json:"arguments_summary,omitempty"`
 	PolicyContext    map[string]any `json:"policy_context,omitempty"`
 	RequestVersion   int64          `json:"request_version"`
+	RequestedAtMS    int64          `json:"requested_at_ms,omitempty"`
 	ExpiresAtMS      int64          `json:"expires_at_ms,omitempty"`
 }
 
@@ -47,8 +48,9 @@ func persistAgentControlRuntimeState(ctx context.Context, q store.Query, event *
 			return status.Error(codes.InvalidArgument, "invalid runtime session event")
 		}
 		res, err := q.ExecContext(ctx, `UPDATE attempts SET runtime_session_ref=?
-			WHERE id=? AND task=? AND generation=? AND released=0`,
-			payload.SessionRef, event.AttemptId, event.TaskId, event.Generation)
+			WHERE id=? AND task=? AND generation=? AND released=0
+			  AND (runtime_session_ref='' OR runtime_session_ref=?)`,
+			payload.SessionRef, event.AttemptId, event.TaskId, event.Generation, payload.SessionRef)
 		if err != nil {
 			return err
 		}
@@ -76,9 +78,15 @@ func persistApprovalRequested(ctx context.Context, q store.Query, event *pb.Even
 		payload.SessionID = event.AttemptId
 	}
 	requestedAt := time.Now().UTC()
+	if payload.RequestedAtMS > 0 {
+		requestedAt = time.UnixMilli(payload.RequestedAtMS).UTC()
+	}
 	var expiresAt time.Time
 	if payload.ExpiresAtMS > 0 {
 		expiresAt = time.UnixMilli(payload.ExpiresAtMS).UTC()
+		if payload.RequestedAtMS == 0 && !expiresAt.After(requestedAt) {
+			requestedAt = expiresAt.Add(-time.Millisecond)
+		}
 	}
 	model := control.ApprovalRequest{
 		ProtocolVersion: control.ProtocolV1Alpha1,
@@ -121,6 +129,7 @@ func persistApprovalRequested(ctx context.Context, q store.Query, event *pb.Even
 		"arguments_summary": model.ArgumentsSummary,
 		"policy_context": model.PolicyContext,
 		"request_version": model.RequestVersion,
+		"requested_at_ms": payload.RequestedAtMS,
 		"expires_at_ms": payload.ExpiresAtMS,
 	}))
 	var oldHash string
@@ -139,13 +148,32 @@ func persistApprovalRequested(ctx context.Context, q store.Query, event *pb.Even
 	if err = q.QueryRowContext(ctx, "SELECT coalesce(max(request_version),0) FROM approval_requests WHERE approval_id=?", payload.ApprovalID).Scan(&maxVersion); err != nil {
 		return err
 	}
-	if maxVersion > payload.RequestVersion {
+	if (maxVersion == 0 && payload.RequestVersion != 1) ||
+		(maxVersion > 0 && payload.RequestVersion != maxVersion+1) {
 		return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
 	}
-	if maxVersion > 0 && payload.RequestVersion > maxVersion {
-		if _, err = q.ExecContext(ctx, `UPDATE approval_requests SET state='SUPERSEDED'
-			WHERE approval_id=? AND state='PENDING'`, payload.ApprovalID); err != nil {
-			return err
+	if maxVersion > 0 {
+		res, updateErr := q.ExecContext(ctx, `UPDATE approval_requests SET state='SUPERSEDED',decided_at=?
+			WHERE approval_id=? AND state='PENDING'`, store.Now(), payload.ApprovalID)
+		if updateErr != nil {
+			return updateErr
+		}
+		changed, updateErr := res.RowsAffected()
+		if updateErr != nil {
+			return updateErr
+		}
+		if changed > 0 {
+			if updateErr = appendJobEvent(ctx, q, jobID.String, "approval.superseded", map[string]any{
+				"protocol_version": control.ProtocolV1Alpha1,
+				"approval_id": payload.ApprovalID,
+				"request_version": maxVersion,
+				"superseded_by": payload.RequestVersion,
+				"task_id": event.TaskId,
+				"attempt_id": event.AttemptId,
+				"generation": event.Generation,
+			}, "approval-superseded:"+payload.ApprovalID+":"+fmtInt(maxVersion), store.Hash([]byte(fmtInt(payload.RequestVersion)))); updateErr != nil {
+				return updateErr
+			}
 		}
 	}
 	policyJSON := job.JSON(payload.PolicyContext)
