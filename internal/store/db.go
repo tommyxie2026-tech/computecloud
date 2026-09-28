@@ -56,7 +56,7 @@ func open(dir, schema string, migrate bool) (*DB, error) {
 		target = 10
 	}
 	if schema == WorkerSchema {
-		target = 5
+		target = 6
 	}
 	var version int
 	if e = db.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version > target {
