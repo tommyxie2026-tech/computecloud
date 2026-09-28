@@ -598,6 +598,7 @@ python3 scripts/ci_agent_control_approval.py --output /tmp/computecloud-wse-ci/r
 - [PR #51](https://github.com/tommyxie2026-tech/computecloud/pull/51) 首轮 [CI 36496960465](https://github.com/tommyxie2026-tech/computecloud/actions/runs/36496960465) 的 `agent-control-approval`、dispatch、fencing、negative、schema 均通过。
 - 首轮 vet 报告新增测试复制 protobuf 内部锁；已改为显式构造 ACK，本地 `go vet ./...` 通过。
 - 同步 `343e32d` 后本地审批 Gate 再次通过（含 race）。
+- 完整本地相关包回归 **FAIL**：Server 的进程执行用例出现 `CLEANUP_UNCONFIRMED` / timeout；Worker recovery 出现 `/proc/<pid>/stat` 不存在。后者已在未修改的 `main 343e32d` 工作树单独复现；Control / Store 包通过。不能以专用 Gate 通过代替完整回归通过。
 - **集成阻塞（WS-A）**：只读 prepared template 的测试清理失败：`TempDir RemoveAll cleanup: .../.git/objects/...: permission denied`。
   同一问题已在 [main CI 36496434574](https://github.com/tommyxie2026-tech/computecloud/actions/runs/36496434574/job/109176980044)
   与 PR CI 重现，影响 workspace / runtime / environment / read 等 Gate。本分支不修改 WS-A 文件、不跳过 Gate；由 WS-A 修复后再同步验收。
