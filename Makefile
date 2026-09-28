@@ -1,7 +1,7 @@
 GO ?= go
 VERSION ?= 0.4.4
 
-.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-long-run-flow ci-fair-flow ci-runtime-contract-flow ci-runtime-execution-flow ci-tool-contract-flow ci-environment-contract-flow ci-environment-execution-flow capacity capacity-check release-package generate
+.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-long-run-flow ci-fair-flow ci-runtime-contract-flow ci-runtime-execution-flow ci-tool-contract-flow ci-environment-contract-flow ci-environment-execution-flow ci-agent-control-schema capacity capacity-check release-package generate
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w -X main.version=$(VERSION)' -o bin/computecloud ./cmd/computecloud
 test:
@@ -34,6 +34,8 @@ ci-environment-contract-flow:
 	python3 scripts/ci_environment_contract.py --output dist/ci-environment-contract/report.json
 ci-environment-execution-flow:
 	python3 scripts/ci_environment_execution.py --output dist/ci-environment-execution/report.json
+ci-agent-control-schema:
+	python3 scripts/ci_agent_control_schema.py --output dist/ci-agent-control-schema/report.json
 capacity: build
 	python3 scripts/capacity.py --binary bin/computecloud
 capacity-check: build
