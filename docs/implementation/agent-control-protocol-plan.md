@@ -290,13 +290,27 @@ PENDING
 
 ## 8. ACP-5 — 第三个 Runtime 验证
 
-候选：
+### 8.1 候选决策（2026-09-28）
 
-1. Gemini CLI；
-2. OpenCode。
+首选 **OpenCode**，Gemini CLI 保留为后续兼容目标。
 
-选择标准：
-- 协议公开/可自动化；
+原因：
+- OpenCode 提供 headless server / HTTP API，而不是只能通过终端文本控制；
+- 有显式 Session create/list/continue；
+- 支持 JSON/事件流；
+- 支持 session interrupt；
+- 有独立 permission request/reply API，可映射 computecloud Approval；
+- 因此更适合验证 Session/Input/Approval/Interrupt 这四个 Agent Control Protocol 核心能力。
+
+公开依据：
+- https://opencode.ai/v2/docs/cli/commands/
+- https://opencode.ai/docs/sdk/
+- https://dev.opencode.ai/v2/docs/api/
+- https://dev.opencode.ai/v2/docs/api/permission/v2-session-permission-reply/
+
+Gemini CLI 仍可在 OpenCode Adapter 完成后作为第四 Runtime 验证，但不阻塞 ACP-5。
+
+### 8.2 - 协议公开/可自动化；
 - 可在 CI 安装固定版本；
 - 至少支持 stream + cancel；
 - 最好支持 session resume/tool event。
