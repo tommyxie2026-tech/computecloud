@@ -38,6 +38,12 @@ func controlCapability(cmd *pb.ControlCommand) (control.Capability, error) {
 		}
 	case "interrupt":
 		return control.CapabilityInterrupt, nil
+	case "approval":
+		if cmd.ApprovalId == "" || cmd.RequestVersion < 1 ||
+			(cmd.Decision != "ACCEPT" && cmd.Decision != "REJECT") {
+			return "", errors.New("invalid approval command")
+		}
+		return control.CapabilityApproval, nil
 	default:
 		return "", errors.New("unsupported control action")
 	}
@@ -180,6 +186,12 @@ func (w *Worker) executeControl(ctx context.Context, c *pb.Command) (*pb.Command
 		err = sessionProvider.Interrupt(ctx, adapter.ControlInterruptRequest{
 			Ref: ref, SessionRef: cmd.SessionRef, AttemptID: cmd.AttemptId,
 			Generation: cmd.Generation,
+		})
+	case "approval":
+		err = sessionProvider.Approve(ctx, adapter.ControlApprovalRequest{
+			Ref: ref, SessionRef: cmd.SessionRef, AttemptID: cmd.AttemptId,
+			Generation: cmd.Generation, ApprovalID: cmd.ApprovalId,
+			RequestVersion: cmd.RequestVersion, Decision: cmd.Decision,
 		})
 	default:
 		err = adapter.ErrControlCapabilityUnsupported
