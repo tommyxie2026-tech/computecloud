@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：待实施
+- 状态：实施中；ACP-0/ACP-1 已完成并合入 main，ACP-2 已实现待 CI/合并
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -27,9 +27,9 @@
 
 | 阶段 | 对齐主线 | 目标 | 产物 |
 | --- | --- | --- | --- |
-| ACP-0 | 当前 | Schema/contract 基线 | control.v1alpha1、事件 schema、Provider interface |
-| ACP-1 | v0.4.x | 只读 Agent Control 面 | Session projection、SSE replay、capability |
-| ACP-2 | v0.4.x | Runtime Adapter 统一 | Codex + Claude contract tests |
+| ACP-0 | 当前 | Schema/contract 基线 | **已完成**：control.v1alpha1、事件 schema、Provider extension、独立 CI |
+| ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
+| ACP-2 | v0.4.x | Runtime Adapter 统一 | **实现完成待 Gate**：Codex + Claude certified control descriptor / contract tests |
 | ACP-3 | v0.4.x | 安全写控制 | input/interrupt/cancel + operation/fencing |
 | ACP-4 | v0.4.x | Approval + Resume | approval lifecycle、session resume |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
@@ -62,14 +62,14 @@ internal/runtime/
 
 ### 3.2 工作项
 
-- [ ] 定义 protocol version negotiation。
-- [ ] 定义 AgentSession schema。
-- [ ] 定义 RuntimeCapability enum。
-- [ ] 定义 Control Event envelope。
-- [ ] 定义 ApprovalRequest。
-- [ ] 定义 ControlOperation receipt。
+- [x] 定义 protocol version negotiation。
+- [x] 定义 AgentSession schema。
+- [x] 定义 RuntimeCapability enum。
+- [x] 定义 Control Event envelope。
+- [x] 定义 ApprovalRequest。
+- [x] 定义 ControlOperation receipt。
 - [ ] 定义标准错误码。
-- [ ] JSON Schema validation tests。
+- [x] JSON Schema validation tests。
 - [ ] Go model 与 JSON schema round-trip tests。
 
 ### 3.3 CI
@@ -106,14 +106,9 @@ GET /v1/jobs/{id}/approvals
 
 ### 4.2 Store
 
-最小增加：
+ACP-1 实际采用更轻量的投影实现：**不新增 agent_sessions 事实表**。Session 由当前 Task/Attempt/generation/runtime_session_ref 投影；Runtime event 在 Worker event 被接受/去重后镜像到既有 durable Job event replay。Approval 独立持久化延后到 ACP-4。
 
-```text
-agent_sessions
-approval_requests
-```
-
-事件优先复用现有 Job event 序号，不重复建设消息系统。
+这样避免在只读阶段创建第二事实源，也继续复用现有 Job event 序号，不重复建设消息系统。
 
 ### 4.3 测试
 
@@ -168,11 +163,11 @@ Interrupt
 
 ### 5.2 Codex Adapter
 
-- [ ] RuntimeRef 可持久化。
-- [ ] 结构化事件转换。
-- [ ] Cancel/Cleanup 明确区分。
-- [ ] Restart + Inspect。
-- [ ] Capability 表真实探测。
+- [x] RuntimeRef 可持久化。
+- [x] 结构化事件转换。
+- [x] Cancel/Cleanup 明确区分。
+- [x] Restart + Inspect。
+- [x] Capability 表与 Control descriptor 交叉校验。
 
 ### 5.3 Claude Adapter
 
@@ -519,11 +514,10 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. ACP-0：提交 `control.v1alpha1` schema。
-2. 建立 fake RuntimeProvider contract harness。
-3. ACP-1：实现 bootstrap + Session read projection + SSE replay。
-4. 在不改 UI 的情况下先用 curl/CLI 验证协议。
-5. Prepared Workspace 主线继续推进。
-6. 待 Runtime Session/Approval 原生能力稳定后进入 ACP-3/4。
+1. ACP-2：通过 `runtime-adapter-contract` 全量 Gate 并合入 main。
+2. ACP-3：新增 durable `control_operations`、operation-id 幂等与 generation fencing；先用 fixture Runtime 验证。
+3. 不给 Codex/Claude 暴露 Input/Approval/Resume，直到原生能力 contract 通过。
+4. Prepared Workspace 主线继续推进，不与 Control 事实源耦合。
+5. ACP-4 在 Session/Approval 原生能力稳定后接入。
 
 这一顺序可以最小化返工，同时确保 Control App 不先于服务端语义成熟。
