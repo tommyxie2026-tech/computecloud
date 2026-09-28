@@ -106,6 +106,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 8
 	}
+	if schema == ServerSchema && version < 9 {
+		if _, err = tx.Exec(serverV9); err != nil {
+			return err
+		}
+		version = 9
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -545,6 +551,52 @@ CREATE INDEX control_operations_resource
   ON control_operations(resource_type,resource_id,created);
 CREATE INDEX control_operations_job
   ON control_operations(job_id,created);
+`
+
+
+const serverV9 = `ALTER TABLE control_operations RENAME TO control_operations_v8;
+
+CREATE TABLE control_operations (
+  principal_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  operation_type TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
+  job_id TEXT,
+  task_id TEXT,
+  expected_attempt_id TEXT NOT NULL DEFAULT '',
+  expected_generation INTEGER NOT NULL DEFAULT 0,
+  expected_resource_version INTEGER NOT NULL DEFAULT 0,
+  request_hash TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('ACCEPTED','DISPATCHED','COMPLETED','REJECTED','UNKNOWN')),
+  receipt_json BLOB NOT NULL,
+  command_id TEXT NOT NULL DEFAULT '',
+  error_code TEXT NOT NULL DEFAULT '',
+  error_message TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  PRIMARY KEY(principal_id, operation_id)
+);
+
+INSERT INTO control_operations(
+  principal_id,operation_id,operation_type,resource_type,resource_id,
+  job_id,task_id,expected_attempt_id,expected_generation,expected_resource_version,
+  request_hash,state,receipt_json,created,updated
+)
+SELECT principal_id,operation_id,operation_type,resource_type,resource_id,
+  job_id,task_id,expected_attempt_id,expected_generation,expected_resource_version,
+  request_hash,state,receipt_json,created,updated
+FROM control_operations_v8;
+
+DROP TABLE control_operations_v8;
+
+CREATE INDEX control_operations_resource
+  ON control_operations(resource_type,resource_id,created);
+CREATE INDEX control_operations_job
+  ON control_operations(job_id,created);
+CREATE UNIQUE INDEX control_operations_command
+  ON control_operations(command_id)
+  WHERE command_id <> '';
 `
 
 
