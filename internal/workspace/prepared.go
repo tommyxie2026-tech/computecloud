@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const templateManifestName = ".computecloud-template.json"
@@ -403,17 +404,21 @@ func copyWritableTree(ctx context.Context, source, target string) error {
 		if err != nil {
 			return err
 		}
-		defer src.Close()
 		out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm()|0600)
 		if err != nil {
+			_ = src.Close()
 			return err
 		}
 		_, copyErr := io.Copy(out, src)
-		closeErr := out.Close()
+		srcCloseErr := src.Close()
+		outCloseErr := out.Close()
 		if copyErr != nil {
 			return copyErr
 		}
-		return closeErr
+		if srcCloseErr != nil {
+			return srcCloseErr
+		}
+		return outCloseErr
 	})
 }
 
