@@ -679,6 +679,7 @@ CREATE TABLE replan_history (
   plan_fingerprint TEXT NOT NULL,
   strategy_signature TEXT NOT NULL,
   progress_json BLOB NOT NULL,
+  progressed INTEGER NOT NULL DEFAULT 1 CHECK (progressed IN (0,1)),
   created INTEGER NOT NULL,
   PRIMARY KEY(goal_id,ordinal),
   UNIQUE(goal_id,evaluation_id)
