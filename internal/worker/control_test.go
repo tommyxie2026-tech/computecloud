@@ -52,11 +52,11 @@ var _ adapter.SessionControlProvider = (*controlRemoteProvider)(nil)
 func TestAgentControlWorkerDispatchIsIdempotent(t *testing.T) {
 	provider := &controlRemoteProvider{}
 	if existing, ok := adapter.Lookup(provider.Profile()); ok {
-		var cast bool
-		provider, cast = existing.(*controlRemoteProvider)
+		got, cast := existing.(*controlRemoteProvider)
 		if !cast {
 			t.Fatalf("unexpected existing provider %T", existing)
 		}
+		provider = got
 	} else if err := adapter.Register(provider); err != nil {
 		t.Fatal(err)
 	}
