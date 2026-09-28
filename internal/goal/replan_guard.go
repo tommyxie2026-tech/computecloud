@@ -3,6 +3,7 @@ package goal
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -33,6 +34,8 @@ type ReplanRequest struct {
 	ReasonCode              string
 	Evidence                ReplanEvidence
 	ProposedPlan            PlanCanonical
+	StrategyDelta           StrategyDelta
+	Progress                ProgressSnapshot
 }
 
 type ReplanDecision struct {
@@ -54,6 +57,13 @@ const (
 	DecisionGoalTerminal     = "GOAL_TERMINAL"
 	DecisionNoNewEvidence    = "NO_NEW_EVIDENCE"
 	DecisionDuplicatePlan    = "DUPLICATE_PLAN"
+	DecisionLoopDetected     = "LOOP_DETECTED"
+	DecisionRepeatedFailure  = "REPEATED_FAILURE"
+	DecisionNoProgress       = "NO_PROGRESS"
+
+	replanCycleWindow      = 6
+	sameFailureMaxReplans  = 2
+	noProgressMaxReplans   = 1
 )
 
 func Create(ctx context.Context, db *store.DB, in CreateGoal) error {
@@ -112,8 +122,8 @@ func RegisterPlanFingerprint(ctx context.Context, db *store.DB, goalID string, r
 		return err
 	}
 	_, err := db.SQL.ExecContext(ctx,
-		"INSERT INTO plan_fingerprints(goal_id,plan_revision,fingerprint,created) VALUES(?,?,?,?)",
-		goalID, revision, plan.Fingerprint(), store.Now())
+		"INSERT INTO plan_fingerprints(goal_id,plan_revision,fingerprint,strategy_signature,created) VALUES(?,?,?,?,?)",
+		goalID, revision, plan.Fingerprint(), plan.StrategySignature(), store.Now())
 	return err
 }
 
@@ -127,18 +137,34 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 	if err := in.ProposedPlan.Validate(); err != nil {
 		return ReplanDecision{}, err
 	}
+	if err := in.StrategyDelta.Validate(); err != nil {
+		return ReplanDecision{}, err
+	}
+	if err := in.Progress.Validate(); err != nil {
+		return ReplanDecision{}, err
+	}
+
 	evidenceFingerprint := in.Evidence.Fingerprint()
 	planFingerprint := in.ProposedPlan.Fingerprint()
+	strategySignature := in.ProposedPlan.StrategySignature()
+	strategyDeltaJSON, _ := json.Marshal(in.StrategyDelta)
+	progressJSON, _ := json.Marshal(in.Progress)
 
 	var out ReplanDecision
 	err := db.Tx(ctx, func(q store.Query) error {
-		var existingState, existingCode, existingEvidence, existingPlanFingerprint string
+		var existingState, existingCode, existingEvidence, existingPlanFingerprint, existingStrategySignature string
 		var existingPlan, existingGraph int64
+		var existingDeltaJSON, existingProgressJSON []byte
 		err := q.QueryRowContext(ctx,
-			"SELECT state,decision_code,next_plan_revision,next_graph_generation,evidence_fingerprint,proposed_plan_fingerprint FROM replan_requests WHERE goal_id=? AND evaluation_id=?",
-			in.GoalID, in.EvaluationID).Scan(&existingState, &existingCode, &existingPlan, &existingGraph, &existingEvidence, &existingPlanFingerprint)
+			"SELECT state,decision_code,next_plan_revision,next_graph_generation,evidence_fingerprint,proposed_plan_fingerprint,strategy_signature,strategy_delta_json,progress_json FROM replan_requests WHERE goal_id=? AND evaluation_id=?",
+			in.GoalID, in.EvaluationID).
+			Scan(&existingState, &existingCode, &existingPlan, &existingGraph, &existingEvidence, &existingPlanFingerprint, &existingStrategySignature, &existingDeltaJSON, &existingProgressJSON)
 		if err == nil {
-			if existingEvidence != evidenceFingerprint || existingPlanFingerprint != planFingerprint {
+			if existingEvidence != evidenceFingerprint ||
+				existingPlanFingerprint != planFingerprint ||
+				existingStrategySignature != strategySignature ||
+				string(existingDeltaJSON) != string(strategyDeltaJSON) ||
+				string(existingProgressJSON) != string(progressJSON) {
 				return fmt.Errorf("IDEMPOTENCY_CONFLICT")
 			}
 			out.Existing = true
@@ -169,7 +195,7 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 		code := DecisionAllowed
 		nextPlan, nextGraph := activePlan+1, activeGraph+1
 
-		var seenEvidence, seenPlan int
+		var seenEvidence, seenPlan, seenStrategy int
 		if err = q.QueryRowContext(ctx,
 			"SELECT count(*) FROM goal_evidence WHERE goal_id=? AND fingerprint=?",
 			in.GoalID, evidenceFingerprint).Scan(&seenEvidence); err != nil {
@@ -178,6 +204,59 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 		if err = q.QueryRowContext(ctx,
 			"SELECT count(*) FROM plan_fingerprints WHERE goal_id=? AND fingerprint=?",
 			in.GoalID, planFingerprint).Scan(&seenPlan); err != nil {
+			return err
+		}
+		minRevision := activePlan - replanCycleWindow + 1
+		if minRevision < 1 {
+			minRevision = 1
+		}
+		if err = q.QueryRowContext(ctx,
+			"SELECT count(*) FROM plan_fingerprints WHERE goal_id=? AND plan_revision>=? AND strategy_signature=?",
+			in.GoalID, minRevision, strategySignature).Scan(&seenStrategy); err != nil {
+			return err
+		}
+
+		repeatedFailure := false
+		rows, err := q.QueryContext(ctx,
+			"SELECT failure_class FROM replan_history WHERE goal_id=? ORDER BY ordinal DESC LIMIT ?",
+			in.GoalID, sameFailureMaxReplans)
+		if err != nil {
+			return err
+		}
+		failureCount := 0
+		for rows.Next() {
+			var fc string
+			if err = rows.Scan(&fc); err != nil {
+				rows.Close()
+				return err
+			}
+			if fc != string(in.Evidence.FailureClass) {
+				break
+			}
+			failureCount++
+		}
+		rowErr := rows.Err()
+		rows.Close()
+		if rowErr != nil {
+			return rowErr
+		}
+		repeatedFailure = failureCount >= sameFailureMaxReplans
+
+		progressImproved := true
+		previousNoProgress := false
+		var previousProgressJSON []byte
+		var previousProgressed int
+		err = q.QueryRowContext(ctx,
+			"SELECT progress_json,progressed FROM replan_history WHERE goal_id=? ORDER BY ordinal DESC LIMIT 1",
+			in.GoalID).Scan(&previousProgressJSON, &previousProgressed)
+		if err == nil {
+			var previous ProgressSnapshot
+			if err = json.Unmarshal(previousProgressJSON, &previous); err != nil {
+				return err
+			}
+			progressImproved = in.Progress.ImprovedOver(previous)
+			previousNoProgress = previousProgressed == 0
+		} else if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 
@@ -206,13 +285,22 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 		case seenPlan != 0:
 			requestState, code = "NEEDS_APPROVAL", DecisionDuplicatePlan
 			nextPlan, nextGraph = 0, 0
+		case seenStrategy != 0:
+			requestState, code = "NEEDS_APPROVAL", DecisionLoopDetected
+			nextPlan, nextGraph = 0, 0
+		case repeatedFailure:
+			requestState, code = "NEEDS_APPROVAL", DecisionRepeatedFailure
+			nextPlan, nextGraph = 0, 0
+		case !progressImproved && previousNoProgress && noProgressMaxReplans <= 1:
+			requestState, code = "NEEDS_APPROVAL", DecisionNoProgress
+			nextPlan, nextGraph = 0, 0
 		}
 
 		if _, err = q.ExecContext(ctx,
-			"INSERT INTO replan_requests(id,goal_id,evaluation_id,expected_plan_revision,expected_graph_generation,reason_code,state,decision_code,next_plan_revision,next_graph_generation,created,decided,failure_class,evidence_fingerprint,proposed_plan_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+			"INSERT INTO replan_requests(id,goal_id,evaluation_id,expected_plan_revision,expected_graph_generation,reason_code,state,decision_code,next_plan_revision,next_graph_generation,created,decided,failure_class,evidence_fingerprint,proposed_plan_fingerprint,strategy_signature,strategy_delta_json,progress_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 			in.ID, in.GoalID, in.EvaluationID, in.ExpectedPlanRevision, in.ExpectedGraphGeneration,
 			in.ReasonCode, requestState, code, nextPlan, nextGraph, now, now,
-			string(in.Evidence.FailureClass), evidenceFingerprint, planFingerprint); err != nil {
+			string(in.Evidence.FailureClass), evidenceFingerprint, planFingerprint, strategySignature, strategyDeltaJSON, progressJSON); err != nil {
 			return err
 		}
 
@@ -223,8 +311,24 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 				return err
 			}
 			if _, err = q.ExecContext(ctx,
-				"INSERT INTO plan_fingerprints(goal_id,plan_revision,fingerprint,created) VALUES(?,?,?,?)",
-				in.GoalID, nextPlan, planFingerprint, now); err != nil {
+				"INSERT INTO plan_fingerprints(goal_id,plan_revision,fingerprint,strategy_signature,created) VALUES(?,?,?,?,?)",
+				in.GoalID, nextPlan, planFingerprint, strategySignature, now); err != nil {
+				return err
+			}
+			var ordinal int
+			if err = q.QueryRowContext(ctx,
+				"SELECT coalesce(max(ordinal),0)+1 FROM replan_history WHERE goal_id=?",
+				in.GoalID).Scan(&ordinal); err != nil {
+				return err
+			}
+			progressed := 1
+			if !progressImproved {
+				progressed = 0
+			}
+			if _, err = q.ExecContext(ctx,
+				"INSERT INTO replan_history(goal_id,ordinal,evaluation_id,plan_revision,graph_generation,failure_class,evidence_fingerprint,plan_fingerprint,strategy_signature,progress_json,progressed,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+				in.GoalID, ordinal, in.EvaluationID, nextPlan, nextGraph, string(in.Evidence.FailureClass),
+				evidenceFingerprint, planFingerprint, strategySignature, progressJSON, progressed, now); err != nil {
 				return err
 			}
 			res, err := q.ExecContext(ctx,
