@@ -38,6 +38,7 @@ def main():
     for required in [
         "func (p codexProvider) ControlDescriptor()",
         "func (p claudeProvider) ControlDescriptor()",
+        "func (p geminiProvider) ControlDescriptor()",
         "CapabilityStreamOutput",
         "CapabilityStructuredOutput",
         "CapabilityCancel",
@@ -57,7 +58,9 @@ def main():
         body = contract[start:end] if start >= 0 and end > start else ""
         if forbidden in body:
             violations.append("builtin descriptor exposes uncertified capability: " + forbidden)
-    if 'if p.Profile() == "codex_exec"' in adapter or 'if p.Profile() == "claude_print"' in adapter:
+    if ('if p.Profile() == "codex_exec"' in adapter or
+        'if p.Profile() == "claude_print"' in adapter or
+        'if p.Profile() == "gemini_cli"' in adapter):
         violations.append("runtime Provider core contains profile-name branching")
 
     (logs / "go-test.stdout.log").write_text(result["stdout"], encoding="utf-8")
@@ -70,6 +73,7 @@ def main():
         "coverage": {
             "codex_provider_certified": True,
             "claude_provider_certified": True,
+            "gemini_provider_certified": True,
             "read_stream_capability": True,
             "cancel_capability": True,
             "interactive_capabilities_fail_closed": True,
