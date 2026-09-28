@@ -26,6 +26,7 @@ type runtimeApprovalPayload struct {
 	ArgumentsSummary string         `json:"arguments_summary,omitempty"`
 	PolicyContext    map[string]any `json:"policy_context,omitempty"`
 	RequestVersion   int64          `json:"request_version"`
+	RequestedAtMS    int64          `json:"requested_at_ms,omitempty"`
 	ExpiresAtMS      int64          `json:"expires_at_ms,omitempty"`
 }
 
@@ -47,7 +48,11 @@ func persistApprovalRequested(ctx context.Context, q store.Query, event *pb.Even
 		payload.SessionID = event.AttemptId
 	}
 	now := store.Now()
-	requested := time.UnixMilli(now).UTC()
+	requestedMS := payload.RequestedAtMS
+	if requestedMS <= 0 {
+		requestedMS = now
+	}
+	requested := time.UnixMilli(requestedMS).UTC()
 	var expires time.Time
 	if payload.ExpiresAtMS > 0 {
 		expires = time.UnixMilli(payload.ExpiresAtMS).UTC()
@@ -110,7 +115,7 @@ func persistApprovalRequested(ctx context.Context, q store.Query, event *pb.Even
 		payload.ApprovalID, payload.RequestVersion, jobID.String, event.TaskId,
 		event.AttemptId, event.Generation, payload.SessionID,
 		payload.Tool, payload.Action, payload.RiskClass, payload.ArgumentsSummary,
-		rawPolicy, hash, now, payload.ExpiresAtMS, "PENDING")
+		rawPolicy, hash, requestedMS, payload.ExpiresAtMS, "PENDING")
 	return err
 }
 
@@ -118,7 +123,7 @@ func expireJobApprovals(ctx context.Context, q store.Query, jobID string) error 
 	now := store.Now()
 	rows, err := q.QueryContext(ctx, `SELECT approval_id,request_version,task_id,attempt_id,generation
 		FROM approval_requests
-		WHERE job_id=? AND state='PENDING' AND expires_at>0 AND expires_at<=?`, jobID, now)
+		WHERE job_id=? AND state='PENDING' AND decision='' AND expires_at>0 AND expires_at<=?`, jobID, now)
 	if err != nil {
 		return err
 	}
@@ -223,12 +228,12 @@ func validateApprovalDecision(ctx context.Context, q store.Query, jobID string, 
 	if err := expireJobApprovals(ctx, q, jobID); err != nil {
 		return err
 	}
-	var taskID, attemptID, state string
+	var taskID, attemptID, state, existingDecision string
 	var generation int64
-	if err := q.QueryRowContext(ctx, `SELECT task_id,attempt_id,generation,state
+	if err := q.QueryRowContext(ctx, `SELECT task_id,attempt_id,generation,state,decision
 		FROM approval_requests WHERE approval_id=? AND request_version=? AND job_id=?`,
 		payload.ApprovalID, payload.RequestVersion, jobID).
-		Scan(&taskID, &attemptID, &generation, &state); err != nil {
+		Scan(&taskID, &attemptID, &generation, &state, &existingDecision); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return status.Error(codes.NotFound, "NOT_FOUND")
 		}
@@ -239,6 +244,9 @@ func validateApprovalDecision(ctx context.Context, q store.Query, jobID string, 
 	}
 	switch state {
 	case "PENDING":
+		if existingDecision != "" {
+			return status.Error(codes.AlreadyExists, "APPROVAL_DECISION_IN_FLIGHT")
+		}
 		return nil
 	case "EXPIRED", "SUPERSEDED":
 		return status.Error(codes.Aborted, control.ErrorResourceVersionConflict.String())
