@@ -398,15 +398,29 @@ sequenceDiagram
 6. Adapter 执行 approval。
 7. Approval result 独立持久化并审计。
 
-### 9.3 Resume
+### 9.3 Resume / Reconnect
 
-Resume 必须满足：
+v0.4 的 `session_resume` 明确定义为 **同一权威、未释放 Attempt 内的 Runtime/Session reconnect**，不是把终态 Job/Task 重新打开。
 
-- 原 SessionRef 存在；
-- Runtime 声明 `session_resume`；
-- Workspace/Environment 可恢复；
-- Attempt 策略允许；
-- 不能跨 generation 误恢复旧执行。
+Reconnect 必须满足：
+
+- Runtime 已通过 `session.started/session.resumed` 上报显式 native `session_ref`；
+- 客户端必须提交该显式 SessionRef，禁止 `--last` 或“最近会话”；
+- Runtime 声明并通过 contract test 认证 `session_resume`；
+- 目标 Attempt 仍是 current Attempt、generation 匹配且未 released；
+- Workspace / Environment 仍属于同一 Attempt，不跨 generation 继承写权限；
+- Worker 调用 `SessionControlProvider.Resume()` 后只替换该 Attempt 的 durable RuntimeRef；
+- 如果 Resume 已产生副作用但新 RuntimeRef 无法可靠持久化，结果必须是 `EXECUTION_UNVERIFIABLE`，禁止自动重放。
+
+以下语义**不属于 v0.4 Resume**：
+
+```text
+terminal Job/Task
+    -> reopen old Job
+    -> revive released Attempt
+```
+
+终态之后继续工作属于 **Continuation**：必须创建新的执行身份（新 Attempt generation 或新 Job/Task），重新经过 Workspace/Environment/Policy/Scheduler 约束，并另行定义 Artifact 继承规则。
 
 ## 10. 状态机
 
