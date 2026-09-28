@@ -43,7 +43,7 @@ func TestV1UpgradeBackupAndDrainGate(t *testing.T) {
 		t.Fatal(e)
 	}
 	db.SQL.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 10 {
+	if v != 11 {
 		t.Fatalf("version %d", v)
 	}
 	var state, stage string
@@ -109,7 +109,7 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 	}
 	defer db.Close()
 	var v int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 10 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 11 {
 		t.Fatalf("version=%d err=%v", v, e)
 	}
 	// New schema must allow multiple historical attempts for one Task while
@@ -173,7 +173,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 10 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 11 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -504,7 +504,7 @@ func TestV8ControlOperationLedger(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 10 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 11 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	_, e = db.SQL.Exec(`INSERT INTO control_operations(
@@ -546,7 +546,7 @@ func TestV9GoalReplanGuardSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 10 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 11 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO goals(id,owner,project,state,max_replans,max_total_attempts,max_wall_time_ms,created,updated) VALUES('g','o','p','GOAL_CREATED',2,4,60000,1,1)"); e != nil {
@@ -570,7 +570,7 @@ func TestV10GoalEvidenceAndPlanFingerprintSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 10 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 11 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO goals(id,owner,project,state,max_replans,max_total_attempts,max_wall_time_ms,created,updated) VALUES('g10','o','p','GOAL_CREATED',3,5,60000,1,1)"); e != nil {
@@ -637,5 +637,32 @@ func TestWorkerV6ControlExecutionLedgerMigration(t *testing.T) {
 	}
 	if _, e = db.SQL.Exec("INSERT INTO commands(id,hash,state,attempt,operation_id,updated) VALUES('control-command','h','EXECUTING','a','op',1)"); e != nil {
 		t.Fatal(e)
+	}
+}
+
+
+func TestV11ReplanHistorySchema(t *testing.T) {
+	dir := t.TempDir()
+	db, e := Open(dir, ServerSchema)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+
+	var version int
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 11 {
+		t.Fatalf("version=%d err=%v", version, e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO goals(id,owner,project,state,max_replans,max_total_attempts,max_wall_time_ms,created,updated) VALUES('g11','o','p','GOAL_CREATED',4,8,60000,1,1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO plan_fingerprints(goal_id,plan_revision,fingerprint,strategy_signature,created) VALUES('g11',1,'p1','s1',1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO replan_history(goal_id,ordinal,evaluation_id,plan_revision,graph_generation,failure_class,evidence_fingerprint,plan_fingerprint,strategy_signature,progress_json,progressed,created) VALUES('g11',1,'e1',2,2,'TEST_FAILURE','ev1','p2','s2','{}',1,1)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.SQL.Exec("INSERT INTO replan_history(goal_id,ordinal,evaluation_id,plan_revision,graph_generation,failure_class,evidence_fingerprint,plan_fingerprint,strategy_signature,progress_json,progressed,created) VALUES('g11',2,'e1',3,3,'TEST_FAILURE','ev2','p3','s3','{}',0,2)"); e == nil {
+		t.Fatal("duplicate evaluation history accepted")
 	}
 }
