@@ -11,6 +11,7 @@ import (
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/control"
+	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"google.golang.org/grpc/codes"
@@ -83,14 +84,17 @@ func (s *Server) controlRuntimeSnapshot() []ControlRuntime {
 }
 
 func (s *Server) ControlBootstrap(ctx context.Context) (*ControlBootstrap, error) {
-	if _, err := rpcutil.Require(ctx, "jobs:read", false); err != nil {
+	principal, err := rpcutil.Require(ctx, "jobs:read", false)
+	if err != nil {
 		return nil, err
 	}
+	writable := config.Contains(principal.Identity.Scopes, "jobs:cancel") ||
+		config.Contains(principal.Identity.Scopes, "jobs:control")
 	return &ControlBootstrap{
 		ProtocolMin: control.ProtocolV1Alpha1,
 		ProtocolMax: control.ProtocolV1Alpha1,
 		ServerEpoch: s.controlEpoch,
-		ReadOnly:    false,
+		ReadOnly:    !writable,
 		Runtimes:    s.controlRuntimeSnapshot(),
 	}, nil
 }
