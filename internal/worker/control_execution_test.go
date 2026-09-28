@@ -16,6 +16,8 @@ import (
 type controlWorkerFixture struct {
 	mu     sync.Mutex
 	inputs int
+	approvals int
+	resumes int
 }
 
 func (p *controlWorkerFixture) Profile() string { return "control_worker_fixture" }
@@ -47,11 +49,16 @@ func (p *controlWorkerFixture) ControlDescriptor() adapter.ControlDescriptor {
 			control.CapabilityInteractiveInput,
 			control.CapabilityQueueNextInput,
 			control.CapabilityInterrupt,
+			control.CapabilityApproval,
+			control.CapabilitySessionResume,
 		},
 	}
 }
 func (p *controlWorkerFixture) Resume(context.Context, adapter.ControlResumeRequest) (adapter.ExecutionRef, error) {
-	return adapter.ExecutionRef{}, adapter.ErrControlCapabilityUnsupported
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.resumes++
+	return adapter.ExecutionRef{Provider: p.Profile(), Transport: "remote_api", ID: "runtime-resumed"}, nil
 }
 func (p *controlWorkerFixture) Input(_ context.Context, _ adapter.ControlInputRequest) error {
 	p.mu.Lock()
@@ -60,7 +67,10 @@ func (p *controlWorkerFixture) Input(_ context.Context, _ adapter.ControlInputRe
 	return nil
 }
 func (p *controlWorkerFixture) Approve(context.Context, adapter.ControlApprovalRequest) error {
-	return adapter.ErrControlCapabilityUnsupported
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.approvals++
+	return nil
 }
 func (p *controlWorkerFixture) Interrupt(context.Context, adapter.ControlInterruptRequest) error { return nil }
 
@@ -123,6 +133,66 @@ func TestAgentControlWorkerExecutesCommandAtMostOnce(t *testing.T) {
 	}
 	if state != "COMPLETED" {
 		t.Fatalf("worker control state=%s", state)
+	}
+
+	approval := &pb.Command{
+		CommandId: "control-command-approval", Kind: "control",
+		Control: &pb.ControlCommand{
+			PrincipalId: "owner", OperationId: "operation-approval",
+			TaskId: a.TaskId, AttemptId: a.AttemptId, Generation: a.Generation,
+			SessionRef: "native-session-1", Action: "approval", ApprovalId: "approval-1",
+			RequestVersion: 1, Decision: "accept",
+		},
+	}
+	for i := 0; i < 2; i++ {
+		ack, e := w.executeControl(context.Background(), approval)
+		if e != nil || ack.State != "COMPLETED" {
+			t.Fatalf("approval replay %d ack=%+v err=%v", i, ack, e)
+		}
+	}
+	provider.mu.Lock()
+	approvals := provider.approvals
+	provider.mu.Unlock()
+	if approvals != 1 {
+		t.Fatalf("approval side effects=%d want=1", approvals)
+	}
+
+	if _, err = d.SQL.Exec(`INSERT INTO workspaces(
+		attempt,task,generation,repository_ref,base_commit,path,state,created,updated
+	) VALUES(?,?,?,?,?,?,?,?,?)`, a.AttemptId, a.TaskId, a.Generation, "repo", "base", t.TempDir(), "IN_USE", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = d.SQL.Exec(`UPDATE runs SET runtime_state='EXITED',environment_provider='process',
+		environment_ref=?,environment_state='ACTIVE',environment_cleanup='PENDING' WHERE id=?`,
+		[]byte(`{"provider":"process","id":"attempt-control"}`), a.AttemptId); err != nil {
+		t.Fatal(err)
+	}
+	resume := &pb.Command{
+		CommandId: "control-command-resume", Kind: "control",
+		Control: &pb.ControlCommand{
+			PrincipalId: "owner", OperationId: "operation-resume",
+			TaskId: a.TaskId, AttemptId: a.AttemptId, Generation: a.Generation,
+			SessionRef: "native-session-1", Action: "resume",
+		},
+	}
+	for i := 0; i < 2; i++ {
+		ack, e := w.executeControl(context.Background(), resume)
+		if e != nil || ack.State != "COMPLETED" {
+			t.Fatalf("resume replay %d ack=%+v err=%v", i, ack, e)
+		}
+	}
+	provider.mu.Lock()
+	resumes := provider.resumes
+	provider.mu.Unlock()
+	if resumes != 1 {
+		t.Fatalf("resume side effects=%d want=1", resumes)
+	}
+	var resumedState string
+	if err = d.SQL.QueryRow("SELECT runtime_state FROM runs WHERE id=?", a.AttemptId).Scan(&resumedState); err != nil {
+		t.Fatal(err)
+	}
+	if resumedState != string(adapter.RuntimeRunning) {
+		t.Fatalf("runtime state after resume=%s", resumedState)
 	}
 }
 
