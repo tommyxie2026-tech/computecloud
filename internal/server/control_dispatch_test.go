@@ -100,6 +100,24 @@ func TestAgentControlDispatchAndFinalAck(t *testing.T) {
 	if completed != 1 {
 		t.Fatalf("control.completed events=%d", completed)
 	}
+
+	h.s.mu.Lock()
+	delete(h.s.peers, "fixture-worker")
+	h.s.mu.Unlock()
+	replay, err := h.s.acceptAndDispatchControlOperation(h.ctx, jobID, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !replay.Existing || replay.State != "COMPLETED" {
+		t.Fatalf("offline replay receipt=%+v", replay)
+	}
+	var commands int
+	if err = h.s.db.SQL.QueryRow("SELECT count(*) FROM commands WHERE kind='control' AND task=?", taskID).Scan(&commands); err != nil {
+		t.Fatal(err)
+	}
+	if commands != 1 {
+		t.Fatalf("duplicate control commands=%d", commands)
+	}
 }
 
 func TestAgentControlUnknownAckBecomesUnverifiableRejection(t *testing.T) {
