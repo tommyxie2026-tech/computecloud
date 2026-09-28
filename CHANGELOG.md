@@ -1,5 +1,18 @@
 # 版本记录
 
+## 未发布 — v0.4.4 EnvironmentProvider Execution
+
+- 新增独立 Environment Provider lifecycle：Descriptor / Prepare / Activate / Inspect / Release。
+- 新增 transport-neutral EnvironmentRef、EnvironmentState 与 CleanupState；Worker schema 升级到 v5，持久 environment provider/ref/state/cleanup。
+- EnvironmentRef 必须在 Runtime Start 前持久化；Runtime 只使用 Environment Provider 返回的 CWD / Env。
+- Attempt cleanup proof 改为 Runtime cleanup 与 Environment cleanup 同时 CONFIRMED；任一 UNKNOWN 均 fail closed。
+- Worker restart 使用 Environment Provider Inspect / Release 恢复 cleanup evidence，不静默复用旧 Environment。
+- builtin process Environment 迁移到同一 Provider contract，现有 Codex/Claude process 行为保持兼容。
+- Worker 广告从 descriptor registration 收紧为 executable Provider ∩ Runtime-compatible；仅 Descriptor 不再可调度。
+- 新增 fixture isolated/remote Environment Provider 测试，以及独立 GitHub Actions environment-execution-flow。
+- release package 增加 environment-execution-flow 依赖。
+- 生产 container/VM/external sandbox、NetworkPolicy enforcement、snapshot/checkpoint、Prepared Workspace 与 v0.5 scoring 不属于 v0.4.4。
+
 ## 未发布 — v0.4.3 EnvironmentCapability Foundation
 
 - 新增独立 `internal/environment` Registry，Descriptor 包含 name / version / isolation_class / filesystem_mode / network_mode / legacy_default。
