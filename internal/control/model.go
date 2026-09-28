@@ -72,6 +72,17 @@ type AgentSession struct {
 	UpdatedAt         time.Time    `json:"updated_at,omitempty"`
 }
 
+func validSessionState(state SessionState) bool {
+	switch state {
+	case SessionCreated, SessionStarting, SessionRunning, SessionWaitingInput,
+		SessionWaitingApproval, SessionInterrupting, SessionCompleted, SessionFailed,
+		SessionCanceled, SessionUnverifiable:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s AgentSession) Validate() error {
 	if s.ProtocolVersion != ProtocolV1Alpha1 {
 		return fmt.Errorf("unsupported control protocol: %q", s.ProtocolVersion)
@@ -87,8 +98,8 @@ func (s AgentSession) Validate() error {
 	if s.Generation < 1 {
 		return errors.New("generation must be positive")
 	}
-	if s.State == "" {
-		return errors.New("session state required")
+	if !validSessionState(s.State) {
+		return fmt.Errorf("invalid session state: %q", s.State)
 	}
 	return ValidateCapabilities(s.Capabilities)
 }
