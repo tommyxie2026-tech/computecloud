@@ -426,6 +426,9 @@ func (s *Server) tick(ctx context.Context) error {
 	if e := s.reconcile(ctx); e != nil {
 		return e
 	}
+	if e := s.recoverAcceptedControlOperations(ctx); e != nil {
+		return e
+	}
 	if e := s.advanceJobs(ctx); e != nil {
 		return e
 	}
