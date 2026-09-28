@@ -34,7 +34,7 @@ func TestAgentControlReadBootstrapSessionsAndReplay(t *testing.T) {
 	if err = json.Unmarshal(body, &bootstrap); err != nil {
 		t.Fatal(err)
 	}
-	if bootstrap.ProtocolMin != control.ProtocolV1Alpha1 || bootstrap.ProtocolMax != control.ProtocolV1Alpha1 || bootstrap.ServerEpoch == "" || !bootstrap.ReadOnly {
+	if bootstrap.ProtocolMin != control.ProtocolV1Alpha1 || bootstrap.ProtocolMax != control.ProtocolV1Alpha1 || bootstrap.ServerEpoch == "" || bootstrap.ReadOnly {
 		t.Fatalf("invalid bootstrap: %+v", bootstrap)
 	}
 	if len(bootstrap.Runtimes) == 0 {
