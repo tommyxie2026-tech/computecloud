@@ -68,7 +68,7 @@ func (w *Worker) accept(ctx context.Context, c *pb.Command) (bool, error) {
 				}
 			}
 		}
-		_, e = q.ExecContext(ctx, "INSERT INTO commands VALUES(?,?)", c.CommandId, hash)
+		_, e = q.ExecContext(ctx, "INSERT INTO commands(id,hash,kind,body,state) VALUES(?,?,?,?,?)", c.CommandId, hash, c.Kind, enc(c), "RECEIVED")
 		return e
 	})
 	return launch, e
