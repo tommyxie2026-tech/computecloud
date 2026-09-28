@@ -1751,18 +1751,127 @@ func (x *InputArtifactRequest) GetArtifactId() string {
 	return ""
 }
 
+type ControlCommand struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	OperationType string                 `protobuf:"bytes,2,opt,name=operation_type,json=operationType,proto3" json:"operation_type,omitempty"`
+	JobId         string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,4,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AttemptId     string                 `protobuf:"bytes,5,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	Generation    int64                  `protobuf:"varint,6,opt,name=generation,proto3" json:"generation,omitempty"`
+	SessionRef    string                 `protobuf:"bytes,7,opt,name=session_ref,json=sessionRef,proto3" json:"session_ref,omitempty"`
+	Mode          string                 `protobuf:"bytes,8,opt,name=mode,proto3" json:"mode,omitempty"`
+	PayloadJson   []byte                 `protobuf:"bytes,9,opt,name=payload_json,json=payloadJson,proto3" json:"payload_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ControlCommand) Reset() {
+	*x = ControlCommand{}
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ControlCommand) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ControlCommand) ProtoMessage() {}
+
+func (x *ControlCommand) ProtoReflect() protoreflect.Message {
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ControlCommand.ProtoReflect.Descriptor instead.
+func (*ControlCommand) Descriptor() ([]byte, []int) {
+	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ControlCommand) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *ControlCommand) GetOperationType() string {
+	if x != nil {
+		return x.OperationType
+	}
+	return ""
+}
+
+func (x *ControlCommand) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *ControlCommand) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *ControlCommand) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *ControlCommand) GetGeneration() int64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *ControlCommand) GetSessionRef() string {
+	if x != nil {
+		return x.SessionRef
+	}
+	return ""
+}
+
+func (x *ControlCommand) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *ControlCommand) GetPayloadJson() []byte {
+	if x != nil {
+		return x.PayloadJson
+	}
+	return nil
+}
+
 type Command struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
 	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
 	Assignment    *Assignment            `protobuf:"bytes,3,opt,name=assignment,proto3" json:"assignment,omitempty"`
+	Control       *ControlCommand        `protobuf:"bytes,4,opt,name=control,proto3" json:"control,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Command) Reset() {
 	*x = Command{}
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[23]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1774,7 +1883,7 @@ func (x *Command) String() string {
 func (*Command) ProtoMessage() {}
 
 func (x *Command) ProtoReflect() protoreflect.Message {
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[23]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1787,7 +1896,7 @@ func (x *Command) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Command.ProtoReflect.Descriptor instead.
 func (*Command) Descriptor() ([]byte, []int) {
-	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{23}
+	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *Command) GetCommandId() string {
@@ -1811,6 +1920,13 @@ func (x *Command) GetAssignment() *Assignment {
 	return nil
 }
 
+func (x *Command) GetControl() *ControlCommand {
+	if x != nil {
+		return x.Control
+	}
+	return nil
+}
+
 type LeaseGrant struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AttemptId     string                 `protobuf:"bytes,1,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
@@ -1822,7 +1938,7 @@ type LeaseGrant struct {
 
 func (x *LeaseGrant) Reset() {
 	*x = LeaseGrant{}
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[24]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1834,7 +1950,7 @@ func (x *LeaseGrant) String() string {
 func (*LeaseGrant) ProtoMessage() {}
 
 func (x *LeaseGrant) ProtoReflect() protoreflect.Message {
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[24]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1847,7 +1963,7 @@ func (x *LeaseGrant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeaseGrant.ProtoReflect.Descriptor instead.
 func (*LeaseGrant) Descriptor() ([]byte, []int) {
-	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{24}
+	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *LeaseGrant) GetAttemptId() string {
@@ -1884,7 +2000,7 @@ type ServerFrame struct {
 
 func (x *ServerFrame) Reset() {
 	*x = ServerFrame{}
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[25]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1896,7 +2012,7 @@ func (x *ServerFrame) String() string {
 func (*ServerFrame) ProtoMessage() {}
 
 func (x *ServerFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[25]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1909,7 +2025,7 @@ func (x *ServerFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerFrame.ProtoReflect.Descriptor instead.
 func (*ServerFrame) Descriptor() ([]byte, []int) {
-	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{25}
+	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ServerFrame) GetBody() isServerFrame_Body {
@@ -1963,7 +2079,7 @@ type ReportRequest struct {
 
 func (x *ReportRequest) Reset() {
 	*x = ReportRequest{}
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[26]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1975,7 +2091,7 @@ func (x *ReportRequest) String() string {
 func (*ReportRequest) ProtoMessage() {}
 
 func (x *ReportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[26]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1988,7 +2104,7 @@ func (x *ReportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportRequest.ProtoReflect.Descriptor instead.
 func (*ReportRequest) Descriptor() ([]byte, []int) {
-	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{26}
+	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ReportRequest) GetAttempt() *AttemptRef {
@@ -2022,7 +2138,7 @@ type CompleteRequest struct {
 
 func (x *CompleteRequest) Reset() {
 	*x = CompleteRequest{}
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[27]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2034,7 +2150,7 @@ func (x *CompleteRequest) String() string {
 func (*CompleteRequest) ProtoMessage() {}
 
 func (x *CompleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[27]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2047,7 +2163,7 @@ func (x *CompleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompleteRequest.ProtoReflect.Descriptor instead.
 func (*CompleteRequest) Descriptor() ([]byte, []int) {
-	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{27}
+	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CompleteRequest) GetAttempt() *AttemptRef {
@@ -2127,7 +2243,7 @@ type Artifact struct {
 
 func (x *Artifact) Reset() {
 	*x = Artifact{}
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[28]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2139,7 +2255,7 @@ func (x *Artifact) String() string {
 func (*Artifact) ProtoMessage() {}
 
 func (x *Artifact) ProtoReflect() protoreflect.Message {
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[28]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2152,7 +2268,7 @@ func (x *Artifact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Artifact.ProtoReflect.Descriptor instead.
 func (*Artifact) Descriptor() ([]byte, []int) {
-	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{28}
+	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *Artifact) GetArtifactId() string {
@@ -2206,7 +2322,7 @@ type Artifacts struct {
 
 func (x *Artifacts) Reset() {
 	*x = Artifacts{}
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[29]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2218,7 +2334,7 @@ func (x *Artifacts) String() string {
 func (*Artifacts) ProtoMessage() {}
 
 func (x *Artifacts) ProtoReflect() protoreflect.Message {
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[29]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2231,7 +2347,7 @@ func (x *Artifacts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Artifacts.ProtoReflect.Descriptor instead.
 func (*Artifacts) Descriptor() ([]byte, []int) {
-	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{29}
+	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *Artifacts) GetArtifacts() []*Artifact {
@@ -2251,7 +2367,7 @@ type ArtifactRef struct {
 
 func (x *ArtifactRef) Reset() {
 	*x = ArtifactRef{}
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[30]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2263,7 +2379,7 @@ func (x *ArtifactRef) String() string {
 func (*ArtifactRef) ProtoMessage() {}
 
 func (x *ArtifactRef) ProtoReflect() protoreflect.Message {
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[30]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2276,7 +2392,7 @@ func (x *ArtifactRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactRef.ProtoReflect.Descriptor instead.
 func (*ArtifactRef) Descriptor() ([]byte, []int) {
-	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{30}
+	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ArtifactRef) GetTaskId() string {
@@ -2304,7 +2420,7 @@ type ArtifactChunk struct {
 
 func (x *ArtifactChunk) Reset() {
 	*x = ArtifactChunk{}
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[31]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2316,7 +2432,7 @@ func (x *ArtifactChunk) String() string {
 func (*ArtifactChunk) ProtoMessage() {}
 
 func (x *ArtifactChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[31]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2329,7 +2445,7 @@ func (x *ArtifactChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactChunk.ProtoReflect.Descriptor instead.
 func (*ArtifactChunk) Descriptor() ([]byte, []int) {
-	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{31}
+	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ArtifactChunk) GetMetadata() *Artifact {
@@ -2362,7 +2478,7 @@ type Chunk struct {
 
 func (x *Chunk) Reset() {
 	*x = Chunk{}
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[32]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2374,7 +2490,7 @@ func (x *Chunk) String() string {
 func (*Chunk) ProtoMessage() {}
 
 func (x *Chunk) ProtoReflect() protoreflect.Message {
-	mi := &file_api_agent_v1_runtime_proto_msgTypes[32]
+	mi := &file_api_agent_v1_runtime_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2387,7 +2503,7 @@ func (x *Chunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Chunk.ProtoReflect.Descriptor instead.
 func (*Chunk) Descriptor() ([]byte, []int) {
-	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{32}
+	return file_api_agent_v1_runtime_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *Chunk) GetData() []byte {
@@ -2569,14 +2685,29 @@ const file_api_agent_v1_runtime_proto_rawDesc = "" +
 	"\x14InputArtifactRequest\x12;\n" +
 	"\aattempt\x18\x01 \x01(\v2!.computecloud.agent.v1.AttemptRefR\aattempt\x12\x1f\n" +
 	"\vartifact_id\x18\x02 \x01(\tR\n" +
-	"artifactId\"\x7f\n" +
+	"artifactId\"\xa1\x02\n" +
+	"\x0eControlCommand\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12%\n" +
+	"\x0eoperation_type\x18\x02 \x01(\tR\roperationType\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12\x17\n" +
+	"\atask_id\x18\x04 \x01(\tR\x06taskId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x05 \x01(\tR\tattemptId\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x06 \x01(\x03R\n" +
+	"generation\x12\x1f\n" +
+	"\vsession_ref\x18\a \x01(\tR\n" +
+	"sessionRef\x12\x12\n" +
+	"\x04mode\x18\b \x01(\tR\x04mode\x12!\n" +
+	"\fpayload_json\x18\t \x01(\fR\vpayloadJson\"\xc0\x01\n" +
 	"\aCommand\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12A\n" +
 	"\n" +
 	"assignment\x18\x03 \x01(\v2!.computecloud.agent.v1.AssignmentR\n" +
-	"assignment\"X\n" +
+	"assignment\x12?\n" +
+	"\acontrol\x18\x04 \x01(\v2%.computecloud.agent.v1.ControlCommandR\acontrol\"X\n" +
 	"\n" +
 	"LeaseGrant\x12\x1d\n" +
 	"\n" +
@@ -2652,7 +2783,7 @@ func file_api_agent_v1_runtime_proto_rawDescGZIP() []byte {
 	return file_api_agent_v1_runtime_proto_rawDescData
 }
 
-var file_api_agent_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_api_agent_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_api_agent_v1_runtime_proto_goTypes = []any{
 	(*Empty)(nil),                // 0: computecloud.agent.v1.Empty
 	(*Workspace)(nil),            // 1: computecloud.agent.v1.Workspace
@@ -2677,24 +2808,25 @@ var file_api_agent_v1_runtime_proto_goTypes = []any{
 	(*JobExecution)(nil),         // 20: computecloud.agent.v1.JobExecution
 	(*GatewayAccess)(nil),        // 21: computecloud.agent.v1.GatewayAccess
 	(*InputArtifactRequest)(nil), // 22: computecloud.agent.v1.InputArtifactRequest
-	(*Command)(nil),              // 23: computecloud.agent.v1.Command
-	(*LeaseGrant)(nil),           // 24: computecloud.agent.v1.LeaseGrant
-	(*ServerFrame)(nil),          // 25: computecloud.agent.v1.ServerFrame
-	(*ReportRequest)(nil),        // 26: computecloud.agent.v1.ReportRequest
-	(*CompleteRequest)(nil),      // 27: computecloud.agent.v1.CompleteRequest
-	(*Artifact)(nil),             // 28: computecloud.agent.v1.Artifact
-	(*Artifacts)(nil),            // 29: computecloud.agent.v1.Artifacts
-	(*ArtifactRef)(nil),          // 30: computecloud.agent.v1.ArtifactRef
-	(*ArtifactChunk)(nil),        // 31: computecloud.agent.v1.ArtifactChunk
-	(*Chunk)(nil),                // 32: computecloud.agent.v1.Chunk
-	nil,                          // 33: computecloud.agent.v1.Runtime.TemplateDigestsEntry
+	(*ControlCommand)(nil),       // 23: computecloud.agent.v1.ControlCommand
+	(*Command)(nil),              // 24: computecloud.agent.v1.Command
+	(*LeaseGrant)(nil),           // 25: computecloud.agent.v1.LeaseGrant
+	(*ServerFrame)(nil),          // 26: computecloud.agent.v1.ServerFrame
+	(*ReportRequest)(nil),        // 27: computecloud.agent.v1.ReportRequest
+	(*CompleteRequest)(nil),      // 28: computecloud.agent.v1.CompleteRequest
+	(*Artifact)(nil),             // 29: computecloud.agent.v1.Artifact
+	(*Artifacts)(nil),            // 30: computecloud.agent.v1.Artifacts
+	(*ArtifactRef)(nil),          // 31: computecloud.agent.v1.ArtifactRef
+	(*ArtifactChunk)(nil),        // 32: computecloud.agent.v1.ArtifactChunk
+	(*Chunk)(nil),                // 33: computecloud.agent.v1.Chunk
+	nil,                          // 34: computecloud.agent.v1.Runtime.TemplateDigestsEntry
 }
 var file_api_agent_v1_runtime_proto_depIdxs = []int32{
 	1,  // 0: computecloud.agent.v1.TaskSpec.workspace:type_name -> computecloud.agent.v1.Workspace
 	2,  // 1: computecloud.agent.v1.TaskSpec.input:type_name -> computecloud.agent.v1.Input
 	3,  // 2: computecloud.agent.v1.Task.spec:type_name -> computecloud.agent.v1.TaskSpec
 	2,  // 3: computecloud.agent.v1.ControlRequest.input:type_name -> computecloud.agent.v1.Input
-	33, // 4: computecloud.agent.v1.Runtime.template_digests:type_name -> computecloud.agent.v1.Runtime.TemplateDigestsEntry
+	34, // 4: computecloud.agent.v1.Runtime.template_digests:type_name -> computecloud.agent.v1.Runtime.TemplateDigestsEntry
 	11, // 5: computecloud.agent.v1.WorkerHello.runtimes:type_name -> computecloud.agent.v1.Runtime
 	11, // 6: computecloud.agent.v1.WorkerStatus.runtimes:type_name -> computecloud.agent.v1.Runtime
 	13, // 7: computecloud.agent.v1.Workers.workers:type_name -> computecloud.agent.v1.WorkerStatus
@@ -2707,47 +2839,48 @@ var file_api_agent_v1_runtime_proto_depIdxs = []int32{
 	21, // 14: computecloud.agent.v1.Assignment.gateway:type_name -> computecloud.agent.v1.GatewayAccess
 	15, // 15: computecloud.agent.v1.InputArtifactRequest.attempt:type_name -> computecloud.agent.v1.AttemptRef
 	19, // 16: computecloud.agent.v1.Command.assignment:type_name -> computecloud.agent.v1.Assignment
-	23, // 17: computecloud.agent.v1.ServerFrame.command:type_name -> computecloud.agent.v1.Command
-	24, // 18: computecloud.agent.v1.ServerFrame.lease:type_name -> computecloud.agent.v1.LeaseGrant
-	15, // 19: computecloud.agent.v1.ReportRequest.attempt:type_name -> computecloud.agent.v1.AttemptRef
-	9,  // 20: computecloud.agent.v1.ReportRequest.events:type_name -> computecloud.agent.v1.Event
-	15, // 21: computecloud.agent.v1.CompleteRequest.attempt:type_name -> computecloud.agent.v1.AttemptRef
-	28, // 22: computecloud.agent.v1.Artifacts.artifacts:type_name -> computecloud.agent.v1.Artifact
-	28, // 23: computecloud.agent.v1.ArtifactChunk.metadata:type_name -> computecloud.agent.v1.Artifact
-	15, // 24: computecloud.agent.v1.ArtifactChunk.attempt:type_name -> computecloud.agent.v1.AttemptRef
-	3,  // 25: computecloud.agent.v1.RuntimeService.SubmitTask:input_type -> computecloud.agent.v1.TaskSpec
-	4,  // 26: computecloud.agent.v1.RuntimeService.GetTask:input_type -> computecloud.agent.v1.TaskRef
-	7,  // 27: computecloud.agent.v1.RuntimeService.CancelTask:input_type -> computecloud.agent.v1.CancelRequest
-	6,  // 28: computecloud.agent.v1.RuntimeService.WatchEvents:input_type -> computecloud.agent.v1.WatchRequest
-	0,  // 29: computecloud.agent.v1.RuntimeService.ListWorkers:input_type -> computecloud.agent.v1.Empty
-	8,  // 30: computecloud.agent.v1.RuntimeService.SendInput:input_type -> computecloud.agent.v1.ControlRequest
-	8,  // 31: computecloud.agent.v1.RuntimeService.RespondApproval:input_type -> computecloud.agent.v1.ControlRequest
-	4,  // 32: computecloud.agent.v1.RuntimeService.ListArtifacts:input_type -> computecloud.agent.v1.TaskRef
-	30, // 33: computecloud.agent.v1.RuntimeService.DownloadArtifact:input_type -> computecloud.agent.v1.ArtifactRef
-	22, // 34: computecloud.agent.v1.RuntimeService.DownloadInputArtifact:input_type -> computecloud.agent.v1.InputArtifactRequest
-	18, // 35: computecloud.agent.v1.RuntimeService.ConnectWorker:input_type -> computecloud.agent.v1.WorkerFrame
-	26, // 36: computecloud.agent.v1.RuntimeService.ReportEvents:input_type -> computecloud.agent.v1.ReportRequest
-	27, // 37: computecloud.agent.v1.RuntimeService.CompleteAttempt:input_type -> computecloud.agent.v1.CompleteRequest
-	31, // 38: computecloud.agent.v1.RuntimeService.UploadArtifact:input_type -> computecloud.agent.v1.ArtifactChunk
-	5,  // 39: computecloud.agent.v1.RuntimeService.SubmitTask:output_type -> computecloud.agent.v1.Task
-	5,  // 40: computecloud.agent.v1.RuntimeService.GetTask:output_type -> computecloud.agent.v1.Task
-	5,  // 41: computecloud.agent.v1.RuntimeService.CancelTask:output_type -> computecloud.agent.v1.Task
-	9,  // 42: computecloud.agent.v1.RuntimeService.WatchEvents:output_type -> computecloud.agent.v1.Event
-	14, // 43: computecloud.agent.v1.RuntimeService.ListWorkers:output_type -> computecloud.agent.v1.Workers
-	10, // 44: computecloud.agent.v1.RuntimeService.SendInput:output_type -> computecloud.agent.v1.Ack
-	10, // 45: computecloud.agent.v1.RuntimeService.RespondApproval:output_type -> computecloud.agent.v1.Ack
-	29, // 46: computecloud.agent.v1.RuntimeService.ListArtifacts:output_type -> computecloud.agent.v1.Artifacts
-	32, // 47: computecloud.agent.v1.RuntimeService.DownloadArtifact:output_type -> computecloud.agent.v1.Chunk
-	32, // 48: computecloud.agent.v1.RuntimeService.DownloadInputArtifact:output_type -> computecloud.agent.v1.Chunk
-	25, // 49: computecloud.agent.v1.RuntimeService.ConnectWorker:output_type -> computecloud.agent.v1.ServerFrame
-	10, // 50: computecloud.agent.v1.RuntimeService.ReportEvents:output_type -> computecloud.agent.v1.Ack
-	10, // 51: computecloud.agent.v1.RuntimeService.CompleteAttempt:output_type -> computecloud.agent.v1.Ack
-	28, // 52: computecloud.agent.v1.RuntimeService.UploadArtifact:output_type -> computecloud.agent.v1.Artifact
-	39, // [39:53] is the sub-list for method output_type
-	25, // [25:39] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	23, // 17: computecloud.agent.v1.Command.control:type_name -> computecloud.agent.v1.ControlCommand
+	24, // 18: computecloud.agent.v1.ServerFrame.command:type_name -> computecloud.agent.v1.Command
+	25, // 19: computecloud.agent.v1.ServerFrame.lease:type_name -> computecloud.agent.v1.LeaseGrant
+	15, // 20: computecloud.agent.v1.ReportRequest.attempt:type_name -> computecloud.agent.v1.AttemptRef
+	9,  // 21: computecloud.agent.v1.ReportRequest.events:type_name -> computecloud.agent.v1.Event
+	15, // 22: computecloud.agent.v1.CompleteRequest.attempt:type_name -> computecloud.agent.v1.AttemptRef
+	29, // 23: computecloud.agent.v1.Artifacts.artifacts:type_name -> computecloud.agent.v1.Artifact
+	29, // 24: computecloud.agent.v1.ArtifactChunk.metadata:type_name -> computecloud.agent.v1.Artifact
+	15, // 25: computecloud.agent.v1.ArtifactChunk.attempt:type_name -> computecloud.agent.v1.AttemptRef
+	3,  // 26: computecloud.agent.v1.RuntimeService.SubmitTask:input_type -> computecloud.agent.v1.TaskSpec
+	4,  // 27: computecloud.agent.v1.RuntimeService.GetTask:input_type -> computecloud.agent.v1.TaskRef
+	7,  // 28: computecloud.agent.v1.RuntimeService.CancelTask:input_type -> computecloud.agent.v1.CancelRequest
+	6,  // 29: computecloud.agent.v1.RuntimeService.WatchEvents:input_type -> computecloud.agent.v1.WatchRequest
+	0,  // 30: computecloud.agent.v1.RuntimeService.ListWorkers:input_type -> computecloud.agent.v1.Empty
+	8,  // 31: computecloud.agent.v1.RuntimeService.SendInput:input_type -> computecloud.agent.v1.ControlRequest
+	8,  // 32: computecloud.agent.v1.RuntimeService.RespondApproval:input_type -> computecloud.agent.v1.ControlRequest
+	4,  // 33: computecloud.agent.v1.RuntimeService.ListArtifacts:input_type -> computecloud.agent.v1.TaskRef
+	31, // 34: computecloud.agent.v1.RuntimeService.DownloadArtifact:input_type -> computecloud.agent.v1.ArtifactRef
+	22, // 35: computecloud.agent.v1.RuntimeService.DownloadInputArtifact:input_type -> computecloud.agent.v1.InputArtifactRequest
+	18, // 36: computecloud.agent.v1.RuntimeService.ConnectWorker:input_type -> computecloud.agent.v1.WorkerFrame
+	27, // 37: computecloud.agent.v1.RuntimeService.ReportEvents:input_type -> computecloud.agent.v1.ReportRequest
+	28, // 38: computecloud.agent.v1.RuntimeService.CompleteAttempt:input_type -> computecloud.agent.v1.CompleteRequest
+	32, // 39: computecloud.agent.v1.RuntimeService.UploadArtifact:input_type -> computecloud.agent.v1.ArtifactChunk
+	5,  // 40: computecloud.agent.v1.RuntimeService.SubmitTask:output_type -> computecloud.agent.v1.Task
+	5,  // 41: computecloud.agent.v1.RuntimeService.GetTask:output_type -> computecloud.agent.v1.Task
+	5,  // 42: computecloud.agent.v1.RuntimeService.CancelTask:output_type -> computecloud.agent.v1.Task
+	9,  // 43: computecloud.agent.v1.RuntimeService.WatchEvents:output_type -> computecloud.agent.v1.Event
+	14, // 44: computecloud.agent.v1.RuntimeService.ListWorkers:output_type -> computecloud.agent.v1.Workers
+	10, // 45: computecloud.agent.v1.RuntimeService.SendInput:output_type -> computecloud.agent.v1.Ack
+	10, // 46: computecloud.agent.v1.RuntimeService.RespondApproval:output_type -> computecloud.agent.v1.Ack
+	30, // 47: computecloud.agent.v1.RuntimeService.ListArtifacts:output_type -> computecloud.agent.v1.Artifacts
+	33, // 48: computecloud.agent.v1.RuntimeService.DownloadArtifact:output_type -> computecloud.agent.v1.Chunk
+	33, // 49: computecloud.agent.v1.RuntimeService.DownloadInputArtifact:output_type -> computecloud.agent.v1.Chunk
+	26, // 50: computecloud.agent.v1.RuntimeService.ConnectWorker:output_type -> computecloud.agent.v1.ServerFrame
+	10, // 51: computecloud.agent.v1.RuntimeService.ReportEvents:output_type -> computecloud.agent.v1.Ack
+	10, // 52: computecloud.agent.v1.RuntimeService.CompleteAttempt:output_type -> computecloud.agent.v1.Ack
+	29, // 53: computecloud.agent.v1.RuntimeService.UploadArtifact:output_type -> computecloud.agent.v1.Artifact
+	40, // [40:54] is the sub-list for method output_type
+	26, // [26:40] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_api_agent_v1_runtime_proto_init() }
@@ -2760,7 +2893,7 @@ func file_api_agent_v1_runtime_proto_init() {
 		(*WorkerFrame_Renew)(nil),
 		(*WorkerFrame_Ack)(nil),
 	}
-	file_api_agent_v1_runtime_proto_msgTypes[25].OneofWrappers = []any{
+	file_api_agent_v1_runtime_proto_msgTypes[26].OneofWrappers = []any{
 		(*ServerFrame_Command)(nil),
 		(*ServerFrame_Lease)(nil),
 	}
@@ -2770,7 +2903,7 @@ func file_api_agent_v1_runtime_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_agent_v1_runtime_proto_rawDesc), len(file_api_agent_v1_runtime_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   34,
+			NumMessages:   35,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
