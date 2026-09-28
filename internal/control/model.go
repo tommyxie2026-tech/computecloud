@@ -188,3 +188,58 @@ func Negotiate(client, server VersionRange) (string, error) {
 	}
 	return ProtocolV1Alpha1, nil
 }
+
+
+type OperationState string
+
+const (
+	OperationAccepted  OperationState = "ACCEPTED"
+	OperationRejected  OperationState = "REJECTED"
+	OperationCompleted OperationState = "COMPLETED"
+)
+
+type OperationReceipt struct {
+	ProtocolVersion string         `json:"protocol_version"`
+	OperationID     string         `json:"operation_id"`
+	OperationType   string         `json:"operation_type"`
+	JobID           string         `json:"job_id"`
+	SessionID       string         `json:"session_id"`
+	TaskID          string         `json:"task_id"`
+	AttemptID       string         `json:"attempt_id"`
+	Generation      int64          `json:"generation"`
+	State           OperationState `json:"state"`
+	Existing        bool           `json:"existing,omitempty"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	Message         string         `json:"message,omitempty"`
+}
+
+func (r OperationReceipt) Validate() error {
+	if r.ProtocolVersion != ProtocolV1Alpha1 {
+		return fmt.Errorf("unsupported control protocol: %q", r.ProtocolVersion)
+	}
+	for field, value := range map[string]string{
+		"operation_id": r.OperationID,
+		"operation_type": r.OperationType,
+		"job_id": r.JobID,
+		"session_id": r.SessionID,
+		"task_id": r.TaskID,
+		"attempt_id": r.AttemptID,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s required", field)
+		}
+	}
+	if r.Generation < 1 {
+		return errors.New("generation must be positive")
+	}
+	switch r.State {
+	case OperationAccepted, OperationRejected, OperationCompleted:
+	default:
+		return fmt.Errorf("invalid operation state: %q", r.State)
+	}
+	if r.CreatedAt.IsZero() || r.UpdatedAt.IsZero() {
+		return errors.New("operation timestamps required")
+	}
+	return nil
+}
