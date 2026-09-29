@@ -81,7 +81,7 @@ if (staleBody.error?.code !== "SNAPSHOT_EPOCH_CHANGED") throw new Error("stale e
 if (writeJob) {
   const holder = "e2e-device-a";
   const body = JSON.stringify({ control_id: "e2e-control-cancel", reason: "UI-03a E2E" });
-  const noLease = await request("/v1/jobs/" + writeJob + "/control/cancel", 400, {
+  const noLease = await request("/v1/jobs/" + writeJob + "/control/cancel", 409, {
     method: "POST", headers: { "Content-Type": "application/json" }, body,
   });
   if (noLease.json().error?.code !== "WRITE_LEASE_REQUIRED") throw new Error("control cancel did not require write lease");
