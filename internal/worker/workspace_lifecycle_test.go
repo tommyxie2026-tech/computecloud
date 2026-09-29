@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -300,34 +301,39 @@ func TestPreparedWorkspaceWorkerReusesTemplateWithoutSharingWritableState(t *tes
 		DataDir: dir,
 		Repositories: map[string]string{"repo": repo},
 	}}
-	a1 := workspaceAssignment("prepared-g1", "same-task", 1, commit)
-	a2 := workspaceAssignment("prepared-g2", "same-task", 2, commit)
-	a1.Spec.RuntimeProfile = "codex"
-	a2.Spec.RuntimeProfile = "codex"
-	for _, a := range []*pb.Assignment{a1, a2} {
+
+	paths := map[string]bool{}
+	for i := 1; i <= 10; i++ {
+		a := workspaceAssignment(fmt.Sprintf("prepared-g%d", i), "same-task", int64(i), commit)
+		a.Spec.RuntimeProfile = "codex"
 		insertWorkspaceRun(t, w, a, "ACCEPTED")
+		path, err := w.prepareWorkspace(context.Background(), a)
+		if err != nil {
+			t.Fatalf("prepare generation %d: %v", i, err)
+		}
+		if paths[path] {
+			t.Fatalf("generation %d reused writable path %s", i, path)
+		}
+		paths[path] = true
+
+		if i == 1 {
+			if err = os.WriteFile(filepath.Join(path, "README.md"), []byte("attempt-one\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(path, "README.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(body) != "fixture\n" {
+			t.Fatalf("generation %d inherited another attempt mutation: %q", i, body)
+		}
 	}
-	p1, err := w.prepareWorkspace(context.Background(), a1)
-	if err != nil {
-		t.Fatal(err)
+	if len(paths) != 10 {
+		t.Fatalf("expected 10 isolated writable workspaces, got %d", len(paths))
 	}
-	if err = os.WriteFile(filepath.Join(p1, "README.md"), []byte("attempt-one\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	p2, err := w.prepareWorkspace(context.Background(), a2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p1 == p2 {
-		t.Fatal("prepared template caused generations to share writable path")
-	}
-	body, err := os.ReadFile(filepath.Join(p2, "README.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(body) != "fixture\n" {
-		t.Fatalf("second attempt inherited first attempt mutation: %q", body)
-	}
+
 	entries, err := os.ReadDir(w.preparedWorkspaceRoot())
 	if err != nil {
 		t.Fatal(err)
@@ -339,6 +345,6 @@ func TestPreparedWorkspaceWorkerReusesTemplateWithoutSharingWritableState(t *tes
 		}
 	}
 	if templateDirs != 1 {
-		t.Fatalf("expected one reusable prepared template, got %d", templateDirs)
+		t.Fatalf("10 attempts should reuse exactly one prepared template, got %d", templateDirs)
 	}
 }
