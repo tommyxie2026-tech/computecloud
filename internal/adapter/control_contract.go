@@ -59,6 +59,8 @@ func (p claudeProvider) ControlDescriptor() ControlDescriptor { return builtinCo
 
 // SessionControlProvider is implemented only by runtimes that can bind a stable
 // native session reference to an authoritative computecloud Attempt generation.
+// Resume is a current-Attempt transport/session rebind operation. It does not
+// reopen a released Attempt, create a retry, or continue a terminal Job.
 type SessionControlProvider interface {
 	ControlProvider
 	Resume(context.Context, ControlResumeRequest) (ExecutionRef, error)
