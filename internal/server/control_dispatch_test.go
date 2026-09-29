@@ -174,3 +174,125 @@ func TestAgentControlUnknownAckBecomesUnverifiableRejection(t *testing.T) {
 // Keep imports anchored to the same fixture helpers used by ACP-3a.
 var _ = job.Hash
 var _ = store.Now
+
+func TestAgentControlDispatchResume(t *testing.T) {
+	h, jobID, taskID, version := controlHarness(t)
+	var specRaw []byte
+	if err := h.s.db.SQL.QueryRow("SELECT spec FROM tasks WHERE id=?", taskID).Scan(&specRaw); err != nil {
+		t.Fatal(err)
+	}
+	spec := new(pb.TaskSpec)
+	if err := decode(specRaw, spec); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.s.db.SQL.Exec("UPDATE tasks SET native_session=? WHERE id=?", "native-session-1", taskID); err != nil {
+		t.Fatal(err)
+	}
+	h.s.mu.Lock()
+	h.s.peers["fixture-worker"] = &session{
+		hello: &pb.WorkerHello{
+			WorkerId: "fixture-worker", Epoch: "epoch-1", Slots: 1,
+			Runtimes: []*pb.Runtime{{
+				Profile: spec.RuntimeProfile, Version: "fixture",
+				Capabilities: []string{"control:session_resume"},
+			}},
+		},
+		identity: config.Identity{WorkerID: "fixture-worker"},
+		frames: make(chan *pb.ServerFrame, 1),
+		cancel: func(){},
+	}
+	h.s.mu.Unlock()
+
+	in := ControlOperationRequest{
+		OperationID: "resume-dispatch-1", OperationType: "resume",
+		ResourceType: "session", ResourceID: "control-attempt-1", TaskID: taskID,
+		ExpectedAttemptID: "control-attempt-1", ExpectedGeneration: 1,
+		ExpectedResourceVersion: version,
+	}
+	receipt, err := h.s.acceptAndDispatchControlOperation(h.ctx, jobID, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.State != "DISPATCHED" {
+		t.Fatalf("receipt=%+v", receipt)
+	}
+	var body []byte
+	if err = h.s.db.SQL.QueryRow("SELECT body FROM commands WHERE kind='control' AND task=?", taskID).Scan(&body); err != nil {
+		t.Fatal(err)
+	}
+	cmd := new(pb.Command)
+	if err = decode(body, cmd); err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Control == nil || cmd.Control.Action != "resume" || cmd.Control.SessionRef != "native-session-1" {
+		t.Fatalf("resume command=%+v", cmd.Control)
+	}
+}
+
+
+func TestAgentControlPersistsRuntimeSessionRefEarly(t *testing.T) {
+	h, _, taskID, _ := controlHarness(t)
+	ev := &pb.Event{
+		TaskId: taskID, AttemptId: "control-attempt-1", Generation: 1,
+		Type: "session.started",
+		PayloadJson: []byte(`{"session_ref":"native-session-early"}`),
+	}
+	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistRuntimeSessionRef(context.Background(), q, ev)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err := h.s.db.SQL.QueryRow("SELECT native_session FROM tasks WHERE id=?", taskID).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != "native-session-early" {
+		t.Fatalf("native session=%q", got)
+	}
+
+	// Replaying the same session-start identity is safe.
+	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistRuntimeSessionRef(context.Background(), q, ev)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	conflict := &pb.Event{
+		TaskId: ev.TaskId, AttemptId: ev.AttemptId, Generation: ev.Generation,
+		Type: ev.Type, PayloadJson: []byte(`{"session_ref":"different-session"}`),
+	}
+	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistRuntimeSessionRef(context.Background(), q, conflict)
+	}); err == nil {
+		t.Fatal("conflicting runtime session ref accepted")
+	}
+
+	stale := &pb.Event{
+		TaskId: ev.TaskId, AttemptId: ev.AttemptId, Generation: 2,
+		Type: ev.Type, PayloadJson: ev.PayloadJson,
+	}
+	if err := h.s.db.Tx(context.Background(), func(q store.Query) error {
+		return persistRuntimeSessionRef(context.Background(), q, stale)
+	}); err == nil {
+		t.Fatal("stale generation session ref accepted")
+	}
+}
+
+
+func TestAgentControlCompletionSessionRefResolution(t *testing.T) {
+	got, err := resolveRuntimeSessionRef("early-session", "")
+	if err != nil || got != "early-session" {
+		t.Fatalf("preserve early session got=%q err=%v", got, err)
+	}
+	got, err = resolveRuntimeSessionRef("early-session", "early-session")
+	if err != nil || got != "early-session" {
+		t.Fatalf("same completion session got=%q err=%v", got, err)
+	}
+	got, err = resolveRuntimeSessionRef("", "completion-session")
+	if err != nil || got != "completion-session" {
+		t.Fatalf("completion-only session got=%q err=%v", got, err)
+	}
+	if _, err = resolveRuntimeSessionRef("early-session", "different-session"); err == nil {
+		t.Fatal("conflicting completion session ref accepted")
+	}
+}
