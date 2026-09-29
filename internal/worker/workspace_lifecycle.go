@@ -48,13 +48,13 @@ func (w *Worker) preparedTemplateForAssignment(a *pb.Assignment, repoRef, base s
 		envDesc.NetworkMode,
 	}, "\x00")
 
-	runtimeVersion := ""
-	if configured, ok := w.cfg.Runtimes[a.Spec.RuntimeProfile]; ok {
-		runtimeVersion = configured.Version
+	configuredRuntime, ok := w.cfg.Runtimes[a.Spec.RuntimeProfile]
+	if !ok || strings.TrimSpace(configuredRuntime.Version) == "" {
+		return workspace.WorkspaceTemplate{}, errors.New("workspace template runtime/version is unavailable")
 	}
 	runtimeIdentity := strings.Join([]string{
 		a.Spec.RuntimeProfile,
-		runtimeVersion,
+		configuredRuntime.Version,
 		a.Spec.Model,
 	}, "\x00")
 
