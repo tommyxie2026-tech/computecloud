@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- clients/control/package.json clients/control/package-lock.json; then
+          if [[ -z "$(git status --porcelain -- clients/control/package.json clients/control/package-lock.json)" ]]; then
             echo "lockfile already current"
             exit 0
           fi
