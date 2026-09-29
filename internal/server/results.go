@@ -57,6 +57,9 @@ func (s *Server) ReportEvents(ctx context.Context, r *pb.ReportRequest) (*pb.Ack
 			if e = persistApprovalRequested(ctx, q, ev); e != nil {
 				return e
 			}
+			if e = persistRuntimeSessionRef(ctx, q, ev); e != nil {
+				return e
+			}
 			if e = mirrorRuntimeEventToJob(ctx, q, ev); e != nil {
 				return e
 			}
@@ -200,7 +203,11 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 				return e
 			}
 		}
-		if _, e = q.ExecContext(ctx, "UPDATE tasks SET result=?,native_session=? WHERE id=?", r.Result, r.NativeSessionId, t.TaskId); e != nil {
+		sessionRef, sessionErr := resolveRuntimeSessionRef(t.SessionRef, r.NativeSessionId)
+		if sessionErr != nil {
+			return sessionErr
+		}
+		if _, e = q.ExecContext(ctx, "UPDATE tasks SET result=?,native_session=? WHERE id=?", r.Result, sessionRef, t.TaskId); e != nil {
 			return e
 		}
 		if e = appendEvent(ctx, q, &pb.Event{TaskId: t.TaskId, AttemptId: r.Attempt.AttemptId, Generation: a.generation, Type: "attempt.completed", PayloadJson: config.JSON(map[string]any{"success": r.Success, "cleanup_confirmed": true, "artifact_ids": r.ArtifactIds})}, nil); e != nil {
@@ -235,4 +242,56 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 		state = "RECONCILING"
 	}
 	return &pb.Ack{State: state}, nil
+}
+
+
+func persistRuntimeSessionRef(ctx context.Context, q store.Query, ev *pb.Event) error {
+	if ev == nil || ev.Type != "session.started" {
+		return nil
+	}
+	var payload struct {
+		SessionRef string `json:"session_ref"`
+	}
+	if err := json.Unmarshal(ev.PayloadJson, &payload); err != nil || payload.SessionRef == "" || len(payload.SessionRef) > 4096 {
+		return status.Error(codes.InvalidArgument, "invalid session.started payload")
+	}
+	var current string
+	if err := q.QueryRowContext(ctx, `SELECT native_session
+		FROM tasks
+		WHERE id=? AND attempt=? AND current_generation=?`,
+		ev.TaskId, ev.AttemptId, ev.Generation).Scan(&current); err != nil {
+		return err
+	}
+	if current != "" && current != payload.SessionRef {
+		return status.Error(codes.AlreadyExists, "SESSION_REF_CONFLICT")
+	}
+	if current == payload.SessionRef {
+		return nil
+	}
+	res, err := q.ExecContext(ctx, `UPDATE tasks
+		SET native_session=?,updated=?
+		WHERE id=? AND attempt=? AND current_generation=? AND native_session=''`,
+		payload.SessionRef, store.Now(), ev.TaskId, ev.AttemptId, ev.Generation)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return status.Error(codes.Aborted, "SESSION_REF_FENCED")
+	}
+	return nil
+}
+
+
+func resolveRuntimeSessionRef(current, final string) (string, error) {
+	if final == "" {
+		return current, nil
+	}
+	if current != "" && current != final {
+		return "", status.Error(codes.AlreadyExists, "SESSION_REF_CONFLICT")
+	}
+	return final, nil
 }
