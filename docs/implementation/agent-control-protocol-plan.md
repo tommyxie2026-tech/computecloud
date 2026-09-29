@@ -8,6 +8,7 @@
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
 - 调研：[Agent 客户端控制端方案调研](../research/agent-control-client-landscape-2026.md)
 - 长期路线：[长期路线图](./long-term-roadmap.md)
+- CI 合并顺序恢复：[2026-09-29 CI Merge Order Recovery](./ci-merge-order-recovery-2026-09-29.md)
 
 ## 1. 实施原则
 
@@ -31,7 +32,7 @@
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
 | ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
-| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已合并**：durable approval request/version/state、expiry/supersede、Worker Approve dispatch/ACK、HTTP decision；**ACP-4b 已有 PR #50**：current-Attempt resume，独立验收 |
+| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已发布于 v0.4.5**：durable approval request/version/state、expiry/supersede、Worker Approve dispatch/ACK、HTTP decision、ACK 幂等/generation fencing；**ACP-4b 待重启实施**：旧 PR #50 已关闭未合并 |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
 | ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
@@ -289,9 +290,9 @@ PENDING
 
 审批必须 audit。
 
-### 7.2 Resume — ACP-4b 独立 PR #50
+### 7.2 Resume — ACP-4b 待基于 v0.4.5 重启实施
 
-Resume 不与 Approval 混在同一提交中。现有 Attempt completion 会 release Attempt，Worker restart 也会先 reconciliation/cleanup，因此不能简单把 Resume 实现成“对已释放 Attempt 再发一条控制命令”。
+Resume 不与 Approval 混在同一提交中。旧 PR #50 已关闭且未合并，不再作为当前实现依据。现有 Attempt completion 会 release Attempt，Worker restart 也会先 reconciliation/cleanup，因此不能简单把 Resume 实现成“对已释放 Attempt 再发一条控制命令”。新实现必须从 v0.4.5 main 出发，并复用 Prepared Workspace 的 Runtime/Tool/Environment fingerprint 与 compatibility 语义。
 
 实现目标：
 
@@ -546,7 +547,7 @@ agent-control-fencing
 建议紧接当前工作执行：
 
 1. ACP-4a 已在 `da086cd` 合并，Package Gate 已依赖 `agent-control-approval`；继续验收下述 WS-E ACK 可靠性增量。
-2. ACP-4b 已有 [PR #50](https://github.com/tommyxie2026-tech/computecloud/pull/50)，本次不重复实现 Resume；合并时核对共享 dispatch 文件。
+2. ACP-4b 的旧 [PR #50](https://github.com/tommyxie2026-tech/computecloud/pull/50) 已关闭未合并；下一实现从 v0.4.5 main 重新建分支，不直接复活旧分支。
 3. 增加 multi-process fault injection：approval decision commit 后重启、Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
 4. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
 5. Prepared Workspace 主线继续推进；Resume 必须复用其 fingerprint/compatibility 语义，不能建立第二套 Workspace 状态机。

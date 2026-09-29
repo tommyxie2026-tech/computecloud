@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 当前稳定发布基线：v0.3.2；main 功能基线：v0.4.3 EnvironmentCapability Foundation
+- 当前稳定发布基线：v0.4.5 Prepared Workspace / Safe Control；main 功能基线：v0.4.5
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
@@ -11,9 +11,10 @@
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
 - 当前实现依据：[v0.4.3 EnvironmentCapability](v0.4.3-plan.md)、[ADR-015](../adr/0015-environment-capability.md)
-- 当前实施跟踪：v0.4.4 EnvironmentProvider Execution 已完成；Agent Control 横向能力 ACP-3a 已合并、ACP-3b structured Worker control dispatch 已实现待 CI/PR；下一功能主线仍为 Prepared Workspace / Workspace Template；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实施跟踪：v0.4.5 已通过 main release Gate；Prepared Workspace、ACP-3 Safe Control、ACP-4a Approval 已进入稳定发布基线；ACP-4b Resume 的旧 PR #50 已关闭未合并，后续需基于 v0.4.5 main 重新实施；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
+- CI 合并顺序恢复记录：[2026-09-29 CI Merge Order Recovery](ci-merge-order-recovery-2026-09-29.md)
 
 > 本路线图继续坚持 v0.2 的 Agent Job Executor 本质，不再向 AI Execution OS 演变。长期差异化来自 **Agent-aware execution semantics**，而不是扩大成通用 AI 基础设施。
 
@@ -198,12 +199,12 @@ v1.0
 
 ### 3.1 Control 客户端横向能力线
 
-当前 Control Protocol 进度（2026-09-28）：
+当前 Control Protocol 进度（2026-09-29）：
 
 - ACP-0/1/2：Protocol、read/replay、Runtime Adapter contract 已完成；
 - ACP-3：durable write、generation fencing、Worker structured dispatch、result ACK、HTTP input/interrupt 已完成；
-- ACP-4a durable Approval：已实现，进入 CI/PR Gate；
-- ACP-4b Session Resume：下一阶段，必须先定义 Attempt/Workspace/Environment 恢复兼容语义；
+- ACP-4a durable Approval：已合并并进入 v0.4.5 stable release，含 ACK 幂等与 generation fencing；
+- ACP-4b Session Resume：旧 PR #50 已关闭未合并；下一阶段从 v0.4.5 main 重建，并复用 Prepared Workspace 的 Runtime/Tool/Environment fingerprint 作为兼容判定；
 - Codex/Claude 的交互 capability 继续 fail-closed，只有 Runtime 原生 contract 通过后才广告。
 
 
