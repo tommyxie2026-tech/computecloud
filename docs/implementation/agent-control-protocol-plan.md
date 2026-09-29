@@ -3,7 +3,7 @@
 - 项目：computecloud
 - 日期：2026-09-29
 - 状态：ACP-0～ACP-5 仓库级实现已完成；ACP-4b Session Resume 已合入 main（ca2264e9d026b6cd2c2c002e41191041f533d185），ACP-5 Gemini Runtime 已合入 main（602bb4d080753b1c43f32ada88521d67222492a2）；main CI 36598835158（run #1120）全功能 Gate、verify、package、container-image 与 container-publish PASS
-- 当前主线：v0.4.5 Prepared Workspace / Safe Control 为稳定发布基线；main 已前进到 ACP-4b Resume + ACP-5 Gemini；下一横向控制主线为 ACP-6 C1 Observe PWA
+- 当前主线：v0.4.5 Prepared Workspace / Safe Control 为稳定发布基线；ACP-4b Resume + ACP-5 Gemini 已完成；ACP-6 已进入 C1，UI-01 只读 collection contract 已实现，下一切片为 UI-02 Observe PWA
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
 - 调研：[Agent 客户端控制端方案调研](../research/agent-control-client-landscape-2026.md)
@@ -34,7 +34,7 @@
 | ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
 | ACP-4 | v0.4.x | Approval + Resume | **已完成**：ACP-4a durable Approval 已发布于 v0.4.5；ACP-4b current-Attempt Session Resume 已合入 main，独立 `agent-control-resume` Gate PASS |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | **已完成（仓库级）**：Gemini CLI Provider、provider-neutral Job/Task runtime_profile、stream-json parser、transport-neutral execution、safe approval policy、legacy engine alias fencing；PR #66 / main CI PASS |
-| ACP-6 | C1/C2：后续 v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | C1 只读首版独立排期；C2 按已认证能力开放；C3 Mobile |
+| ACP-6 | C1/C2：后续 v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | **进行中**：UI-01 Job/Worker collection + snapshot/epoch read contract 已实现；下一步 UI-02 Observe PWA；C2 按已认证能力开放；C3 Mobile |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
 
 ## 3. ACP-0 — 协议基线
@@ -340,7 +340,7 @@ Resume 与 Approval 分离实施。旧 PR #50/#56 已关闭未合并；最终实
 
 ### 9.1 C1 Observe PWA
 
-当前尚无客户端应用交付。按[UI-01/UI-02](v0.4.5-roadmap-reconciliation.md)先补分页 Job list、Worker read 与快照/事件恢复契约，再交付 Expo Web 和真实 Server + fixture Worker E2E；复用现有 SSE/read Gate，不等待第三 Runtime 或 RPG-4 全部完成。Client owner 独立认领，WS-E review 集成，不自动扩张 WS-E ownership。
+UI-01 已实现分页 Job list、Worker read、稳定 snapshot watermark、Server epoch reset 与 owner/project 隔离，详见 [UI-01 C1 Read Contract](ui01-control-read-contract.md)。当前尚无客户端应用交付；下一步 UI-02 交付 Expo Web 和真实 Server + fixture Worker E2E，继续复用现有 SSE/read Gate。Client owner 独立认领，WS-E review 集成，不自动扩张 WS-E ownership。
 
 先做：
 
