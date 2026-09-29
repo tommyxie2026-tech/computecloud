@@ -376,12 +376,16 @@ func freezeTree(root string) error {
 			return err
 		}
 		mode := info.Mode().Perm()
-		mode &^= 0222
 		if entry.IsDir() {
-			mode |= 0500
-		} else {
-			mode |= 0400
+			// Keep directories owner-writable so cache trees remain safely
+			// removable by cleanup/tests. Immutability is enforced on file
+			// contents plus digest verification, not by making directory
+			// entries undeletable.
+			mode |= 0700
+			return os.Chmod(path, mode)
 		}
+		mode &^= 0222
+		mode |= 0400
 		return os.Chmod(path, mode)
 	})
 }

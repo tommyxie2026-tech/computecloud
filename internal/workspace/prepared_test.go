@@ -102,6 +102,13 @@ func TestPreparedWorkspaceLocalProviderPrepareInspectAndRestart(t *testing.T) {
 	if info.Mode().Perm()&0222 != 0 {
 		t.Fatalf("prepared template remained writable: mode=%o", info.Mode().Perm())
 	}
+	dirInfo, err := os.Stat(filepath.Join(templatePath, ".git", "objects"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirInfo.Mode().Perm()&0200 == 0 {
+		t.Fatalf("prepared template directory is not owner-writable for safe cleanup: mode=%o", dirInfo.Mode().Perm())
+	}
 }
 
 func TestPreparedWorkspaceMaterializesIsolatedWritableAttempts(t *testing.T) {
