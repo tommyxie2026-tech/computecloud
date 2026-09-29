@@ -38,6 +38,7 @@ def main():
         "TestPreparedWorkspaceWorkerReusesTemplateWithoutSharingWritableState",
         "TestPreparedWorkspaceTemplateFingerprintTracksExecutionVersions",
         "TestPreparedWorkspaceTemplateRejectsMissingRuntimeVersion",
+        "TestPreparedWorkspaceConcurrentPrepareIsIdempotent",
         "TestWorkspaceGenerationIsolationAndOwnership",
         "TestWorkspaceRecoveryUsesPreSpawnProofAndQuarantinesUnknown",
     ]
@@ -86,6 +87,7 @@ def main():
             "worker_prepared_template_integration": True,
             "execution_component_version_fencing": True,
             "missing_runtime_version_fails_closed": True,
+            "concurrent_prepare_idempotent": True,
             "no_public_job_contract_change": True,
         },
         "tests": tests,
