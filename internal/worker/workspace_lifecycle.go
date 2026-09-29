@@ -12,7 +12,9 @@ import (
 	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
+	envreg "github.com/tommyxie2026-tech/computecloud/internal/environment"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
+	toolreg "github.com/tommyxie2026-tech/computecloud/internal/tool"
 	"github.com/tommyxie2026-tech/computecloud/internal/workspace"
 )
 
@@ -26,7 +28,7 @@ func (w *Worker) preparedWorkspaceRoot() string {
 	return filepath.Join(w.cfg.DataDir, "prepared-workspaces")
 }
 
-func preparedTemplateForAssignment(a *pb.Assignment, repoRef, base string) (workspace.WorkspaceTemplate, error) {
+func (w *Worker) preparedTemplateForAssignment(a *pb.Assignment, repoRef, base string) (workspace.WorkspaceTemplate, error) {
 	if a == nil || a.Spec == nil {
 		return workspace.WorkspaceTemplate{}, errors.New("assignment task spec required")
 	}
@@ -34,13 +36,46 @@ func preparedTemplateForAssignment(a *pb.Assignment, repoRef, base string) (work
 	if err != nil {
 		return workspace.WorkspaceTemplate{}, err
 	}
+	envDesc, ok := envreg.Lookup(envName)
+	if !ok {
+		return workspace.WorkspaceTemplate{}, errors.New("workspace template environment is unregistered")
+	}
+	envIdentity := strings.Join([]string{
+		envDesc.Name,
+		envDesc.Version,
+		envDesc.IsolationClass,
+		envDesc.FilesystemMode,
+		envDesc.NetworkMode,
+	}, "\x00")
+
+	configuredRuntime, ok := w.cfg.Runtimes[a.Spec.RuntimeProfile]
+	if !ok || strings.TrimSpace(configuredRuntime.Version) == "" {
+		return workspace.WorkspaceTemplate{}, errors.New("workspace template runtime/version is unavailable")
+	}
+	runtimeIdentity := strings.Join([]string{
+		a.Spec.RuntimeProfile,
+		configuredRuntime.Version,
+		a.Spec.Model,
+	}, "\x00")
+
 	var tools []string
 	for _, capability := range a.Spec.RequiredCapabilities {
-		if strings.HasPrefix(capability, "tool:") {
-			tools = append(tools, capability)
+		if !strings.HasPrefix(capability, "tool:") {
+			continue
 		}
+		name := strings.TrimPrefix(capability, "tool:")
+		desc, ok := toolreg.Lookup(name)
+		if !ok {
+			return workspace.WorkspaceTemplate{}, errors.New("workspace template tool is unregistered")
+		}
+		tools = append(tools, strings.Join([]string{
+			desc.Name,
+			desc.Version,
+			string(desc.SideEffect),
+		}, "\x00"))
 	}
 	sort.Strings(tools)
+
 	toolFingerprint := ""
 	if len(tools) != 0 {
 		toolFingerprint = store.Hash([]byte(strings.Join(tools, "\n")))
@@ -49,8 +84,8 @@ func preparedTemplateForAssignment(a *pb.Assignment, repoRef, base string) (work
 		TemplateID:             "repo-" + store.Hash([]byte(repoRef+"\x00"+base))[:16],
 		RepositoryRef:          repoRef,
 		BaseCommit:             base,
-		EnvironmentFingerprint: store.Hash([]byte(envName)),
-		RuntimeFingerprint:     store.Hash([]byte(a.Spec.RuntimeProfile+"\x00"+a.Spec.Model)),
+		EnvironmentFingerprint: store.Hash([]byte(envIdentity)),
+		RuntimeFingerprint:     store.Hash([]byte(runtimeIdentity)),
 		ToolFingerprint:        toolFingerprint,
 		Version:                1,
 	}, nil
@@ -117,7 +152,7 @@ func (w *Worker) prepareWorkspace(ctx context.Context, a *pb.Assignment) (string
 		return "", err
 	}
 
-	tmpl, err := preparedTemplateForAssignment(a, repoRef, base)
+	tmpl, err := w.preparedTemplateForAssignment(a, repoRef, base)
 	if err != nil {
 		_ = w.deleteWorkspace(ctx, a.AttemptId, "workspace template invalid")
 		return "", err
