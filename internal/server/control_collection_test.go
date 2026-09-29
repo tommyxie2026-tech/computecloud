@@ -43,7 +43,7 @@ func TestAgentControlReadJobCollectionStableSnapshot(t *testing.T) {
 	if err := json.Unmarshal(body, &first); err != nil {
 		t.Fatal(err)
 	}
-	if first.ServerEpoch == "" || first.SnapshotMS == 0 || len(first.Jobs) != 2 || !first.HasMore || first.Next == nil {
+	if first.ServerEpoch == "" || first.SnapshotMS == 0 || first.SnapshotID == "" || len(first.Jobs) != 2 || !first.HasMore || first.Next == nil {
 		t.Fatalf("invalid first page: %+v", first)
 	}
 	for _, item := range first.Jobs {
@@ -61,6 +61,7 @@ func TestAgentControlReadJobCollectionStableSnapshot(t *testing.T) {
 	q.Set("limit", "2")
 	q.Set("epoch", first.ServerEpoch)
 	q.Set("snapshot_ms", strconv.FormatInt(first.SnapshotMS, 10))
+	q.Set("snapshot_id", first.SnapshotID)
 	q.Set("before_created_ms", strconv.FormatInt(first.Next.CreatedMS, 10))
 	q.Set("before_id", first.Next.JobID)
 	code, body = h.request(t, "GET", "/v1/jobs?"+q.Encode(), "", nil)
