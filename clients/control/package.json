@@ -11,6 +11,7 @@
     "check": "npm run typecheck && npm run export:web"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~57.0.16",
     "expo": "~57.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
