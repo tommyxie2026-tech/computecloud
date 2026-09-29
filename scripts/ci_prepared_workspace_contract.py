@@ -37,6 +37,7 @@ def main():
         "TestPreparedWorkspaceRejectsReferenceMismatchAndExistingAttempt",
         "TestPreparedWorkspaceWorkerReusesTemplateWithoutSharingWritableState",
         "TestPreparedWorkspaceTemplateFingerprintTracksExecutionVersions",
+        "TestPreparedWorkspaceTemplateRejectsMissingRuntimeVersion",
         "TestWorkspaceGenerationIsolationAndOwnership",
         "TestWorkspaceRecoveryUsesPreSpawnProofAndQuarantinesUnknown",
     ]
@@ -84,6 +85,7 @@ def main():
             "attempt_generation_isolation": True,
             "worker_prepared_template_integration": True,
             "execution_component_version_fencing": True,
+            "missing_runtime_version_fails_closed": True,
             "no_public_job_contract_change": True,
         },
         "tests": tests,
