@@ -146,8 +146,22 @@ func InScope(p string, scopes []string) bool {
 func Ref(s string) bool {
 	return len(s) > 0 && len(s) <= 128 && !strings.ContainsAny(s, "\x00\r\n") && !strings.HasPrefix(s, "-")
 }
+func LegacyRuntimeProfile(engine string) string {
+	switch engine {
+	case "codex":
+		return "codex_exec"
+	case "claude":
+		return "claude_print"
+	default:
+		return ""
+	}
+}
+
 func (e Execution) Validate() error {
-	if (e.Engine != "codex" || e.RuntimeProfile != "codex_exec") && (e.Engine != "claude" || e.RuntimeProfile != "claude_print") {
+	if !Ref(e.RuntimeProfile) {
+		return fmt.Errorf("runtime_profile required")
+	}
+	if e.Engine != "" && LegacyRuntimeProfile(e.Engine) != e.RuntimeProfile {
 		return fmt.Errorf("unsupported engine/runtime")
 	}
 	for _, v := range []string{e.Model, e.CredentialRef, e.PolicyRef, e.AcceptanceProfile} {

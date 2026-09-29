@@ -214,8 +214,36 @@ func (claudeProvider) Capabilities() CapabilitySet {
 }
 func (claudeProvider) SupportsGateway() bool { return false }
 
+type geminiProvider struct{}
+
+func (geminiProvider) Profile() string { return "gemini_cli" }
+func (geminiProvider) Probe(ctx context.Context, r config.Runtime) error { return probeCLI(ctx, r) }
+func (geminiProvider) Args(spec *pb.TaskSpec, policy config.Policy) ([]string, error) {
+	if policy.GeminiApprovalMode != "plan" && policy.GeminiApprovalMode != "auto_edit" {
+		return nil, errors.New("gemini_approval_mode must be plan or auto_edit")
+	}
+	return []string{
+		"--output-format", "stream-json",
+		"--approval-mode", policy.GeminiApprovalMode,
+		"--skip-trust",
+		"--model", spec.Model,
+	}, nil
+}
+func (geminiProvider) Parser(emit func(string, []byte) error) StreamParser {
+	return &Parser{Profile: "gemini_cli", Emit: emit}
+}
+func (geminiProvider) Capabilities() CapabilitySet {
+	return CapabilitySet{
+		Runtime:     []string{"event_stream", "cancel", "local_cli"},
+		Tools:       []string{"job_io_v1", "artifact_inputs_v1"},
+		Environment: []string{"process"},
+		Legacy:      []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1"},
+	}
+}
+func (geminiProvider) SupportsGateway() bool { return false }
+
 func init() {
-	for _, p := range []Provider{codexProvider{}, claudeProvider{}} {
+	for _, p := range []Provider{codexProvider{}, claudeProvider{}, geminiProvider{}} {
 		if err := Register(p); err != nil {
 			panic(err)
 		}
@@ -240,7 +268,48 @@ func (p *Parser) Line(line []byte) error {
 	str := func(k string) string { var s string; _ = json.Unmarshal(m[k], &s); return s }
 	kind := str("type")
 	typ := "runtime.diagnostic"
-	if p.Profile == "codex_exec" {
+	if p.Profile == "gemini_cli" {
+		switch kind {
+		case "init":
+			sessionStarted(str("session_id"))
+		case "message":
+			var message struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+				Delta   bool   `json:"delta"`
+			}
+			_ = json.Unmarshal(line, &message)
+			if message.Role == "assistant" {
+				p.outcome.Result += message.Content
+				if message.Delta {
+					typ = "message.delta"
+				} else {
+					typ = "message.completed"
+				}
+			}
+		case "tool_use":
+			typ = "tool.started"
+		case "tool_result":
+			var result struct {
+				Status string `json:"status"`
+			}
+			_ = json.Unmarshal(line, &result)
+			if result.Status == "success" {
+				typ = "tool.completed"
+			} else {
+				typ = "tool.failed"
+			}
+		case "error":
+			typ = "runtime.warning"
+		case "result":
+			p.outcome.Final = true
+			p.outcome.Success = str("status") == "success"
+			if !p.outcome.Success {
+				p.outcome.Code = "RUNTIME_FAILED"
+			}
+			typ = "runtime.result"
+		}
+	} else if p.Profile == "codex_exec" {
 		switch kind {
 		case "thread.started":
 			p.outcome.Session = str("thread_id")
