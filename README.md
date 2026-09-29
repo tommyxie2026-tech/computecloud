@@ -6,8 +6,8 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 
 ## 当前状态
 
-- 稳定发布基线：**v0.3.2**
-- 阶段性发布目标：**v0.4.5 Prepared Workspace / Safe Control**，仅在完整 CI、package 与 release 全部成功后成为正式版本；发布范围和升级步骤见 [v0.4.5 部署指南](docs/deployment/production-v0.4.5.md)
+- 稳定发布基线：**[v0.4.5 Prepared Workspace / Safe Control](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.5)**
+- v0.4.5 已通过完整 CI、package 与 release；发布范围和升级步骤见 [v0.4.5 部署指南](docs/deployment/production-v0.4.5.md)，验收证据见 [发布记录](docs/implementation/v0.4.5-release-status.md)
 - main 功能基线：**v0.4.x Runtime / Tool / Environment Ecosystem**
 - 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
 - 当前功能主线：**Prepared Workspace / Workspace Template**
