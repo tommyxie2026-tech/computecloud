@@ -44,7 +44,8 @@ func httpError(w http.ResponseWriter, e error) {
 		code = 409
 	case codes.FailedPrecondition:
 		code = 400
-		if status.Convert(e).Message() == "JOB_NOT_FINISHED" {
+		switch status.Convert(e).Message() {
+		case "JOB_NOT_FINISHED", "WRITE_LEASE_REQUIRED", "WRITE_LEASE_INVALID":
 			code = 409
 		}
 	case codes.ResourceExhausted:
