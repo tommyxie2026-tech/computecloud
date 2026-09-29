@@ -18,6 +18,7 @@ type controlWorkerFixture struct {
 	profile   string
 	inputs    int
 	approvals int
+	resumes   int
 }
 
 func (p *controlWorkerFixture) Profile() string {
@@ -55,11 +56,22 @@ func (p *controlWorkerFixture) ControlDescriptor() adapter.ControlDescriptor {
 			control.CapabilityQueueNextInput,
 			control.CapabilityInterrupt,
 			control.CapabilityApproval,
+			control.CapabilitySessionResume,
 		},
 	}
 }
-func (p *controlWorkerFixture) Resume(context.Context, adapter.ControlResumeRequest) (adapter.ExecutionRef, error) {
-	return adapter.ExecutionRef{}, adapter.ErrControlCapabilityUnsupported
+func (p *controlWorkerFixture) Resume(_ context.Context, req adapter.ControlResumeRequest) (adapter.ExecutionRef, error) {
+	if req.SessionRef == "" || req.AttemptID == "" || req.Generation < 1 {
+		return adapter.ExecutionRef{}, adapter.ErrControlCapabilityUnsupported
+	}
+	p.mu.Lock()
+	p.resumes++
+	p.mu.Unlock()
+	return adapter.ExecutionRef{
+		Provider:  p.Profile(),
+		Transport: "remote_api",
+		ID:        "resumed-" + req.SessionRef,
+	}, nil
 }
 func (p *controlWorkerFixture) Input(_ context.Context, _ adapter.ControlInputRequest) error {
 	p.mu.Lock()
@@ -237,5 +249,131 @@ func TestAgentControlWorkerExecutesApprovalAtMostOnce(t *testing.T) {
 	provider.mu.Unlock()
 	if approvals != 1 {
 		t.Fatalf("approval side effects=%d want=1", approvals)
+	}
+}
+
+func TestAgentControlWorkerResumesSessionAtMostOnce(t *testing.T) {
+	d, err := store.Open(t.TempDir(), store.WorkerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	provider := &controlWorkerFixture{profile: "control_worker_resume_fixture"}
+	if err = adapter.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	w := &Worker{db: d}
+	a := &pb.Assignment{
+		TaskId: "task-resume", AttemptId: "attempt-resume", Generation: 4, LeaseToken: "lease",
+		Spec: &pb.TaskSpec{RuntimeProfile: provider.Profile()},
+	}
+	ref := adapter.ExecutionRef{Provider: provider.Profile(), Transport: "remote_api", ID: "runtime-old"}
+	rawRef, err := adapter.EncodeExecutionRef(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = d.SQL.Exec(`INSERT INTO runs(
+		id,assignment,state,runtime_provider,runtime_transport,runtime_ref,runtime_state,runtime_cleanup,
+		environment_provider,environment_state,environment_cleanup
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		a.AttemptId, enc(a), "RUNNING", provider.Profile(), "remote_api", rawRef,
+		string(adapter.RuntimeUnknown), string(adapter.CleanupPending),
+		"process", "ACTIVE", "PENDING"); err != nil {
+		t.Fatal(err)
+	}
+	now := store.Now()
+	if _, err = d.SQL.Exec(`INSERT INTO workspaces(
+		attempt,task,generation,repository_ref,base_commit,path,state,created,updated
+	) VALUES(?,?,?,?,?,?,?, ?,?)`,
+		a.AttemptId, a.TaskId, a.Generation, "repo", "0123456789012345678901234567890123456789",
+		a.AttemptId, "IN_USE", now, now); err != nil {
+		t.Fatal(err)
+	}
+	cmd := &pb.Command{
+		CommandId: "resume-command-1", Kind: "control",
+		Control: &pb.ControlCommand{
+			PrincipalId: "owner", OperationId: "resume-operation-1",
+			TaskId: a.TaskId, AttemptId: a.AttemptId, Generation: a.Generation,
+			Action: "resume", SessionRef: "native-session-1",
+		},
+	}
+	first, err := w.executeControl(context.Background(), cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := w.executeControl(context.Background(), cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.State != "COMPLETED" || second.State != "COMPLETED" {
+		t.Fatalf("resume acks first=%+v second=%+v", first, second)
+	}
+	provider.mu.Lock()
+	resumes := provider.resumes
+	provider.mu.Unlock()
+	if resumes != 1 {
+		t.Fatalf("resume side effects=%d want=1", resumes)
+	}
+	var raw []byte
+	var state string
+	if err = d.SQL.QueryRow("SELECT runtime_ref,runtime_state FROM runs WHERE id=?", a.AttemptId).Scan(&raw, &state); err != nil {
+		t.Fatal(err)
+	}
+	got, err := adapter.DecodeExecutionRef(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != "resumed-native-session-1" || state != string(adapter.RuntimeRunning) {
+		t.Fatalf("resumed runtime ref=%+v state=%s", got, state)
+	}
+}
+
+func TestAgentControlWorkerRejectsResumeWhenWorkspaceNotInUse(t *testing.T) {
+	d, err := store.Open(t.TempDir(), store.WorkerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	provider := &controlWorkerFixture{profile: "control_worker_resume_incompatible_fixture"}
+	if err = adapter.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	w := &Worker{db: d}
+	a := &pb.Assignment{
+		TaskId: "task-resume-bad", AttemptId: "attempt-resume-bad", Generation: 1, LeaseToken: "lease",
+		Spec: &pb.TaskSpec{RuntimeProfile: provider.Profile()},
+	}
+	ref := adapter.ExecutionRef{Provider: provider.Profile(), Transport: "remote_api", ID: "runtime-old"}
+	rawRef, _ := adapter.EncodeExecutionRef(ref)
+	if _, err = d.SQL.Exec(`INSERT INTO runs(
+		id,assignment,state,runtime_provider,runtime_transport,runtime_ref,runtime_state,runtime_cleanup,
+		environment_provider,environment_state,environment_cleanup
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		a.AttemptId, enc(a), "RUNNING", provider.Profile(), "remote_api", rawRef,
+		string(adapter.RuntimeUnknown), string(adapter.CleanupPending),
+		"process", "ACTIVE", "PENDING"); err != nil {
+		t.Fatal(err)
+	}
+	now := store.Now()
+	if _, err = d.SQL.Exec(`INSERT INTO workspaces(
+		attempt,task,generation,repository_ref,base_commit,path,state,created,updated
+	) VALUES(?,?,?,?,?,?,?,?,?)`,
+		a.AttemptId, a.TaskId, a.Generation, "repo", "0123456789012345678901234567890123456789",
+		a.AttemptId, "RETAINED", now, now); err != nil {
+		t.Fatal(err)
+	}
+	ack, err := w.executeControl(context.Background(), &pb.Command{
+		CommandId: "resume-command-bad", Kind: "control",
+		Control: &pb.ControlCommand{
+			PrincipalId: "owner", OperationId: "resume-operation-bad",
+			TaskId: a.TaskId, AttemptId: a.AttemptId, Generation: a.Generation,
+			Action: "resume", SessionRef: "native-session-bad",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ack.State != "REJECTED" || ack.ErrorCode != control.ErrorExecutionUnverifiable.String() {
+		t.Fatalf("ack=%+v", ack)
 	}
 }
