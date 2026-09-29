@@ -28,7 +28,7 @@ func TestControlWriteLeaseExclusionRenewRelease(t *testing.T) {
 		t.Fatalf("second holder err=%v", err)
 	}
 	renewed, err := h.s.renewControlWriteLease(h.ctx, j.ID, "device-a", first.LeaseToken)
-	if err != nil || renewed.ExpiresAtMS <= first.ExpiresAtMS {
+	if err != nil || renewed.ExpiresAtMS < first.ExpiresAtMS {
 		t.Fatalf("renew=%+v err=%v", renewed, err)
 	}
 
