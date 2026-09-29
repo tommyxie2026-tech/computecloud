@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-29
-- 状态：ACP-0～ACP-5 仓库级实现已完成；ACP-4b Session Resume 已合入 main（ca2264e9d026b6cd2c2c002e41191041f533d185），ACP-5 Gemini Runtime 已合入 main（602bb4d080753b1c43f32ada88521d67222492a2）；main CI 36591386173 全功能 Gate、package 与 container-publish PASS
+- 状态：ACP-0～ACP-5 仓库级实现已完成；ACP-4b Session Resume 已合入 main（ca2264e9d026b6cd2c2c002e41191041f533d185），ACP-5 Gemini Runtime 已合入 main（602bb4d080753b1c43f32ada88521d67222492a2）；main CI 36598835158（run #1120）全功能 Gate、verify、package、container-image 与 container-publish PASS
 - 当前主线：v0.4.5 Prepared Workspace / Safe Control 为稳定发布基线；main 已前进到 ACP-4b Resume + ACP-5 Gemini；下一横向控制主线为 ACP-6 C1 Observe PWA
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -541,6 +541,17 @@ agent-control-fencing
 - 可以安全恢复 Session；
 - 客户端切换不影响 Worker 执行；
 - Runtime 切换不要求改客户端。
+
+## 15.1 CI 历史失败关闭状态
+
+ACP-4b 重建期间 runs 1030–1075 的失败已按 merge 顺序复核并关闭：
+
+- 旧分支 fixture/provider 不完整 -> superseded；
+- SessionRef helper 未按原子顺序重放 -> superseded；
+- ci_agent_control_resume.py 尚未进入中间 commit -> superseded；
+- 单次 long-run timing failure -> 由后续更新 main 多次全矩阵 PASS 关闭。
+
+当前 Release Truth：main@3a446b8c818fcaecf8e2b5d84e32d097b9d41b28，workflow 36598835158 全绿。后续不能根据这些历史红灯回滚 ACP-4b，也不能把多个编译失败 Gate 误判为多个业务缺陷。
 
 ## 16. 当前最小下一步
 
