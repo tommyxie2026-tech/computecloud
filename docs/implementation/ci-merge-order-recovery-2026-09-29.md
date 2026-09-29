@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 范围：2026-09-28 ～ 2026-09-29 main / release 合并窗口
-- 当前结论：v0.4.5 release CI 已稳定；后续按顺序合入 ACP-4b Resume、multi-arch packaging、ACP-5 Gemini。当前 main@602bb4d080753b1c43f32ada88521d67222492a2 的 workflow 36591386173 全功能 Gate、verify、package、container-image、container-publish 全部 PASS。
+- 当前结论：v0.4.5 release CI 已稳定；后续按顺序合入 ACP-4b Resume、multi-arch packaging、ACP-5 Gemini。当前 main@3a446b8c818fcaecf8e2b5d84e32d097b9d41b28 的 workflow 36598835158（run #1120）全功能 Gate、verify、package、container-image、container-publish 全部 PASS；截至该 run，当前 main 无未解决 CI 红灯。
 
 ## 1. 当前最终状态
 
@@ -279,4 +279,150 @@ CI 当前无红灯。剩余补齐项：
 8. main CI
 ~~~
 
-截至 `36591386173`，当前 main 无未解决 CI 红灯。
+截至 `36598835158`（run #1120），当前 main 无未解决 CI 红灯。
+
+## 9. ACP-4b 合并重放失败的逐项关闭（runs 1030–1075）
+
+2026-09-29 的 ACP-4b Resume 重建过程中产生了一批连续红灯。按合并顺序复核后，这些失败均属于中间提交或旧分支状态，已被后续 main 合并替代；不能继续把它们作为当前 blocker。
+
+### 9.1 runs 1030–1043：旧 ACP-4b 分支是不完整实现
+
+代表 PR run：
+
+- 36577209557（run #1043）；
+- 失败覆盖 workspace / runtime / environment / prepared-workspace / approval / resume / verify 等多个 Gate。
+
+代表错误：
+
+~~~text
+internal/worker/control_execution_test.go:
+provider.resumes undefined
+~~~
+
+结论：这是 Resume 测试先进入、fixture Provider contract 尚未完整同步造成的**编译级中间态**，不是多个独立运行时缺陷。
+
+处理方式：
+
+1. 关闭旧 PR/旧分支作为发布依据；
+2. 从 v0.4.5 stable main 重建 Resume；
+3. 一次性重放 adapter/server/worker/test/CI 消费者；
+4. 最终以 ca2264e9d026b6cd2c2c002e41191041f533d185 合入。
+
+### 9.2 run 1044：CI 恢复文档分支触发 long-run timing failure
+
+run 36578230411（#1044）只有 long-run-flow 失败：
+
+~~~text
+TestLongRunningDeadlineExtensionUsesLeaseLiveness
+DEADLINE_EXCEEDED
+~~~
+
+该 run 来自 docs recovery 分支，并没有修改 Long-running 业务逻辑。随后同一 main 语义在后续全量 main CI 持续 PASS，因此归类为测试时序/负载窗口中的非持续性失败，而不是合并引入的功能回归。
+
+规则：
+
+> 单次 timing failure 不能直接忽略；必须由**相同或更新 main 的完整 Gate 再验证**。只有后续重复 PASS 后才可关闭。
+
+### 9.3 runs 1064–1075：Resume 合并重放顺序不完整
+
+失败分成两阶段。
+
+第一阶段（如 run #1072）：
+
+~~~text
+undefined: persistRuntimeSessionRef
+undefined: resolveRuntimeSessionRef
+~~~
+
+说明测试/调用方已经重放，但 SessionRef helper 尚未进入该中间 commit。大量 Gate 同时失败属于同一个 compile root cause。
+
+第二阶段（runs #1064–#1075 中后期）：
+
+~~~text
+python3: can't open file scripts/ci_agent_control_resume.py
+~~~
+
+说明 workflow / Makefile 已包含 agent-control-resume Gate，但专用脚本在该 commit 尚未重放。
+
+因此正确恢复方法不是逐个“修 12 个红灯”，而是完成原子重放：
+
+~~~text
+contract/helper
+ -> server/worker implementation
+ -> tests/fixtures
+ -> CI script
+ -> Makefile target
+ -> workflow Gate
+ -> verify/package
+~~~
+
+最终 ACP-4b 以：
+
+- ca2264e9d026b6cd2c2c002e41191041f533d185 — Resume implementation；
+- b6386f6cc255212c443265a19dbbc2fdb899608b — 保留 Resume + container CI Gate 的 merge baseline；
+
+进入 main。
+
+### 9.4 最终验证链
+
+按最新 main 的事实顺序：
+
+- 36590126802：multi-arch packaging 合并后 main PASS；
+- 36591386173：ACP-5 Gemini 合并后全功能 Gate / package / container PASS；
+- 36591728225：CI fast/slow 拆分后 main 全矩阵 PASS；
+- 36595042767：后续 main PASS；
+- 36598835158（run #1120）：main@3a446b8 全部 25 个实际执行 Gate/Job PASS，release 在普通 push 按设计 skipped。
+
+run #1120 明确包含并通过：
+
+~~~text
+agent-control-resume
+agent-control-approval
+agent-control-dispatch
+agent-control-fencing
+agent-control-negative
+agent-control-read
+agent-control-schema
+prepared-workspace-contract
+prepared-workspace-recovery
+workspace-flow
+runtime-contract-flow
+runtime-execution-flow
+runtime-adapter-contract
+environment-contract-flow
+environment-execution-flow
+tool-contract-flow
+retry-flow
+artifact-flow
+long-run-flow
+fair-flow
+task-flow
+verify
+container-image
+package
+container-publish
+~~~
+
+因此 runs 1030–1075 的红灯全部关闭为 **SUPERSEDED / RESOLVED**。
+
+## 10. 以后按失败来源而不是红灯数量处理
+
+~~~text
+当前 main / 当前 open PR 红灯
+        |
+        +-- compile root cause
+        |      -> 先修 contract/helper/fixture 顺序
+        |
+        +-- missing CI artifact/script
+        |      -> 补齐 Gate 原子提交
+        |
+        +-- deterministic test failure
+        |      -> 修业务或测试 contract
+        |
+        +-- timing/flaky candidate
+               -> 不直接忽略
+               -> 在同/更新 main 完整重跑
+               -> 重复 PASS 后才能关闭
+~~~
+
+历史 superseded 分支不逐 commit 修复；只保留根因、修复链和最终 main 证据。
