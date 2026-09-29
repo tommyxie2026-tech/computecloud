@@ -47,7 +47,7 @@ def main():
             violations.append("missing HTTP route: " + required)
     if "mirrorRuntimeEventToJob(ctx, q, ev)" not in results_text:
         violations.append("worker runtime events are not mirrored into durable job replay")
-    for required in ["SNAPSHOT_EPOCH_CHANGED", "snapshot_ms", "before_created_ms", "visibleProject"]:
+    for required in ["SNAPSHOT_EPOCH_CHANGED", "snapshot_ms", "snapshot_id", "before_created_ms", "visibleProject"]:
         if required not in collection_text:
             violations.append("missing C1 collection contract: " + required)
     if "Last-Event-ID" not in control_text:
