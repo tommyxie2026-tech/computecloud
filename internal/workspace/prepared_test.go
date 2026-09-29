@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -207,5 +208,64 @@ func TestPreparedWorkspaceRejectsReferenceMismatchAndExistingAttempt(t *testing.
 	}
 	if _, err = provider.MaterializeAttempt(context.Background(), tmpl, ref, attemptRoot, "attempt"); err == nil || errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("existing attempt workspace was not rejected: %v", err)
+	}
+}
+
+
+func TestPreparedWorkspaceConcurrentPrepareIsIdempotent(t *testing.T) {
+	repo, commit := preparedTestRepo(t)
+	root := filepath.Join(t.TempDir(), "prepared")
+	provider, err := NewLocalPreparedProvider(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := testTemplate(commit)
+
+	const workers = 8
+	refs := make([]PreparedWorkspaceRef, workers)
+	errs := make([]error, workers)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(i int) {
+			defer wg.Done()
+			refs[i], errs[i] = provider.PrepareTemplate(context.Background(), tmpl, repo)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent prepare %d failed: %v", i, err)
+		}
+		if refs[i].ImmutableRef != tmpl.Fingerprint() {
+			t.Fatalf("concurrent prepare %d returned unexpected ref: %+v", i, refs[i])
+		}
+		if refs[i].PreparedAt == 0 {
+			t.Fatalf("concurrent prepare %d missing prepared_at", i)
+		}
+		if refs[i].PreparedAt != refs[0].PreparedAt {
+			t.Fatalf("concurrent prepare returned different template generations: %d != %d", refs[i].PreparedAt, refs[0].PreparedAt)
+		}
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	templateDirs := 0
+	stagingDirs := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(entry.Name(), ".prepare-") {
+			stagingDirs++
+			continue
+		}
+		templateDirs++
+	}
+	if templateDirs != 1 || stagingDirs != 0 {
+		t.Fatalf("concurrent prepare left templateDirs=%d stagingDirs=%d", templateDirs, stagingDirs)
 	}
 }
