@@ -9,6 +9,8 @@ import type {
   SessionView,
   TaskView,
   WorkerPage,
+  ControlWriteLease,
+  ControlOperationReceipt,
 } from "./types";
 
 export class ControlAPIError extends Error {
@@ -56,6 +58,18 @@ export class ControlAPI {
     return await (await this.fetch(path)).json() as T;
   }
 
+  private async writeJSON<T>(path: string, method: string, body: unknown, leaseToken?: string): Promise<T> {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    if (leaseToken) headers.set("X-Control-Lease", leaseToken);
+    const response = await this.fetch(path, {
+      method,
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (response.status === 204) return undefined as T;
+    return await response.json() as T;
+  }
+
   bootstrap(): Promise<ControlBootstrap> {
     return this.json("/v1/control/bootstrap");
   }
@@ -92,6 +106,57 @@ export class ControlAPI {
 
   artifactURL(jobID: string, artifactID: string): string {
     return `${this.baseURL}/v1/jobs/${encodeURIComponent(jobID)}/artifacts/${encodeURIComponent(artifactID)}`;
+  }
+
+  acquireWriteLease(jobID: string, holderID: string): Promise<ControlWriteLease> {
+    return this.writeJSON(`/v1/jobs/${encodeURIComponent(jobID)}/control-lease`, "POST", { holder_id: holderID });
+  }
+
+  renewWriteLease(jobID: string, holderID: string, leaseToken: string): Promise<ControlWriteLease> {
+    return this.writeJSON(`/v1/jobs/${encodeURIComponent(jobID)}/control-lease`, "PUT", { holder_id: holderID }, leaseToken);
+  }
+
+  releaseWriteLease(jobID: string, holderID: string, leaseToken: string): Promise<void> {
+    return this.writeJSON(`/v1/jobs/${encodeURIComponent(jobID)}/control-lease`, "DELETE", { holder_id: holderID }, leaseToken);
+  }
+
+  cancelJob(jobID: string, leaseToken: string, controlID: string, reason: string): Promise<JobDetail> {
+    return this.writeJSON(`/v1/jobs/${encodeURIComponent(jobID)}/control/cancel`, "POST",
+      { control_id: controlID, reason }, leaseToken);
+  }
+
+  sendInput(jobID: string, session: SessionView, leaseToken: string, operationID: string, resourceVersion: number, content: string, mode = "interactive"): Promise<ControlOperationReceipt> {
+    return this.writeJSON(`/v1/jobs/${encodeURIComponent(jobID)}/sessions/${encodeURIComponent(session.session_id)}/inputs`, "POST", {
+      operation_id: operationID,
+      task_id: session.task_id,
+      expected_attempt_id: session.attempt_id,
+      expected_generation: session.generation,
+      expected_resource_version: resourceVersion,
+      mode,
+      content,
+    }, leaseToken);
+  }
+
+  resumeSession(jobID: string, session: SessionView, leaseToken: string, operationID: string, resourceVersion: number): Promise<ControlOperationReceipt> {
+    return this.writeJSON(`/v1/jobs/${encodeURIComponent(jobID)}/sessions/${encodeURIComponent(session.session_id)}/resume`, "POST", {
+      operation_id: operationID,
+      task_id: session.task_id,
+      expected_attempt_id: session.attempt_id,
+      expected_generation: session.generation,
+      expected_resource_version: resourceVersion,
+    }, leaseToken);
+  }
+
+  decideApproval(jobID: string, approval: ApprovalView, leaseToken: string, operationID: string, resourceVersion: number, decision: "ACCEPT" | "REJECT"): Promise<ControlOperationReceipt> {
+    return this.writeJSON(`/v1/jobs/${encodeURIComponent(jobID)}/approvals/${encodeURIComponent(approval.approval_id)}`, "POST", {
+      operation_id: operationID,
+      task_id: approval.task_id,
+      expected_attempt_id: approval.attempt_id,
+      expected_generation: approval.generation,
+      expected_resource_version: resourceVersion,
+      request_version: approval.request_version,
+      decision,
+    }, leaseToken);
   }
 
   async streamEvents(
