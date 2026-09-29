@@ -3,7 +3,7 @@
 - 项目：computecloud
 - 日期：2026-09-29
 - 状态：ACP-0～ACP-5 仓库级实现已完成；ACP-4b Session Resume 已合入 main（ca2264e9d026b6cd2c2c002e41191041f533d185），ACP-5 Gemini Runtime 已合入 main（602bb4d080753b1c43f32ada88521d67222492a2）；main CI 36598835158（run #1120）全功能 Gate、verify、package、container-image 与 container-publish PASS
-- 当前主线：v0.4.5 Prepared Workspace / Safe Control 为稳定发布基线；ACP-4b Resume + ACP-5 Gemini 已完成；ACP-6 已进入 C1，UI-01 只读 collection contract 已实现，下一切片为 UI-02 Observe PWA
+- 当前主线：v0.4.5 Prepared Workspace / Safe Control 为稳定发布基线；ACP-4b Resume + ACP-5 Gemini 已完成；ACP-6 C1 已实现 UI-01 只读 collection contract 与 UI-02 Observe PWA；下一切片为 UI-03 / C2 Operate
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
 - 调研：[Agent 客户端控制端方案调研](../research/agent-control-client-landscape-2026.md)
@@ -34,7 +34,7 @@
 | ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
 | ACP-4 | v0.4.x | Approval + Resume | **已完成**：ACP-4a durable Approval 已发布于 v0.4.5；ACP-4b current-Attempt Session Resume 已合入 main，独立 `agent-control-resume` Gate PASS |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | **已完成（仓库级）**：Gemini CLI Provider、provider-neutral Job/Task runtime_profile、stream-json parser、transport-neutral execution、safe approval policy、legacy engine alias fencing；PR #66 / main CI PASS |
-| ACP-6 | C1/C2：后续 v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | **进行中**：UI-01 Job/Worker collection + snapshot/epoch read contract 已实现；下一步 UI-02 Observe PWA；C2 按已认证能力开放；C3 Mobile |
+| ACP-6 | C1/C2：后续 v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | **进行中**：C1 UI-01 read contract + UI-02 Observe PWA 已实现；下一步 UI-03 / C2 Operate，按已认证能力开放；C3 Mobile |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
 
 ## 3. ACP-0 — 协议基线
@@ -340,7 +340,7 @@ Resume 与 Approval 分离实施。旧 PR #50/#56 已关闭未合并；最终实
 
 ### 9.1 C1 Observe PWA
 
-UI-01 已实现分页 Job list、Worker read、稳定 snapshot watermark、Server epoch reset 与 owner/project 隔离，详见 [UI-01 C1 Read Contract](ui01-control-read-contract.md)。当前尚无客户端应用交付；下一步 UI-02 交付 Expo Web 和真实 Server + fixture Worker E2E，继续复用现有 SSE/read Gate。Client owner 独立认领，WS-E review 集成，不自动扩张 WS-E ownership。
+UI-01 已实现分页 Job list、Worker read、稳定 snapshot watermark、Server epoch reset 与 owner/project 隔离，详见 [UI-01 C1 Read Contract](ui01-control-read-contract.md)。UI-02 已交付 Expo Web / React Native shared Observe client 与真实 Server + fixture Worker E2E，详见 [UI-02 C1 Observe PWA](ui02-control-observe-pwa.md)。下一步进入 UI-03 / C2 Operate；Client owner 独立认领，WS-E review 集成，不自动扩张 WS-E ownership。
 
 先做：
 
@@ -558,8 +558,8 @@ ACP-4b 重建期间 runs 1030–1075 的失败已按 merge 顺序复核并关闭
 建议紧接当前工作执行：
 
 1. ACP-0～ACP-5 不再重复实现；后续变更进入维护/兼容矩阵。
-2. ACP-6 进入 C1 Observe PWA：Job list、Session、events、approval attention、Artifact/Diff、Worker/Runtime capability。
-3. C1 只读首版复用现有 read/SSE，不提前开放未经原生 Runtime 认证的 Input/Approval/Resume。
+2. ACP-6 C1 Observe PWA 已完成 UI-01/UI-02；下一步 UI-03 / C2 Operate。
+3. UI-03 只开放已通过 durable receipt、fencing 与原生 Runtime capability certification 的写控制，并先实现短期 single-writer lease。
 4. 增加真实 Runtime 兼容矩阵：Codex / Claude / Gemini 的固定版本、协议事件、failure mode 与 capability certification。
 5. Production Baseline 继续补真实多机、网络故障、24h+、upgrade/rollback；fixture CI 不替代真实环境证据。
 
