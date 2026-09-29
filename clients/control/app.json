@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "computecloud Control",
+    "slug": "computecloud-control",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    }
+  }
+}
