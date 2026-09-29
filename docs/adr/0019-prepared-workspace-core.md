@@ -104,10 +104,12 @@ Worker 从已有不可变 execution facts 推导 template identity：
 ~~~text
 repository_ref
 base_commit
-runtime_profile / model
-environment requirement
-tool requirements
+runtime_profile / runtime_version / model
+environment name / version / isolation / filesystem / network
+tool name / version / side-effect
 ~~~
+
+Execution component 的版本属于 fingerprint 的一部分，因此 Runtime、Environment 或 Tool 版本发生变化时不能错误复用旧 Template。
 
 因此 legacy Job 自动兼容。
 
@@ -123,7 +125,7 @@ Template GC、cache index、warm pool、metrics 属于 WS-B，不进入本 ADR�
 
 ~~~text
 prepared template is never Runtime writable CWD
-template fingerprint binds repository baseline and execution fingerprints
+template fingerprint binds repository baseline and versioned execution fingerprints
 materialization always creates a distinct Attempt path
 two generations never share writable Workspace
 template corruption fails closed
