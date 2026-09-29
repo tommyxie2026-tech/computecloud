@@ -62,7 +62,18 @@ export type ControlBootstrap = {
   }>;
 };
 
-export type JobDetail = JobSummary & {
+export type JobDetail = {
+  job_id: string;
+  state: string;
+  mode: string;
+  existing: boolean;
+  last_seq: string;
+  version: string;
+  created_at_ms: string;
+  updated_at_ms: string;
+  deadline_ms: string;
+  stop_reason?: string;
+  error_code?: string;
   counts?: Record<string, Record<string, number>>;
   scheduling_blockers?: Record<string, number>;
   poll_after_ms?: number;
