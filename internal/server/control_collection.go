@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -38,6 +39,7 @@ type ControlJobCursor struct {
 type ControlJobList struct {
 	ServerEpoch string               `json:"server_epoch"`
 	SnapshotMS  int64                `json:"snapshot_ms,string"`
+	SnapshotID  string               `json:"snapshot_id"`
 	Jobs        []ControlJobListItem `json:"jobs"`
 	Next        *ControlJobCursor    `json:"next,omitempty"`
 	HasMore     bool                 `json:"has_more"`
@@ -79,7 +81,7 @@ func projectsJSON(projects []string) string {
 	return string(b)
 }
 
-func (s *Server) ListControlJobs(ctx context.Context, epoch string, snapshotMS, beforeCreatedMS int64, beforeID string, limit int) (*ControlJobList, error) {
+func (s *Server) ListControlJobs(ctx context.Context, epoch string, snapshotMS int64, snapshotID string, beforeCreatedMS int64, beforeID string, limit int) (*ControlJobList, error) {
 	p, err := rpcutil.Require(ctx, "jobs:read", false)
 	if err != nil {
 		return nil, err
@@ -94,7 +96,18 @@ func (s *Server) ListControlJobs(ctx context.Context, epoch string, snapshotMS, 
 		return nil, status.Error(codes.InvalidArgument, "invalid job cursor")
 	}
 	if snapshotMS == 0 {
-		snapshotMS = store.Now()
+		err = s.db.SQL.QueryRowContext(ctx, `SELECT created,id FROM jobs
+			WHERE owner=? AND project IN (SELECT value FROM json_each(?))
+			ORDER BY created DESC,id DESC LIMIT 1`,
+			p.Identity.Owner, projectsJSON(p.Identity.Projects)).Scan(&snapshotMS, &snapshotID)
+		if errors.Is(err, sql.ErrNoRows) {
+			snapshotMS = store.Now()
+			snapshotID = ""
+		} else if err != nil {
+			return nil, dbErr(err)
+		}
+	} else if snapshotID == "" {
+		return nil, status.Error(codes.InvalidArgument, "snapshot_id required")
 	}
 	if beforeCreatedMS > snapshotMS {
 		return nil, status.Error(codes.InvalidArgument, "invalid job cursor")
@@ -103,18 +116,19 @@ func (s *Server) ListControlJobs(ctx context.Context, epoch string, snapshotMS, 
 		FROM jobs
 		WHERE owner=?
 		  AND project IN (SELECT value FROM json_each(?))
-		  AND created<=?
+		  AND (created<? OR (created=? AND (?='' OR id<=?)))
 		  AND (?=0 OR created<? OR (created=? AND id<?))
 		ORDER BY created DESC,id DESC
 		LIMIT ?`,
-		p.Identity.Owner, projectsJSON(p.Identity.Projects), snapshotMS,
+		p.Identity.Owner, projectsJSON(p.Identity.Projects),
+		snapshotMS, snapshotMS, snapshotID, snapshotID,
 		beforeCreatedMS, beforeCreatedMS, beforeCreatedMS, beforeID, limit+1)
 	if err != nil {
 		return nil, dbErr(err)
 	}
 	defer rows.Close()
 
-	out := &ControlJobList{ServerEpoch: s.controlEpoch, SnapshotMS: snapshotMS, Jobs: []ControlJobListItem{}}
+	out := &ControlJobList{ServerEpoch: s.controlEpoch, SnapshotMS: snapshotMS, SnapshotID: snapshotID, Jobs: []ControlJobListItem{}}
 	for rows.Next() {
 		var item ControlJobListItem
 		if err = rows.Scan(&item.JobID, &item.Project, &item.State, &item.Mode, &item.Version, &item.LastSeq,
@@ -255,7 +269,7 @@ func (s *Server) httpControlJobs(w http.ResponseWriter, r *http.Request) {
 		httpError(w, status.Error(codes.InvalidArgument, "invalid job cursor"))
 		return
 	}
-	value, err := s.ListControlJobs(r.Context(), r.URL.Query().Get("epoch"), snapshot, before, r.URL.Query().Get("before_id"), limit)
+	value, err := s.ListControlJobs(r.Context(), r.URL.Query().Get("epoch"), snapshot, r.URL.Query().Get("snapshot_id"), before, r.URL.Query().Get("before_id"), limit)
 	if err != nil {
 		httpError(w, err)
 		return
