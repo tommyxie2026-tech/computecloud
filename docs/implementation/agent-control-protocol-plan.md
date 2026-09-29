@@ -2,8 +2,8 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval lifecycle 已合并；WS-E ACK 增量见 PR #51，审批 Gate 已通过，集成仍有阻塞；ACP-4b Session Resume 见 PR #50，尚未进入本次 main 基线
-- 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
+- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval + ACK 幂等/generation fencing 已随 v0.4.5 发布；ACP-4b Session Resume 的旧 PR #50 已关闭未合并，下一实现从 v0.4.5 main 重新建立
+- 当前主线：v0.4.5 Prepared Workspace / Safe Control 已发布；下一横向控制主线为 ACP-4b Session Resume
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
 - 调研：[Agent 客户端控制端方案调研](../research/agent-control-client-landscape-2026.md)

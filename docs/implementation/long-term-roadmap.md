@@ -1,7 +1,7 @@
 # computecloud Agent-aware Distributed Job Execution Platform 长期路线图
 
 - 项目：computecloud
-- 日期：2026-09-28
+- 日期：2026-09-29
 - 当前稳定发布基线：v0.4.5 Prepared Workspace / Safe Control；main 功能基线：v0.4.5
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
@@ -10,7 +10,7 @@
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
-- 当前实现依据：[v0.4.3 EnvironmentCapability](v0.4.3-plan.md)、[ADR-015](../adr/0015-environment-capability.md)
+- 当前实现依据：[v0.4.5 Release Status](v0.4.5-release-status.md)、[Prepared Workspace Core](prepared-workspace-core.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)
 - 当前实施跟踪：v0.4.5 已通过 main release Gate；Prepared Workspace、ACP-3 Safe Control、ACP-4a Approval 已进入稳定发布基线；ACP-4b Resume 的旧 PR #50 已关闭未合并，后续需基于 v0.4.5 main 重新实施；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
