@@ -1250,7 +1250,9 @@ Sandboxed Agent Job
 - metrics / alert；
 - incident runbook；
 - compatibility matrix；
-- supported scale。
+- supported scale；
+- linux/amd64 + linux/arm64 binary/container release；
+- container size budget、SBOM、provenance 与 immutable digest deployment。
 
 ### 10.5 v1.0 必须回答
 
@@ -1388,7 +1390,9 @@ L4 Real Runtime / Multi-host
 11. ADR-013：Transport-neutral Runtime Execution；
 12. ADR-014：ToolCapability Registry / Policy；
 13. ADR-015：EnvironmentCapability Registry / Policy；\n14. ADR-016：EnvironmentProvider Execution；\n15. ADR-017：Goal-oriented Computing Model；
-16. ADR-018：Re-plan Guard 与自治循环防护。
+16. ADR-018：Re-plan Guard 与自治循环防护；
+17. ADR-019：Prepared Workspace Core；
+18. ADR-020：多架构最小容器镜像交付。
 
 后续建议：
 
