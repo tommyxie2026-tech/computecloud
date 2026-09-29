@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-29
-- 当前稳定发布基线：v0.4.5 Prepared Workspace / Safe Control；main 已包含 EnvironmentProvider Execution、Prepared Workspace Core、ACP-3/ACP-4a 与 ACK fencing 修复
+- 当前稳定发布基线：v0.4.5 Prepared Workspace / Safe Control；当前 main 已进一步包含 ACP-4b Session Resume、multi-arch container delivery 与 ACP-5 Gemini 第三 Runtime
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
@@ -11,7 +11,7 @@
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
 - 当前实现依据：[v0.4.5 发布记录](v0.4.5-release-status.md)、[Prepared Workspace Core](prepared-workspace-core.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[本轮核对与实施台账](v0.4.5-roadmap-reconciliation.md)；Server v12 / Worker v6
-- 当前实施跟踪：WS-A Core 已通过发布 CI；下一功能主线仍为 WS-B Cache / Warm Path 与 WS-C Readiness；Goal G0～G4 执行集成、WS-D RPG-4、WS-E Goal bridge、C1 Observe PWA 按实施台账独立验收；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪，尚未完成
+- 当前实施跟踪：ACP-0～ACP-5 仓库级实现已完成；Control 下一主线为 C1 Observe PWA。WS-B Cache / Warm Path、WS-C Readiness、Goal G0～G4 执行集成、WS-D RPG-4、WS-E Goal bridge继续独立验收；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪，尚未完成
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -205,8 +205,9 @@ v1.0
 - ACP-0/1/2：Protocol、read/replay、Runtime Adapter contract 已完成；
 - ACP-3：durable write、generation fencing、Worker structured dispatch、result ACK、HTTP input/interrupt 已完成；
 - ACP-4a durable Approval：已合并并进入 v0.4.5 stable release，含 ACK 幂等与 generation fencing；
-- ACP-4b Session Resume：旧 PR #50 已关闭未合并；当前 [PR #60](https://github.com/tommyxie2026-tech/computecloud/pull/60) 已基于 v0.4.5 重建，尚未合入；继续验收 Prepared Workspace 的 Runtime/Tool/Environment fingerprint 兼容判定；
-- Codex/Claude 的交互 capability 继续 fail-closed，只有 Runtime 原生 contract 通过后才广告。
+- ACP-4b Session Resume：已合入 main（`ca2264e9d026b6cd2c2c002e41191041f533d185`），复用 Prepared Workspace Runtime/Tool/Environment fingerprint compatibility，`agent-control-resume` Gate PASS；
+- ACP-5 Gemini：已合入 main（`602bb4d080753b1c43f32ada88521d67222492a2`），第三 Runtime 通过统一 Provider/Job runtime_profile 接入，未修改 Scheduler 核心；
+- Codex/Claude/Gemini 的交互 capability 继续 fail-closed，只有 Runtime 原生 contract 通过后才广告。
 
 
 Control/Protocol 的可执行拆分以 [Agent Control Protocol 实施计划](agent-control-protocol-plan.md) 为准。该计划作为横向能力线与 Prepared Workspace、Runtime/Tool/Environment 和 Scheduler 主线并行，不能替代主版本目标；写控制能力必须等待对应 Runtime capability 通过 contract test 后才能开放。
@@ -815,9 +816,9 @@ capabilities
 
 ### 6.9 v0.4 退出门槛
 
-v0.4.5 为阶段性稳定发布，不代表以下全部生态目标已完成。第三 Runtime、API-backed Adapter、第二类 Environment Provider、真实隔离负向验收与 Trigger/Delivery 的责任角色和验收切片见[实施台账 §6](v0.4.5-roadmap-reconciliation.md#6-v04-退出门槛与遗漏交付切片)。
+v0.4.5 为阶段性稳定发布，不代表以下全部生态目标已完成。**第三 Runtime（Gemini CLI）已在后续 main 完成仓库级验证**；API-backed Adapter、第二类 Environment Provider、真实隔离负向验收与 Trigger/Delivery 仍按[实施台账 §6](v0.4.5-roadmap-reconciliation.md#6-v04-退出门槛与遗漏交付切片)继续。
 
-- 3+ Runtime 共享同一 Runtime API；
+- 3+ Runtime 共享同一 Runtime API；**仓库级已满足：Codex / Claude / Gemini**；
 - 至少覆盖 local CLI 与 API-backed 两种 Runtime 形态；
 - 新 Runtime 不修改核心 Scheduler；
 - RuntimeCapability / ToolCapability / EnvironmentCapability 分离；

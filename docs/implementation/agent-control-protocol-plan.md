@@ -2,8 +2,8 @@
 
 - 项目：computecloud
 - 日期：2026-09-29
-- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3、ACP-4a 与 WS-E ACK PR #51 已合入并通过 v0.4.5 发布 CI；Goal bridge 依赖 WS-D；ACP-4b 当前见 PR #60，尚未进入本次基线
-- 当前主线：v0.4.5 Prepared Workspace / Safe Control 已发布；下一横向控制主线为 ACP-4b Session Resume
+- 状态：ACP-0～ACP-5 仓库级实现已完成；ACP-4b Session Resume 已合入 main（ca2264e9d026b6cd2c2c002e41191041f533d185），ACP-5 Gemini Runtime 已合入 main（602bb4d080753b1c43f32ada88521d67222492a2）；main CI 36591386173 全功能 Gate、package 与 container-publish PASS
+- 当前主线：v0.4.5 Prepared Workspace / Safe Control 为稳定发布基线；main 已前进到 ACP-4b Resume + ACP-5 Gemini；下一横向控制主线为 ACP-6 C1 Observe PWA
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
 - 调研：[Agent 客户端控制端方案调研](../research/agent-control-client-landscape-2026.md)
@@ -32,8 +32,8 @@
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
 | ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
-| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已发布于 v0.4.5**：durable approval request/version/state、expiry/supersede、Worker Approve dispatch/ACK、HTTP decision、ACK 幂等/generation fencing；**ACP-4b 当前 PR #60**：current-Attempt resume，未合入；独立验收 |
-| ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
+| ACP-4 | v0.4.x | Approval + Resume | **已完成**：ACP-4a durable Approval 已发布于 v0.4.5；ACP-4b current-Attempt Session Resume 已合入 main，独立 `agent-control-resume` Gate PASS |
+| ACP-5 | v0.4.x/v0.5 | 第三 Runtime | **已完成（仓库级）**：Gemini CLI Provider、provider-neutral Job/Task runtime_profile、stream-json parser、transport-neutral execution、safe approval policy、legacy engine alias fencing；PR #66 / main CI PASS |
 | ACP-6 | C1/C2：后续 v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | C1 只读首版独立排期；C2 按已认证能力开放；C3 Mobile |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
 
@@ -290,9 +290,9 @@ PENDING
 
 审批必须 audit。
 
-### 7.2 Resume — ACP-4b 当前 PR #60（未合入）
+### 7.2 Resume — ACP-4b 已完成
 
-Resume 不与 Approval 混在同一提交中。旧 PR #50 已关闭且未合并，不再作为当前实现依据。当前 [PR #60](https://github.com/tommyxie2026-tech/computecloud/pull/60) 已从 v0.4.5 重建；合并前须验证其复用 Prepared Workspace 的 Runtime/Tool/Environment fingerprint 与 compatibility 语义，不能以旧 PR 的 CI 代替新提交验收。现有 Attempt completion 会 release Attempt，Worker restart 也会先 reconciliation/cleanup，因此不能简单把 Resume 实现成“对已释放 Attempt 再发一条控制命令”。
+Resume 与 Approval 分离实施。旧 PR #50/#56 已关闭未合并；最终实现从 v0.4.5 main 重建并以 ca2264e9d026b6cd2c2c002e41191041f533d185 合入。Resume 只允许 current-Attempt transport/session rebind，复用 Prepared Workspace 的 Runtime/Tool/Environment fingerprint compatibility，不重开 released Attempt、不隐式创建 retry。`agent-control-resume` 已进入 main CI 并通过。
 
 实现目标：
 
@@ -314,29 +314,27 @@ Resume 不与 Approval 混在同一提交中。旧 PR #50 已关闭且未合并�
 - [ ] Workspace changed -> resume rejected。
 - [ ] Environment unavailable -> explicit failure。
 
-## 8. ACP-5 — 第三个 Runtime 验证
+## 8. ACP-5 — 第三个 Runtime 验证 — 已完成
 
-候选：
+最终选择：**Gemini CLI**。
 
-1. Gemini CLI；
-2. OpenCode。
+已实现：
 
-选择标准：
-- 协议公开/可自动化；
-- 可在 CI 安装固定版本；
-- 至少支持 stream + cancel；
-- 最好支持 session resume/tool event。
+- `gemini_cli` Runtime Provider；
+- Gemini stream-json -> 标准 session/message/tool/runtime event；
+- transport-neutral local CLI Prepare/Start/Inspect/Stop；
+- 显式 `gemini_approval_mode=plan|auto_edit`，禁止隐式高权限模式；
+- Job/Task `runtime_profile` provider-neutral；
+- `engine=codex|claude` 仅保留为 legacy alias，并与对应 Runtime profile fencing；
+- Gemini 只广告已认证 stream/cancel control capability；
+- Job JSON Schema 已允许不带 legacy engine 的第三 Runtime；
+- Parser / Provider / Config / Job schema / alias fencing tests 已进入全量 verify。
 
-验收问题：
+验收结论：
 
-> 接入第三个 Runtime 是否只新增 Adapter + descriptor + tests？
+> 第三个 Runtime 接入未修改 Scheduler 核心状态机，也未新增 runtime-specific Control API。
 
-如果需要：
-- 修改 Scheduler 名称判断；
-- 修改 Job 状态机；
-- 新增 runtime-specific Control API；
-
-则返回设计阶段重构。
+原 `feature/acp5-gemini-runtime` 基于旧 main 落后 44 个提交，产生大面积非功能性 CI 红灯；已通过最新-main 刷新分支 PR #66 替代。
 
 ## 9. ACP-6 — Control PWA / Mobile
 
@@ -548,13 +546,13 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. ACP-4a 与下述 WS-E ACK 可靠性增量已通过 v0.4.5 发布 CI；复用 `agent-control-approval`，不重复实现。
-2. ACP-4b 的旧 [PR #50](https://github.com/tommyxie2026-tech/computecloud/pull/50) 已关闭未合并；当前 [PR #60](https://github.com/tommyxie2026-tech/computecloud/pull/60) 已基于 v0.4.5 重建，待当前提交完整 CI / review，不直接复活旧分支。
-3. 增加 multi-process fault injection：approval decision commit 后重启、Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
-4. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
-5. Prepared Workspace 主线继续推进；Resume 必须复用其 fingerprint/compatibility 语义，不能建立第二套 Workspace 状态机。
+1. ACP-0～ACP-5 不再重复实现；后续变更进入维护/兼容矩阵。
+2. ACP-6 进入 C1 Observe PWA：Job list、Session、events、approval attention、Artifact/Diff、Worker/Runtime capability。
+3. C1 只读首版复用现有 read/SSE，不提前开放未经原生 Runtime 认证的 Input/Approval/Resume。
+4. 增加真实 Runtime 兼容矩阵：Codex / Claude / Gemini 的固定版本、协议事件、failure mode 与 capability certification。
+5. Production Baseline 继续补真实多机、网络故障、24h+、upgrade/rollback；fixture CI 不替代真实环境证据。
 
-这一顺序可以最小化返工，同时确保 Control App 不先于服务端语义成熟。
+CI 合并纪律继续保持：contract/schema -> canonical fixture -> shared lifecycle fixture -> 专用 Gate -> verify -> package/container -> main。
 
 ## 17. WS-E 认领与进度（2026-09-29）
 
