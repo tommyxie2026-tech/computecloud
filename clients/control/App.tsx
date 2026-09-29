@@ -381,7 +381,7 @@ export default function App() {
                 <View style={styles.actionRow}>
                   {writeLease
                     ? <Button title="Release control" onPress={releaseControl} disabled={busy} />
-                    : <Button title="Take control" onPress={takeControl} disabled={busy || terminal.has(snapshot.job.state)} />}
+                    : <Button title="Take control" onPress={takeControl} disabled={busy || bootstrap?.read_only || terminal.has(snapshot.job.state)} />}
                   {writeLease && !terminal.has(snapshot.job.state) && <Button title="Cancel job" onPress={cancelSelected} disabled={busy} />}
                   {writeLease && <StatePill value="WRITE LEASE" />}
                 </View>
