@@ -8,11 +8,13 @@ const args = Object.fromEntries(process.argv.slice(2).map((value, index, all) =>
 const baseURL = String(args["base-url"] || "").replace(/\/+$/, "");
 const token = args["token-file"] ? fs.readFileSync(String(args["token-file"]), "utf8").trim() : String(args.token || "");
 if (!baseURL || !token) throw new Error("--base-url and --token/--token-file are required");
+const writeJob = String(args["write-job"] || "");
 
-async function request(path, expected = 200) {
-  const response = await fetch(baseURL + path, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json, text/event-stream" },
-  });
+async function request(path, expected = 200, init = {}) {
+  const headers = new Headers(init.headers || {});
+  headers.set("Authorization", `Bearer ${token}`);
+  headers.set("Accept", "application/json, text/event-stream");
+  const response = await fetch(baseURL + path, { ...init, headers });
   const text = await response.text();
   if (response.status !== expected) throw new Error(`${path}: expected ${expected}, got ${response.status}: ${text}`);
   return { response, text, json: () => JSON.parse(text) };
@@ -75,6 +77,43 @@ if (ids.at(-1) !== Number(job.last_seq)) throw new Error("SSE terminal watermark
 const stale = await request("/v1/jobs?epoch=stale&limit=1", 409);
 const staleBody = stale.json();
 if (staleBody.error?.code !== "SNAPSHOT_EPOCH_CHANGED") throw new Error("stale epoch did not force snapshot reset");
+
+if (writeJob) {
+  const holder = "e2e-device-a";
+  const body = JSON.stringify({ control_id: "e2e-control-cancel", reason: "UI-03a E2E" });
+  const noLease = await request("/v1/jobs/" + writeJob + "/control/cancel", 400, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body,
+  });
+  if (noLease.json().error?.code !== "WRITE_LEASE_REQUIRED") throw new Error("control cancel did not require write lease");
+
+  const lease = (await request("/v1/jobs/" + writeJob + "/control-lease", 201, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holder_id: holder }),
+  })).json();
+  if (!lease.lease_token || lease.holder_id !== holder) throw new Error("write lease response incomplete");
+
+  const held = await request("/v1/jobs/" + writeJob + "/control-lease", 409, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holder_id: "e2e-device-b" }),
+  });
+  if (held.json().error?.code !== "WRITE_LEASE_HELD") throw new Error("second write holder was not fenced");
+
+  const renewed = (await request("/v1/jobs/" + writeJob + "/control-lease", 200, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Control-Lease": lease.lease_token },
+    body: JSON.stringify({ holder_id: holder }),
+  })).json();
+  if (renewed.expires_at_ms < lease.expires_at_ms) throw new Error("write lease did not renew");
+
+  await request("/v1/jobs/" + writeJob + "/control/cancel", 202, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Control-Lease": lease.lease_token },
+    body,
+  });
+  await request("/v1/jobs/" + writeJob + "/control-lease", 204, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", "X-Control-Lease": lease.lease_token },
+    body: JSON.stringify({ holder_id: holder }),
+  });
+}
 
 console.log(JSON.stringify({
   status: "PASSED",
