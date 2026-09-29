@@ -1,8 +1,8 @@
 # Agent Control Protocol 实施计划
 
 - 项目：computecloud
-- 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval lifecycle 已合并；WS-E ACK 增量见 PR #51，审批 Gate 已通过，集成仍有阻塞；ACP-4b Session Resume 见 PR #50，尚未进入本次 main 基线
+- 日期：2026-09-29
+- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3、ACP-4a 与 WS-E ACK PR #51 已合入并通过 v0.4.5 发布 CI；Goal bridge 依赖 WS-D；ACP-4b 当前见 PR #60，尚未进入本次基线
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -32,9 +32,9 @@
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
 | ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
-| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已发布于 v0.4.5**：durable approval request/version/state、expiry/supersede、Worker Approve dispatch/ACK、HTTP decision、ACK 幂等/generation fencing；**ACP-4b 待重启实施**：旧 PR #50 已关闭未合并 |
+| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已发布于 v0.4.5**：durable approval request/version/state、expiry/supersede、Worker Approve dispatch/ACK、HTTP decision、ACK 幂等/generation fencing；**ACP-4b 当前 PR #60**：current-Attempt resume，未合入；独立验收 |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
-| ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
+| ACP-6 | C1/C2：后续 v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | C1 只读首版独立排期；C2 按已认证能力开放；C3 Mobile |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
 
 ## 3. ACP-0 — 协议基线
@@ -290,9 +290,9 @@ PENDING
 
 审批必须 audit。
 
-### 7.2 Resume — ACP-4b 待基于 v0.4.5 重启实施
+### 7.2 Resume — ACP-4b 当前 PR #60（未合入）
 
-Resume 不与 Approval 混在同一提交中。旧 PR #50 已关闭且未合并，不再作为当前实现依据。现有 Attempt completion 会 release Attempt，Worker restart 也会先 reconciliation/cleanup，因此不能简单把 Resume 实现成“对已释放 Attempt 再发一条控制命令”。新实现必须从 v0.4.5 main 出发，并复用 Prepared Workspace 的 Runtime/Tool/Environment fingerprint 与 compatibility 语义。
+Resume 不与 Approval 混在同一提交中。旧 PR #50 已关闭且未合并，不再作为当前实现依据。当前 [PR #60](https://github.com/tommyxie2026-tech/computecloud/pull/60) 已从 v0.4.5 重建；合并前须验证其复用 Prepared Workspace 的 Runtime/Tool/Environment fingerprint 与 compatibility 语义，不能以旧 PR 的 CI 代替新提交验收。现有 Attempt completion 会 release Attempt，Worker restart 也会先 reconciliation/cleanup，因此不能简单把 Resume 实现成“对已释放 Attempt 再发一条控制命令”。
 
 实现目标：
 
@@ -342,6 +342,8 @@ Resume 不与 Approval 混在同一提交中。旧 PR #50 已关闭且未合并�
 
 ### 9.1 C1 Observe PWA
 
+当前尚无客户端应用交付。按[UI-01/UI-02](v0.4.5-roadmap-reconciliation.md)先补分页 Job list、Worker read 与快照/事件恢复契约，再交付 Expo Web 和真实 Server + fixture Worker E2E；复用现有 SSE/read Gate，不等待第三 Runtime 或 RPG-4 全部完成。Client owner 独立认领，WS-E review 集成，不自动扩张 WS-E ownership。
+
 先做：
 
 - Job list；
@@ -356,7 +358,7 @@ Resume 不与 Approval 混在同一提交中。旧 PR #50 已关闭且未合并�
 
 ### 9.2 C2 Operate PWA
 
-仅开放已通过 ACP-3/4 的操作：
+仅开放已通过 ACP-3/4 且原生 Runtime 对应能力已认证的操作。C2 开放多设备写入前实现短期单写者 lease；C4 只扩展企业策略。以下是目标清单，retry/resume 等不能仅凭通用控制协议存在就标为已交付：
 
 - submit；
 - cancel；
@@ -386,7 +388,7 @@ Mobile 仍通过同一 Agent Control API，不新增 mobile-only 业务协议。
 - OIDC/SSO；
 - RBAC；
 - Audit；
-- Write Lease；
+- Enterprise Write Lease policy（基础单写者 lease 在 C2）；
 - Push minimization；
 - Optional Blind E2EE Relay；
 - Trust Domain。
@@ -546,8 +548,8 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. ACP-4a 已在 `da086cd` 合并，Package Gate 已依赖 `agent-control-approval`；继续验收下述 WS-E ACK 可靠性增量。
-2. ACP-4b 的旧 [PR #50](https://github.com/tommyxie2026-tech/computecloud/pull/50) 已关闭未合并；下一实现从 v0.4.5 main 重新建分支，不直接复活旧分支。
+1. ACP-4a 与下述 WS-E ACK 可靠性增量已通过 v0.4.5 发布 CI；复用 `agent-control-approval`，不重复实现。
+2. ACP-4b 的旧 [PR #50](https://github.com/tommyxie2026-tech/computecloud/pull/50) 已关闭未合并；当前 [PR #60](https://github.com/tommyxie2026-tech/computecloud/pull/60) 已基于 v0.4.5 重建，待当前提交完整 CI / review，不直接复活旧分支。
 3. 增加 multi-process fault injection：approval decision commit 后重启、Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
 4. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
 5. Prepared Workspace 主线继续推进；Resume 必须复用其 fingerprint/compatibility 语义，不能建立第二套 Workspace 状态机。
@@ -572,7 +574,7 @@ agent-control-fencing
 | Schema Changes | 无；Server v12 / Worker v6；开工时 README 的 v11 已由共享文档 owner 在 `35c3360` 修正，本分支不修改 README 或 migration |
 | Tests | payload unit、HTTP projection/decision/retry、并发重复/冲突 ACK、stale/released ACK、Server SQLite 重开、Worker ledger 重开及 UNKNOWN 恢复、两种 builtin Runtime 的 Server/Worker unsupported matrix |
 | CI Gate | 复用 `agent-control-approval`，新增 `-race`；复用 V12 schema、V1 升级/drain、migration rollback、Worker v6 migration 测试；已在 main CI/package dependency 内，无新 workflow |
-| Risks | `control_dispatch.go` 与 Resume PR #50 有交集，合并需复核；过期代次 ACK 拒绝后不自动重新执行 Runtime 副作用 |
+| Risks | `control_dispatch.go` 与 Resume 当前 PR #60（原 #50）有交集，合并需复核；过期代次 ACK 拒绝后不自动重新执行 Runtime 副作用 |
 | Merge Dependencies | 本增量只依赖已合并 ACP-4a；ACP-D bridge 依赖 WS-D C4 Goal Approval API/持久化契约 |
 
 ### 已实施增量
@@ -583,6 +585,8 @@ agent-control-fencing
 - 复用既有 ledger 与审计事件，不新增缓存事实源、自动 retry、Runtime 名称分支或外部基础设施。
 
 ### 验收证据
+
+当前结论：PR #51 已合入；[v0.4.5 发布 CI 36575512360](https://github.com/tommyxie2026-tech/computecloud/actions/runs/36575512360) 全矩阵通过。下列首轮失败保留为历史记录，不再作为当前 main 阻塞。Goal bridge 仍未完成，原生 CLI 认证与真实故障注入仍独立验收。
 
 本地 Go 1.27.1：
 
@@ -600,19 +604,19 @@ python3 scripts/ci_agent_control_approval.py --output /tmp/computecloud-wse-ci/r
 - 首轮 vet 报告新增测试复制 protobuf 内部锁；已改为显式构造 ACK，本地 `go vet ./...` 通过。
 - 同步 `343e32d` 后本地审批 Gate 再次通过（含 race）。
 - 完整本地相关包回归 **FAIL**：Server 的进程执行用例出现 `CLEANUP_UNCONFIRMED` / timeout；Worker recovery 出现 `/proc/<pid>/stat` 不存在。后者已在未修改的 `main 343e32d` 工作树单独复现；Control / Store 包通过。不能以专用 Gate 通过代替完整回归通过。
-- **集成阻塞（WS-A）**：只读 prepared template 的测试清理失败：`TempDir RemoveAll cleanup: .../.git/objects/...: permission denied`。
+- **历史集成阻塞（WS-A，发布前已解决）**：只读 prepared template 的测试清理失败：`TempDir RemoveAll cleanup: .../.git/objects/...: permission denied`。
   同一问题已在 [main CI 36496434574](https://github.com/tommyxie2026-tech/computecloud/actions/runs/36496434574/job/109176980044)
-  与 PR CI 重现，影响 workspace / runtime / environment / read 等 Gate。本分支不修改 WS-A 文件、不跳过 Gate；由 WS-A 修复后再同步验收。
+  与 PR CI 重现，影响 workspace / runtime / environment / read 等 Gate。当时本分支未修改 WS-A 文件或跳过 Gate；后续同步 WS-A 修复并通过完整发布验收。
 
 ### Workstream 状态
 
 | 项目 | 状态 | 说明 |
 | --- | --- | --- |
 | ACP-A / ACP-B / ACP-C Runtime Approval | DONE（基线） | 已在 main，不重复建设 |
-| ACK 幂等 / generation 防护 / 双 Runtime 负向矩阵 | DONE（实现和审批 Gate） | 首轮 PR 审批 Gate 已通过，仍需完整 CI / review 后合并 |
+| ACK 幂等 / generation 防护 / 双 Runtime 负向矩阵 | DONE（v0.4.5） | PR #51 已合入，完整发布 CI 已通过 |
 | ACP-D Goal Governance bridge | BLOCKED | main 只有 Re-plan Guard 的 `NEEDS_APPROVAL`，尚无 WS-D durable Goal Approval API |
 | ACP-E 全矩阵 | PARTIAL | Runtime Approval 已验证；Goal approval durable case 等待 WS-D |
-| main 集成 | BLOCKED | WS-A 只读 template 清理权限问题影响多项现有 Gate |
+| Runtime Control main 集成 | DONE（v0.4.5） | 旧 WS-A / fixture 阻塞已修复；不包含 Goal bridge 或 Resume |
 | WS-E 整体 | PARTIAL | 不把上述依赖标为完成，不扩展到 PWA/Resume/Goal 决策实现 |
 
 ### 后续合并依赖

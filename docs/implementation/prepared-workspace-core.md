@@ -2,7 +2,7 @@
 
 - Workstream：WS-A
 - 日期：2026-09-29
-- 状态：Implemented on main，CI pending
+- 状态：DONE（v0.4.5 Core 发布范围）；完整发布 CI PASS
 - ADR：[ADR-019 Prepared Workspace Core](../adr/0019-prepared-workspace-core.md)
 
 ## Current State
@@ -44,7 +44,7 @@ ReleaseTemplate
 - canonical template SHA-256；
 - manifest；
 - tree content digest；
-- read-only template tree；
+- read-only template files；目录保留 owner 清理权限，摘要验证拒绝污染；
 - restart Inspect；
 - corruption fail-closed；
 - isolated writable materialization。
@@ -102,7 +102,7 @@ tool requirements
 - template fingerprint stability；
 - local prepare / inspect；
 - provider restart inspect；
-- template filesystem read-only mode；
+- template file read-only mode / cleanup-compatible directory permissions；
 - two Attempt materialization isolation；
 - Attempt mutation does not alter template；
 - template tamper detection；
@@ -137,9 +137,13 @@ PW-2 Local Provider            DONE
 PW-3 Attempt materialization   DONE
 PW-4 Restart Inspect           DONE
 
-Dedicated CI Gate              IN PROGRESS
+Dedicated CI Gate              DONE (v0.4.5 release CI PASS)
 Performance target             WS-B
 Template GC                    WS-B
 ~~~
 
 WS-A 的 correctness contract 完成后，WS-B 可以在不修改 public contract 的前提下优化 materialization/cache。
+
+发布证据：[main CI 36575512360](https://github.com/tommyxie2026-tech/computecloud/actions/runs/36575512360)，`prepared-workspace-contract` / `prepared-workspace-recovery` 以及完整发布矩阵均通过。模板清理权限与 Runtime identity fixture 的旧阻塞已修复，不能继续作为当前 BLOCKED 原因。
+
+当前存储是文件系统 manifest，不存在 `prepared_workspaces` 表；Worker v6 用于 control ledger，不是本 WS migration。Worker 级模板复用证明 correctness，不替代 WS-B 的 Job 级命中率与冷/热耗时 benchmark。下一轮见[实施台账](v0.4.5-roadmap-reconciliation.md)。

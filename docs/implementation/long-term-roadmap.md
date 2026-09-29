@@ -1,8 +1,8 @@
 # computecloud Agent-aware Distributed Job Execution Platform 长期路线图
 
 - 项目：computecloud
-- 日期：2026-09-28
-- 当前稳定发布基线：v0.4.5 Prepared Workspace / Safe Control；main 功能基线：v0.4.5
+- 日期：2026-09-29
+- 当前稳定发布基线：v0.4.5 Prepared Workspace / Safe Control；main 已包含 EnvironmentProvider Execution、Prepared Workspace Core、ACP-3/ACP-4a 与 ACK fencing 修复
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
@@ -10,10 +10,11 @@
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
-- 当前实现依据：[v0.4.3 EnvironmentCapability](v0.4.3-plan.md)、[ADR-015](../adr/0015-environment-capability.md)
-- 当前实施跟踪：v0.4.5 已通过 main release Gate；Prepared Workspace、ACP-3 Safe Control、ACP-4a Approval 已进入稳定发布基线；ACP-4b Resume 的旧 PR #50 已关闭未合并，后续需基于 v0.4.5 main 重新实施；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实现依据：[v0.4.5 发布记录](v0.4.5-release-status.md)、[本轮核对与实施台账](v0.4.5-roadmap-reconciliation.md)；Server v12 / Worker v6
+- 当前实施跟踪：WS-A Core 已通过发布 CI；下一功能主线仍为 WS-B Cache / Warm Path 与 WS-C Readiness；Goal G0～G4 执行集成、WS-D RPG-4、WS-E Goal bridge、C1 Observe PWA 按实施台账独立验收；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪，尚未完成
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
+
 - CI 合并顺序恢复记录：[2026-09-29 CI Merge Order Recovery](ci-merge-order-recovery-2026-09-29.md)
 
 > 本路线图继续坚持 v0.2 的 Agent Job Executor 本质，不再向 AI Execution OS 演变。长期差异化来自 **Agent-aware execution semantics**，而不是扩大成通用 AI 基础设施。
@@ -204,7 +205,7 @@ v1.0
 - ACP-0/1/2：Protocol、read/replay、Runtime Adapter contract 已完成；
 - ACP-3：durable write、generation fencing、Worker structured dispatch、result ACK、HTTP input/interrupt 已完成；
 - ACP-4a durable Approval：已合并并进入 v0.4.5 stable release，含 ACK 幂等与 generation fencing；
-- ACP-4b Session Resume：旧 PR #50 已关闭未合并；下一阶段从 v0.4.5 main 重建，并复用 Prepared Workspace 的 Runtime/Tool/Environment fingerprint 作为兼容判定；
+- ACP-4b Session Resume：旧 PR #50 已关闭未合并；当前 [PR #60](https://github.com/tommyxie2026-tech/computecloud/pull/60) 已基于 v0.4.5 重建，尚未合入；继续验收 Prepared Workspace 的 Runtime/Tool/Environment fingerprint 兼容判定；
 - Codex/Claude 的交互 capability 继续 fail-closed，只有 Runtime 原生 contract 通过后才广告。
 
 
@@ -215,10 +216,10 @@ Control 是既有 Agent Job Executor 的产品表面，不是第二个调度器�
 | Control 里程碑 | 对齐主版本 | 核心交付 | 状态/门槛 |
 | --- | --- | --- | --- |
 | C0 Design Baseline | v0.3.2 | 调研、ADR-008、API/安全/UX 技术方案 | 当前完成 |
-| C1 Observe PWA | v0.3.3+ | Job/Task/Attempt/Worker/Artifact 只读投影、稳定分页、SSE、attention | Stage、multi-Attempt、Retry Safety、Artifact Lifecycle 已完成；补查询与事件契约 |
-| C2 Operate PWA | v0.4.x | 提交、取消、输入、审批、重试、Diff/测试审阅 | Runtime 原生输入/审批能力逐项验收；所有写操作幂等并带 generation fencing |
+| C1 Observe PWA | 后续 v0.4.x（尚未交付） | Job/Task/Attempt/Worker/Artifact 只读投影、稳定分页、SSE、attention | 复用 v0.4.5 read/SSE；补 Job list、Worker read、快照/恢复契约与客户端 E2E；独立 UI-01/UI-02 |
+| C2 Operate PWA | 后续 v0.4.x | 提交、取消、输入、审批、重试、Diff/测试审阅、短期单写者 lease | Runtime 原生能力逐项验收；所有写操作幂等并带 generation fencing；多设备写入前具备 lease 与接管审计 |
 | C3 Mobile Beta | v0.5.x | Expo iOS/Android、QR 配对、Push、主机/运行时选择 | Agent-aware Scheduler 与设备身份可用 |
-| C4 Governed Remote | v0.6.x | OIDC/RBAC、设备策略、审计、单写者 Lease、可选 E2EE Relay | 治理模型和威胁测试通过；Relay 不参与调度判断 |
+| C4 Governed Remote | v0.6.x | OIDC/RBAC、设备策略、审计、企业 Lease 策略、可选 E2EE Relay | 治理模型和威胁测试通过；Relay 不参与调度判断 |
 | C5 Production | v0.7.x/v1.0 | 弱网、规模、兼容矩阵、应用商店/企业分发、SLO | Scale & Resilience 门槛完成 |
 
 永久边界：手机不作为通用 Worker；离线客户端不排队取消、审批或重试等危险操作；Push 不携带提示词、代码或审批正文；公网 Relay 仅在直连/VPN 无法满足已验证需求时引入。
@@ -707,13 +708,13 @@ ToolCapability 至少包含：
 
 #### Agent Control ACP-3 安全写控制现状
 
-截至 2026-09-28：
+截至 v0.4.5（2026-09-29）：
 
 - ACP-3a 已合并：durable operation receipt、principal-scoped idempotency、Attempt/generation/resource-version fencing、稳定错误码与 negative Gate；
-- ACP-3b 已实现待合并：独立 Worker `ControlCommand` envelope、Server durable dispatch、SessionControlProvider execution、Worker local control ledger、structured terminal ACK、`control.completed/control.rejected` durable event；
+- ACP-3b 已合并并通过发布 CI：独立 Worker `ControlCommand` envelope、Server durable dispatch、SessionControlProvider execution、Worker local control ledger、structured terminal ACK、`control.completed/control.rejected` durable event；
 - Worker 在 control side-effect 执行期间崩溃时，不自动重放；恢复为 `UNKNOWN / EXECUTION_UNVERIFIABLE`，避免 duplicate side effect；
 - Codex / Claude 继续只暴露已认证的 stream/structured/cancel，interactive input / approval / resume / interrupt 保持 fail-closed；
-- HTTP write endpoint 延后到 ACP-3c，仅在上述链路 CI 通过后开放。
+- ACP-3c 的 Session input / interrupt HTTP endpoint 与 ACP-4a Approval decision 已合并；HTTP 接口存在不等于原生 Runtime 支持该操作，仍以 capability 与独立验收为准。
 
 
 Session 不升级为平台一级领域模型，只作为 Runtime capability：
@@ -813,6 +814,8 @@ capabilities
 这些都是 Job ingress / result delivery adapter，不改变 Job 核心模型。
 
 ### 6.9 v0.4 退出门槛
+
+v0.4.5 为阶段性稳定发布，不代表以下全部生态目标已完成。第三 Runtime、API-backed Adapter、第二类 Environment Provider、真实隔离负向验收与 Trigger/Delivery 的责任角色和验收切片见[实施台账 §6](v0.4.5-roadmap-reconciliation.md#6-v04-退出门槛与遗漏交付切片)。
 
 - 3+ Runtime 共享同一 Runtime API；
 - 至少覆盖 local CLI 与 API-backed 两种 Runtime 形态；
@@ -1457,7 +1460,7 @@ v1.0  稳定 Agent-aware Distributed Job Execution Platform
 
 ## 19. Goal-oriented Computing 实施主线
 
-ADR-017 不要求一次性重写现有系统，而采用向上兼容演进：
+ADR-017 不要求一次性重写现有系统，而采用向上兼容演进。当前 RPG-1～3 已有 durable primitive 和测试，但生产执行路径尚未调用 Guard；以下 G0～G4 不能标记为已完成。其 GI-01～GI-04 集成任务、ownership review、CI 和崩溃边界见[实施台账 §3–4](v0.4.5-roadmap-reconciliation.md#3-责任与排期)。
 
 ~~~text
 Phase G0  Compatibility
@@ -1499,7 +1502,7 @@ evidence fingerprint
 + exact duplicate plan fingerprint
 Implementation: [RPG-2 Evidence Guard](rpg-2-evidence-plan-guard.md)
 
-RPG-3  🟡 implemented / CI pending
+RPG-3  ✅ implemented / release CI verified (primitive scope)
 short-cycle detection
 + repeated failure guard
 + progress guard
@@ -1573,4 +1576,4 @@ RPG-4 的退出门槛：
 - approval 后的新 generation 继续受 fencing；
 - reject / abort 能终止 Goal；
 - 关键 negative cases 纳入 CI；
-- RPG-1～3 最新主线 CI 全绿后再宣布 RPG CLOSED。
+- RPG-1～3 最新主线 CI 全绿，且 GI-01～GI-04 的 Goal 执行集成与治理端到端 Gate 通过后再宣布 RPG CLOSED。
