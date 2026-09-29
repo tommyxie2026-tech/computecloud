@@ -205,7 +205,10 @@ make build
 ./bin/computecloud version
 make test
 make smoke
+make ci-container-image
 ~~~
+
+`make ci-container-image` 使用 Docker Buildx 构建并验证 Server/Worker 的 linux/amd64 + linux/arm64 OCI 镜像，同时执行镜像体积预算和本机 smoke。容器部署与 GHCR tag 规则见 [多架构容器镜像部署](docs/deployment/container-images.md)。
 
 make smoke 临时启动一个 server、两个 Worker 进程和协议测试程序，验证执行、取消、崩溃恢复、事件与产物、备份；结束后清理临时目录。
 
@@ -218,6 +221,8 @@ make ci-flow 启动真实 Server 和两个 Worker 进程，使用 Codex/Claude �
 ## 部署原则
 
 - 一个 Go 二进制同时提供 server、worker 和 CLI。
+- 容器交付仍使用同一个 binary，只提供轻量 server image 与 runtime-compatible worker base image 两种 filesystem target。
+- Server 容器使用 scratch/non-root；Worker base 使用 Debian slim + Git/SSH，Agent Runtime CLI 不打入基础镜像。
 - 一个活动 server 通过 gRPC 管理多个主动连接 Worker。
 - Server 与 Worker 各自使用本机 SQLite。
 - 不要求 PostgreSQL、Redis、Kafka、etcd 或外部 Workflow Engine。
@@ -278,6 +283,8 @@ Worker / Runtime / Tool / Environment
 - [ADR-018：Re-plan Guard 与自治循环防护](docs/adr/0018-replan-guard-loop-prevention.md)
 - [ADR-019：Prepared Workspace Core](docs/adr/0019-prepared-workspace-core.md)
 - [Prepared Workspace Core 实施记录](docs/implementation/prepared-workspace-core.md)
+- [ADR-020：多架构最小容器镜像交付](docs/adr/0020-multiarch-container-packaging.md)
+- [多架构容器镜像部署与发布](docs/deployment/container-images.md)
 - [RPG-1 Re-plan Guard Foundation](docs/implementation/rpg-1-replan-guard-foundation.md)
 - [RPG-2 Evidence Guard](docs/implementation/rpg-2-evidence-plan-guard.md)
 - [RPG-3 Loop / Progress Guard](docs/implementation/rpg-3-loop-progress-guard.md)

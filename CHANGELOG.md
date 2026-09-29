@@ -1,5 +1,16 @@
 # 版本记录
 
+## 未发布 — Multi-arch Container Packaging
+
+- 新增单 Dockerfile 双 target：Server 使用 scratch + CA + non-root，Worker 使用 Debian slim + Git/SSH + non-root。
+- 容器正式支持 linux/amd64 与 linux/arm64；Go binary 使用 CGO_ENABLED=0、trimpath、-s/-w 交叉编译。
+- 基础 Worker 镜像不捆绑 Codex/Claude/Node/Python/Go/Browser，Runtime 通过派生镜像、挂载或 EnvironmentProvider 管理。
+- 新增 OCI manifest/size validator；初始压缩预算 server <= 35 MiB、worker <= 100 MiB/architecture。
+- 新增独立 `container-image` CI Gate，执行 multi-arch build、size budget 与 amd64 version/git smoke。
+- main/tag 在完整 Gate 后发布 `computecloud-server` / `computecloud-worker` 到 GHCR；正式 push 启用 SBOM + provenance。
+- GitHub Release 继续保留原 amd64/arm64 tar.gz，并附加 `CONTAINER_IMAGES.txt` 记录 immutable image digest。
+- 明确不使用 UPX，不把容器化演进成微服务拆分，不用容器镜像替代现有 binary release。
+
 ## 0.4.5 — Prepared Workspace / Safe Control 阶段性交付
 
 正式发布以 `v0.4.5` GitHub Release 及其完整 CI 成功为准；本节也作为发布候选的范围声明。

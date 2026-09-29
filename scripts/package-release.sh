@@ -46,6 +46,7 @@ for arch in amd64 arm64; do
   cp README.md CHANGELOG.md "$root/"
   cp docs/deployment/production-v0.4.5.md "$root/DEPLOYMENT.md"
   cp docs/deployment/production-v0.2.md "$root/DEPLOYMENT-v0.2.md"
+  cp docs/deployment/container-images.md "$root/CONTAINERS.md"
   cp -R examples "$root/"
   cp -R docs/examples/v0.2 "$root/examples/v0.2"
   tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \

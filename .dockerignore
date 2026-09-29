@@ -1,0 +1,12 @@
+.git
+.github
+bin
+dist
+data
+secrets
+*.db
+*.db-shm
+*.db-wal
+coverage*
+.DS_Store
+docs
