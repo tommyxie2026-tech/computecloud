@@ -36,6 +36,7 @@ def main():
         "TestPreparedWorkspaceDetectsTemplateTampering",
         "TestPreparedWorkspaceRejectsReferenceMismatchAndExistingAttempt",
         "TestPreparedWorkspaceWorkerReusesTemplateWithoutSharingWritableState",
+        "TestPreparedWorkspaceTemplateFingerprintTracksExecutionVersions",
         "TestWorkspaceGenerationIsolationAndOwnership",
         "TestWorkspaceRecoveryUsesPreSpawnProofAndQuarantinesUnknown",
     ]
@@ -82,6 +83,7 @@ def main():
             "corruption_fail_closed": True,
             "attempt_generation_isolation": True,
             "worker_prepared_template_integration": True,
+            "execution_component_version_fencing": True,
             "no_public_job_contract_change": True,
         },
         "tests": tests,
