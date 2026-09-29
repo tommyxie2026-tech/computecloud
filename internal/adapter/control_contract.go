@@ -56,6 +56,7 @@ func builtinControlDescriptor(p Provider) ControlDescriptor {
 
 func (p codexProvider) ControlDescriptor() ControlDescriptor  { return builtinControlDescriptor(p) }
 func (p claudeProvider) ControlDescriptor() ControlDescriptor { return builtinControlDescriptor(p) }
+func (p geminiProvider) ControlDescriptor() ControlDescriptor { return builtinControlDescriptor(p) }
 
 // SessionControlProvider is implemented only by runtimes that can bind a stable
 // native session reference to an authoritative computecloud Attempt generation.
