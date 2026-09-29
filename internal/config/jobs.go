@@ -140,7 +140,7 @@ func (c Server) ValidateV02() error {
 		seen := map[string]bool{}
 		for _, t := range j.Templates {
 			key := t.Key()
-			if seen[key] || !job.ValidHash(t.Digest) || !job.Ref(t.PolicyRef) || !job.Ref(t.AcceptanceProfile) || (t.RuntimeProfile != "codex_exec" && t.RuntimeProfile != "claude_print") {
+			if seen[key] || !job.ValidHash(t.Digest) || !job.Ref(t.RuntimeProfile) || !job.Ref(t.PolicyRef) || !job.Ref(t.AcceptanceProfile) {
 				return fmt.Errorf("invalid or duplicate job template")
 			}
 			seen[key] = true

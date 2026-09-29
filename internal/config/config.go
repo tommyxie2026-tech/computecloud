@@ -59,6 +59,7 @@ type Policy struct {
 	CodexSandbox         string   `yaml:"codex_sandbox"`
 	ClaudeAllowedTools   []string `yaml:"claude_allowed_tools"`
 	ClaudePermissionMode string   `yaml:"claude_permission_mode"`
+	GeminiApprovalMode   string   `yaml:"gemini_approval_mode" json:"GeminiApprovalMode,omitempty"`
 	AllowedTools         []string `yaml:"allowed_tools" json:"AllowedTools,omitempty"`
 	AllowedEnvironments  []string `yaml:"allowed_environments" json:"AllowedEnvironments,omitempty"`
 }
@@ -213,6 +214,9 @@ func (c Worker) Validate() error {
 		}
 	}
 	for ref, policy := range c.Policies {
+		if policy.GeminiApprovalMode != "" && policy.GeminiApprovalMode != "plan" && policy.GeminiApprovalMode != "auto_edit" {
+			return fmt.Errorf("invalid gemini approval mode in policy %q", ref)
+		}
 		seen := map[string]bool{}
 		for _, name := range policy.AllowedTools {
 			if !tool.ValidName(name) || seen[name] {
