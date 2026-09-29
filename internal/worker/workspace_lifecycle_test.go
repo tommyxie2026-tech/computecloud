@@ -300,6 +300,9 @@ func TestPreparedWorkspaceWorkerReusesTemplateWithoutSharingWritableState(t *tes
 	w := &Worker{db: db, cfg: config.Worker{
 		DataDir: dir,
 		Repositories: map[string]string{"repo": repo},
+		Runtimes: map[string]config.Runtime{
+			"codex": {Version: "fixture-runtime-v1"},
+		},
 	}}
 
 	paths := map[string]bool{}
@@ -379,5 +382,16 @@ func TestPreparedWorkspaceTemplateFingerprintTracksExecutionVersions(t *testing.
 	}
 	if t1.Fingerprint() == t2.Fingerprint() {
 		t.Fatal("runtime version change reused the same prepared template identity")
+	}
+}
+
+
+func TestPreparedWorkspaceTemplateRejectsMissingRuntimeVersion(t *testing.T) {
+	a := workspaceAssignment("missing-runtime", "task", 1, "commit")
+	a.Spec.RuntimeProfile = "missing"
+	w := &Worker{cfg: config.Worker{}}
+	if _, err := w.preparedTemplateForAssignment(a, "repo", "commit"); err == nil ||
+		!strings.Contains(err.Error(), "runtime/version") {
+		t.Fatalf("expected missing runtime/version rejection, got %v", err)
 	}
 }
