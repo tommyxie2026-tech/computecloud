@@ -15,7 +15,9 @@ FIXTURE = r'''#!/usr/bin/env python3
 import json, pathlib, sys, time
 if sys.argv[1:] == ['--version']:
     print('control-client-fixture-1'); sys.exit(0)
-prompt = sys.stdin.read()\nif 'hold-control' in prompt:\n    time.sleep(15)
+prompt = sys.stdin.read()
+if 'hold-control' in prompt:
+    time.sleep(15)
 pathlib.Path('README.md').touch()
 if sys.argv[1] == 'exec':
     print(json.dumps({'type':'thread.started','thread_id':'control-client'}))
