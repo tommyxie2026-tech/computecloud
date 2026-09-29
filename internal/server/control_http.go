@@ -28,6 +28,10 @@ func writeControlReceipt(w http.ResponseWriter, receipt *ControlOperationReceipt
 }
 
 func (s *Server) httpSessionInput(w http.ResponseWriter, r *http.Request) {
+	if err := s.requireControlWriteLease(r, r.PathValue("id")); err != nil {
+		httpError(w, err)
+		return
+	}
 	b, err := readJSONBody(w, r, 64<<10)
 	if err != nil {
 		httpError(w, err)
@@ -64,6 +68,10 @@ func (s *Server) httpSessionInput(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) httpSessionInterrupt(w http.ResponseWriter, r *http.Request) {
+	if err := s.requireControlWriteLease(r, r.PathValue("id")); err != nil {
+		httpError(w, err)
+		return
+	}
 	b, err := readJSONBody(w, r, 16<<10)
 	if err != nil {
 		httpError(w, err)
@@ -99,6 +107,10 @@ func (s *Server) httpSessionInterrupt(w http.ResponseWriter, r *http.Request) {
 
 
 func (s *Server) httpSessionResume(w http.ResponseWriter, r *http.Request) {
+	if err := s.requireControlWriteLease(r, r.PathValue("id")); err != nil {
+		httpError(w, err)
+		return
+	}
 	b, err := readJSONBody(w, r, 16<<10)
 	if err != nil {
 		httpError(w, err)
