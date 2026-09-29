@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -32,5 +33,40 @@ func TestNativeFinalAndProtocolBounds(t *testing.T) {
 	p := Parser{Profile: "codex_exec", Emit: func(string, []byte) error { return nil }}
 	if e := p.Line([]byte("not JSON")); e == nil {
 		t.Fatal("invalid JSON accepted")
+	}
+}
+
+
+func TestRuntimeParserEmitsNormalizedSessionStarted(t *testing.T) {
+	for _, tc := range []struct {
+		profile string
+		input   string
+		want    string
+	}{
+		{"codex_exec", `{"type":"thread.started","thread_id":"codex-session-1"}`, "codex-session-1"},
+		{"claude_print", `{"type":"system","session_id":"claude-session-1"}`, "claude-session-1"},
+	} {
+		var gotType string
+		var gotPayload []byte
+		p := Parser{Profile: tc.profile, Emit: func(kind string, payload []byte) error {
+			gotType = kind
+			gotPayload = append([]byte(nil), payload...)
+			return nil
+		}}
+		if err := p.Line([]byte(tc.input)); err != nil {
+			t.Fatal(err)
+		}
+		if gotType != "session.started" {
+			t.Fatalf("%s event type=%s", tc.profile, gotType)
+		}
+		var payload struct {
+			SessionRef string `json:"session_ref"`
+		}
+		if err := json.Unmarshal(gotPayload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.SessionRef != tc.want || p.Outcome().Session != tc.want {
+			t.Fatalf("%s payload=%+v outcome=%+v", tc.profile, payload, p.Outcome())
+		}
 	}
 }
