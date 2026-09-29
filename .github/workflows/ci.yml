@@ -404,9 +404,28 @@ jobs:
           path: dist/ci-agent-control-approval
           if-no-files-found: error
           retention-days: 30
+  container-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and validate minimal multi-arch images
+        run: make ci-container-image
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-container-image-${{ github.run_id }}
+          path: dist/container/report.json
+          if-no-files-found: error
+          retention-days: 30
+
   package:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [verify, task-flow, retry-flow, artifact-flow, workspace-flow, prepared-workspace-contract, prepared-workspace-recovery, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, agent-control-fencing, agent-control-negative, agent-control-dispatch, agent-control-approval]
+    needs: [verify, task-flow, retry-flow, artifact-flow, workspace-flow, prepared-workspace-contract, prepared-workspace-recovery, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, agent-control-fencing, agent-control-negative, agent-control-dispatch, agent-control-approval, container-image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -479,9 +498,136 @@ jobs:
           path: dist/release/*
           if-no-files-found: error
           retention-days: 30
+  container-publish:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [package, container-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Resolve image tags
+        id: tags
+        shell: bash
+        env:
+          VERSION: ${{ needs.package.outputs.version }}
+          RELEASE: ${{ needs.package.outputs.release }}
+          RELEASE_TAG: ${{ needs.package.outputs.tag }}
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          server="ghcr.io/$owner/computecloud-server"
+          worker="ghcr.io/$owner/computecloud-worker"
+          short_sha="${GITHUB_SHA:0:12}"
+          {
+            echo "server_tags<<EOF"
+            if [[ "$RELEASE" == "true" ]]; then
+              echo "$server:$VERSION"
+              echo "$server:$RELEASE_TAG"
+              echo "$server:latest"
+            else
+              echo "$server:edge"
+              echo "$server:sha-$short_sha"
+            fi
+            echo "EOF"
+            echo "worker_tags<<EOF"
+            if [[ "$RELEASE" == "true" ]]; then
+              echo "$worker:$VERSION"
+              echo "$worker:$RELEASE_TAG"
+              echo "$worker:latest"
+            else
+              echo "$worker:edge"
+              echo "$worker:sha-$short_sha"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Publish server image
+        shell: bash
+        env:
+          VERSION: ${{ needs.package.outputs.version }}
+          IMAGE_TAGS: ${{ steps.tags.outputs.server_tags }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/container-publish
+          mapfile -t tags <<<"$IMAGE_TAGS"
+          args=()
+          for tag in "${tags[@]}"; do
+            [[ -n "$tag" ]] && args+=(--tag "$tag")
+          done
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --target server \
+            --build-arg "VERSION=$VERSION" \
+            --build-arg "REVISION=$GITHUB_SHA" \
+            --build-arg "SOURCE=https://github.com/$GITHUB_REPOSITORY" \
+            --provenance=mode=max --sbom=true --push \
+            --metadata-file dist/container-publish/server.json \
+            "${args[@]}" .
+      - name: Publish worker image
+        shell: bash
+        env:
+          VERSION: ${{ needs.package.outputs.version }}
+          IMAGE_TAGS: ${{ steps.tags.outputs.worker_tags }}
+        run: |
+          set -euo pipefail
+          mapfile -t tags <<<"$IMAGE_TAGS"
+          args=()
+          for tag in "${tags[@]}"; do
+            [[ -n "$tag" ]] && args+=(--tag "$tag")
+          done
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --target worker \
+            --build-arg "VERSION=$VERSION" \
+            --build-arg "REVISION=$GITHUB_SHA" \
+            --build-arg "SOURCE=https://github.com/$GITHUB_REPOSITORY" \
+            --provenance=mode=max --sbom=true --push \
+            --metadata-file dist/container-publish/worker.json \
+            "${args[@]}" .
+      - name: Record image digests
+        shell: bash
+        env:
+          VERSION: ${{ needs.package.outputs.version }}
+          SERVER_TAGS: ${{ steps.tags.outputs.server_tags }}
+          WORKER_TAGS: ${{ steps.tags.outputs.worker_tags }}
+        run: |
+          set -euo pipefail
+          server_digest="$(python3 -c 'import json; print(json.load(open("dist/container-publish/server.json"))["containerimage.digest"])')"
+          worker_digest="$(python3 -c 'import json; print(json.load(open("dist/container-publish/worker.json"))["containerimage.digest"])')"
+          {
+            echo "computecloud container images"
+            echo "version=$VERSION"
+            echo "source_sha=$GITHUB_SHA"
+            echo
+            echo "[server]"
+            printf '%s\n' "$SERVER_TAGS"
+            echo "digest=$server_digest"
+            echo
+            echo "[worker]"
+            printf '%s\n' "$WORKER_TAGS"
+            echo "digest=$worker_digest"
+          } > dist/container-publish/CONTAINER_IMAGES.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: computecloud-container-${{ needs.package.outputs.version }}
+          path: dist/container-publish/*
+          if-no-files-found: error
+          retention-days: 30
+
   release:
     if: needs.package.outputs.release == 'true'
-    needs: package
+    needs: [package, container-publish]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -492,6 +638,16 @@ jobs:
         with:
           name: computecloud-${{ needs.package.outputs.version }}
           path: dist/release
+      - name: Download container image metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: computecloud-container-${{ needs.package.outputs.version }}
+          path: dist/container-meta
+      - name: Add container digests to release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp dist/container-meta/CONTAINER_IMAGES.txt dist/release/CONTAINER_IMAGES.txt
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
