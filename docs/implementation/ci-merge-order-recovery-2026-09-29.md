@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 范围：2026-09-28 ～ 2026-09-29 main / release 合并窗口
-- 当前结论：main@607d1d417b3bf0fc9da5c0d5faef42b16026d045 的 Go workflow run 36575512360 全部 23 个 Gate PASS，含 package 与 release。
+- 当前结论：v0.4.5 release CI 已稳定；后续按顺序合入 ACP-4b Resume、multi-arch packaging、ACP-5 Gemini。当前 main@602bb4d080753b1c43f32ada88521d67222492a2 的 workflow 36591386173 全功能 Gate、verify、package、container-image、container-publish 全部 PASS。
 
 ## 1. 当前最终状态
 
@@ -197,3 +197,86 @@ CI 当前无红灯。剩余补齐项：
 3. ACP-4b PR #50 已关闭未合并，不能继续作为在途实现；
 4. 下一 ACP-4b Resume 从 v0.4.5 main 重新建立实现基线；
 5. Resume compatibility 必须复用 Prepared Workspace 的 Runtime/Tool/Environment fingerprint，不建立第二套兼容判断。
+
+
+## 8. 第三段恢复：ACP-4b / Packaging / ACP-5（2026-09-29 ～ 2026-09-30）
+
+### 8.1 ACP-4b Resume
+
+旧 `feature/agent-control-acp4b-resume` 分支和 PR #50/#56 保留了失败 CI，但均已关闭且未合并，不能继续作为主线状态依据。
+
+最终 main 实现：
+
+- `ca2264e9d026b6cd2c2c002e41191041f533d185` — complete ACP-4b session resume on v0.4.5；
+- `agent-control-resume` Gate 已进入 main 并持续 PASS。
+
+结论：历史失败属于被 supersede 的旧实现，不应回头逐 commit 修复。
+
+### 8.2 Multi-arch Packaging
+
+唯一开放前置 PR #65 先于 ACP-5 合并：
+
+- PR #65 -> `43bc4c1d23f6cb94ce1c42bc1f52e5687ec1b8ed`；
+- PR-head CI PASS；
+- 合并后 main CI `36590126802` PASS。
+
+这样保证 ACP-5 的最终 merge-result CI 在最新 packaging main 上验证。
+
+### 8.3 ACP-5 Gemini stale branch
+
+原 `feature/acp5-gemini-runtime`：
+
+- 只领先 1 个功能提交；
+- 落后 main 44 个提交；
+- run `36572067673` 出现 21 个 Gate 同时失败。
+
+这不是 21 个独立缺陷，而是旧基线导致的 contract/fixture/compile 漂移。
+
+恢复策略：
+
+1. 不 hard-rebase 旧分支；
+2. 从最新 main 新建 `feature/acp5-gemini-runtime-refresh`；
+3. 只移植 Gemini 功能语义；
+4. 同时修正旧提交遗漏的 Job JSON Schema provider-neutral contract；
+5. PR #66 merge-result CI 全绿后再合并。
+
+最终：
+
+- PR #66 -> `602bb4d080753b1c43f32ada88521d67222492a2`；
+- main CI `36591386173`：
+  - all runtime/control/workspace gates PASS；
+  - verify PASS；
+  - package PASS；
+  - container-image PASS；
+  - container-publish PASS；
+  - release 在普通 main push 按设计 skipped。
+
+### 8.4 当前失败分类规则
+
+后续看到 GitHub Actions 红灯时按以下顺序判断：
+
+~~~text
+1. 是否为当前 main / 当前开放 PR？
+   no -> 判断是否 superseded，不修历史分支
+   yes
+    ↓
+2. 是否为 merge-result CI？
+   no -> 先同步最新 main
+   yes
+    ↓
+3. 是否为共享 contract 变更？
+   yes -> 同步 fixture / migration / lifecycle consumer
+   no
+    ↓
+4. 修复单一真实 Gate
+    ↓
+5. verify
+    ↓
+6. package / container
+    ↓
+7. merge
+    ↓
+8. main CI
+~~~
+
+截至 `36591386173`，当前 main 无未解决 CI 红灯。
