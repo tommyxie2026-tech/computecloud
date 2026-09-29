@@ -179,11 +179,12 @@ func TestAgentControlWorkerFailsClosedForUncertifiedRuntime(t *testing.T) {
 
 
 func TestAgentControlWorkerExecutesApprovalAtMostOnce(t *testing.T) {
-	d, err := store.Open(t.TempDir(), store.WorkerSchema)
+	dir := t.TempDir()
+	d, err := store.Open(dir, store.WorkerSchema)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer d.Close()
+	defer func() { d.Close() }()
 	provider := &controlWorkerFixture{profile: "control_worker_approval_fixture"}
 	if err = adapter.Register(provider); err != nil {
 		t.Fatal(err)
@@ -214,6 +215,16 @@ func TestAgentControlWorkerExecutesApprovalAtMostOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A completed decision must replay from the durable ledger after restart,
+	// without invoking the Provider again.
+	if err = d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	d, err = store.Open(dir, store.WorkerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = &Worker{db: d}
 	second, err := w.executeControl(context.Background(), cmd)
 	if err != nil {
 		t.Fatal(err)

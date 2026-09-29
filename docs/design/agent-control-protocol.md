@@ -398,6 +398,16 @@ sequenceDiagram
 6. Adapter 执行 approval。
 7. Approval result 独立持久化并审计。
 
+ACK 落库约束（WS-E）：首次结果必须仍属于当前、未 released 的 Attempt/generation，
+并与命令指定 Worker 一致；检查与结果写入位于同一 SQLite 事务。
+终态 receipt 不可改写：相同规范化 ACK 重放成功且不追加事件，冲突 ACK 返回
+`OPERATION_CONFLICT`。已经提交的相同终态 ACK 即使在代次切换后重放，也只读取原结果；
+尚未提交的旧代次 ACK 返回 `ATTEMPT_FENCED`，不会触发 Runtime 自动重试。
+
+本节的 `ApprovalRequest` 是 Runtime Approval。Goal Governance 的 Re-plan / Budget /
+Constraint Approval 使用独立领域 contract 与 Governance API；Control 仅在该 API
+完成后提供投影/调用，不把 Goal 审批写入 Runtime approval ledger 或交给 Adapter。
+
 ### 9.3 Resume
 
 Resume 必须满足：
