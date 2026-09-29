@@ -48,6 +48,8 @@ func requiredControlCapability(in ControlOperationRequest) (control.Capability, 
 		}
 	case "interrupt":
 		return control.CapabilityInterrupt, payload, nil
+	case "resume":
+		return control.CapabilitySessionResume, payload, nil
 	case "approval":
 		var decision approvalDecisionPayload
 		if len(in.Payload) == 0 || json.Unmarshal(in.Payload, &decision) != nil {
@@ -197,6 +199,9 @@ func (s *Server) dispatchControlOperation(ctx context.Context, principalID, jobI
 		if err := q.QueryRowContext(ctx, "SELECT worker,native_session FROM tasks WHERE id=?", in.TaskID).
 			Scan(&workerID, &nativeSession); err != nil {
 			return err
+		}
+		if in.OperationType == "resume" && nativeSession == "" {
+			return status.Error(codes.FailedPrecondition, control.ErrorExecutionUnverifiable.String())
 		}
 		cmd := &pb.Command{
 			CommandId: commandID,
