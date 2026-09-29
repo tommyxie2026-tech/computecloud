@@ -184,7 +184,6 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "engine",
         "runtime_profile",
         "model",
         "credential_ref",
@@ -199,10 +198,7 @@
           ]
         },
         "runtime_profile": {
-          "enum": [
-            "codex_exec",
-            "claude_print"
-          ]
+          "$ref": "#/$defs/ref"
         },
         "model": {
           "$ref": "#/$defs/ref"
@@ -236,6 +232,9 @@
       "allOf": [
         {
           "if": {
+            "required": [
+              "engine"
+            ],
             "properties": {
               "engine": {
                 "const": "codex"
@@ -248,8 +247,20 @@
                 "const": "codex_exec"
               }
             }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "engine"
+            ],
+            "properties": {
+              "engine": {
+                "const": "claude"
+              }
+            }
           },
-          "else": {
+          "then": {
             "properties": {
               "runtime_profile": {
                 "const": "claude_print"
