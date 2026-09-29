@@ -148,3 +148,24 @@ export type JobSnapshot = {
   artifacts: ArtifactView[];
   events: JobEvent[];
 };
+
+
+export type ControlWriteLease = {
+  job_id: string;
+  holder_id: string;
+  lease_token: string;
+  expires_at_ms: number;
+};
+
+export type ControlOperationReceipt = {
+  operation_id: string;
+  state: string;
+  job_id: string;
+  task_id?: string;
+  attempt_id?: string;
+  generation?: number;
+  resource_version?: number;
+  existing?: boolean;
+  error_code?: string;
+  error_message?: string;
+};
