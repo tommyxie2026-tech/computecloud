@@ -52,8 +52,15 @@ const [job, tasks, sessions, approvals, artifacts, events] = await Promise.all([
   request("/v1/jobs/" + target + "/events?after_seq=0&limit=500").then((r) => r.json()),
 ]);
 if (job.state !== "SUCCEEDED") throw new Error("fixture job not terminal-success");
+const detailCounts = {
+  tasks: Array.isArray(tasks.tasks) ? tasks.tasks.length : -1,
+  sessions: Array.isArray(sessions.sessions) ? sessions.sessions.length : -1,
+  approvals: Array.isArray(approvals.approvals) ? approvals.approvals.length : -1,
+  artifacts: Array.isArray(artifacts.artifacts) ? artifacts.artifacts.length : -1,
+  events: Array.isArray(events.events) ? events.events.length : -1,
+};
 if (!tasks.tasks.length || !sessions.sessions.length || !artifacts.artifacts.length || !Array.isArray(approvals.approvals)) {
-  throw new Error("job detail projections incomplete");
+  throw new Error("job detail projections incomplete: " + JSON.stringify(detailCounts));
 }
 if (!events.events.length) throw new Error("durable events missing");
 
