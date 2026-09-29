@@ -38,6 +38,11 @@ func controlCapability(cmd *pb.ControlCommand) (control.Capability, error) {
 		}
 	case "interrupt":
 		return control.CapabilityInterrupt, nil
+	case "resume":
+		if cmd.SessionRef == "" {
+			return "", errors.New("session_ref required for resume")
+		}
+		return control.CapabilitySessionResume, nil
 	case "approval":
 		if cmd.ApprovalId == "" || cmd.RequestVersion < 1 ||
 			(cmd.Decision != "ACCEPT" && cmd.Decision != "REJECT") {
@@ -102,9 +107,9 @@ func (w *Worker) executeControl(ctx context.Context, c *pb.Command) (*pb.Command
 			return e
 		}
 		var assignmentRaw, runtimeRefRaw []byte
-		var runtimeProvider, runtimeState string
-		e = q.QueryRowContext(ctx, "SELECT assignment,runtime_provider,runtime_ref,runtime_state FROM runs WHERE id=? AND completion IS NULL", cmd.AttemptId).
-			Scan(&assignmentRaw, &runtimeProvider, &runtimeRefRaw, &runtimeState)
+		var runtimeProvider, runtimeState, environmentState string
+		e = q.QueryRowContext(ctx, "SELECT assignment,runtime_provider,runtime_ref,runtime_state,environment_state FROM runs WHERE id=? AND completion IS NULL", cmd.AttemptId).
+			Scan(&assignmentRaw, &runtimeProvider, &runtimeRefRaw, &runtimeState, &environmentState)
 		if e != nil {
 			if errors.Is(e, sql.ErrNoRows) {
 				return errors.New("attempt unavailable for control")
@@ -118,7 +123,31 @@ func (w *Worker) executeControl(ctx context.Context, c *pb.Command) (*pb.Command
 		if a.TaskId != cmd.TaskId || a.AttemptId != cmd.AttemptId || a.Generation != cmd.Generation {
 			return errors.New("control attempt identity conflict")
 		}
-		if runtimeProvider == "" || len(runtimeRefRaw) == 0 || runtimeState != string(adapter.RuntimeRunning) {
+		if runtimeProvider == "" || len(runtimeRefRaw) == 0 {
+			_, e = q.ExecContext(ctx, "INSERT INTO commands(id,hash,state,attempt,operation_id,updated,error_code,error_message) VALUES(?,?,?,?,?,?,?,?)",
+				c.CommandId, hash, "REJECTED", cmd.AttemptId, cmd.OperationId, store.Now(),
+				control.ErrorExecutionUnverifiable.String(), "runtime reference unavailable")
+			if e == nil {
+				replay = w.controlAck(c.CommandId, cmd, "REJECTED", control.ErrorExecutionUnverifiable.String(), "runtime reference unavailable")
+			}
+			return e
+		}
+		if cmd.Action == "resume" {
+			var workspaceState string
+			if e = q.QueryRowContext(ctx, "SELECT state FROM workspaces WHERE attempt=?", cmd.AttemptId).Scan(&workspaceState); e != nil {
+				return e
+			}
+			if workspaceState != "IN_USE" || environmentState != "ACTIVE" ||
+				(runtimeState != string(adapter.RuntimeUnknown) && runtimeState != string(adapter.RuntimeRunning)) {
+				_, e = q.ExecContext(ctx, "INSERT INTO commands(id,hash,state,attempt,operation_id,updated,error_code,error_message) VALUES(?,?,?,?,?,?,?,?)",
+					c.CommandId, hash, "REJECTED", cmd.AttemptId, cmd.OperationId, store.Now(),
+					control.ErrorExecutionUnverifiable.String(), "resume compatibility check failed")
+				if e == nil {
+					replay = w.controlAck(c.CommandId, cmd, "REJECTED", control.ErrorExecutionUnverifiable.String(), "resume compatibility check failed")
+				}
+				return e
+			}
+		} else if runtimeState != string(adapter.RuntimeRunning) {
 			_, e = q.ExecContext(ctx, "INSERT INTO commands(id,hash,state,attempt,operation_id,updated,error_code,error_message) VALUES(?,?,?,?,?,?,?,?)",
 				c.CommandId, hash, "REJECTED", cmd.AttemptId, cmd.OperationId, store.Now(),
 				control.ErrorExecutionUnverifiable.String(), "runtime is not in a controllable running state")
@@ -187,6 +216,32 @@ func (w *Worker) executeControl(ctx context.Context, c *pb.Command) (*pb.Command
 			Ref: ref, SessionRef: cmd.SessionRef, AttemptID: cmd.AttemptId,
 			Generation: cmd.Generation,
 		})
+	case "resume":
+		var resumed adapter.ExecutionRef
+		resumed, err = sessionProvider.Resume(ctx, adapter.ControlResumeRequest{
+			Ref: ref, SessionRef: cmd.SessionRef, AttemptID: cmd.AttemptId,
+			Generation: cmd.Generation,
+		})
+		if err == nil {
+			if resumed.Provider != runtimeProvider || resumed.Transport == "" || resumed.ID == "" {
+				err = errors.New("resume returned incompatible runtime reference")
+			} else if raw, encodeErr := adapter.EncodeExecutionRef(resumed); encodeErr != nil {
+				err = encodeErr
+			} else {
+				res, persistErr := w.db.SQL.ExecContext(ctx, `UPDATE runs
+					SET runtime_transport=?,runtime_ref=?,runtime_state=?,runtime_cleanup=?
+					WHERE id=? AND completion IS NULL AND runtime_provider=?`,
+					resumed.Transport, raw, string(adapter.RuntimeRunning), string(adapter.CleanupPending),
+					cmd.AttemptId, runtimeProvider)
+				if persistErr != nil {
+					err = persistErr
+				} else if rows, rowsErr := res.RowsAffected(); rowsErr != nil {
+					err = rowsErr
+				} else if rows != 1 {
+					err = errors.New("resume lost Attempt ownership")
+				}
+			}
+		}
 	case "approval":
 		err = sessionProvider.Approve(ctx, adapter.ControlApprovalRequest{
 			Ref: ref, SessionRef: cmd.SessionRef, AttemptID: cmd.AttemptId,
