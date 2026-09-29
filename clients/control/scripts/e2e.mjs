@@ -44,7 +44,8 @@ if (!workers.workers.length || !workers.workers.every((worker) => worker.worker_
   throw new Error("worker collection missing runtime projection");
 }
 
-const target = allJobs[0].job_id;
+const target = allJobs.find((item) => item.job_id !== writeJob && item.state === "SUCCEEDED")?.job_id;
+if (!target) throw new Error("no terminal-success fixture job available for C1 detail checks");
 const [job, tasks, sessions, approvals, artifacts, events] = await Promise.all([
   request("/v1/jobs/" + target).then((r) => r.json()),
   request("/v1/jobs/" + target + "/tasks?limit=100").then((r) => r.json()),
