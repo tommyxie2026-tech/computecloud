@@ -53,7 +53,7 @@ func (f fixtureProvider) Capabilities() CapabilitySet {
 func (f fixtureProvider) SupportsGateway() bool { return false }
 
 func TestRuntimeV2BuiltinsAndCapabilityNamespaces(t *testing.T) {
-	wantProfiles := []string{"claude_print", "codex_exec"}
+	wantProfiles := []string{"claude_print", "codex_exec", "gemini_cli"}
 	got := Profiles()
 	if !reflect.DeepEqual(got, wantProfiles) {
 		t.Fatalf("profiles=%v want=%v", got, wantProfiles)
@@ -138,6 +138,7 @@ func TestRuntimeV2CompatibilityArgs(t *testing.T) {
 	}{
 		{"codex_exec", config.Policy{CodexSandbox: "read-only"}},
 		{"claude_print", config.Policy{ClaudePermissionMode: "dontAsk"}},
+		{"gemini_cli", config.Policy{GeminiApprovalMode: "plan"}},
 	} {
 		spec := &pb.TaskSpec{RuntimeProfile: tc.profile, Model: "fixture-model"}
 		legacy, err := Args(spec, tc.policy)
@@ -218,5 +219,35 @@ func TestRemoteFixtureExecutionContractUsesNoLocalPID(t *testing.T) {
 	inspection, err := p.Inspect(context.Background(), config.Runtime{}, persisted)
 	if err != nil || inspection.State != RuntimeExited || inspection.Cleanup != CleanupConfirmed {
 		t.Fatalf("remote inspect=%+v err=%v", inspection, err)
+	}
+}
+
+
+func TestGeminiRuntimeV2Contract(t *testing.T) {
+	p, ok := Lookup("gemini_cli")
+	if !ok {
+		t.Fatal("gemini provider missing")
+	}
+	if p.SupportsGateway() {
+		t.Fatal("gemini unexpectedly supports model gateway")
+	}
+	spec := &pb.TaskSpec{RuntimeProfile: "gemini_cli", Model: "gemini-fixture"}
+	args, err := p.Args(spec, config.Policy{GeminiApprovalMode: "plan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--output-format", "stream-json", "--approval-mode", "plan", "--skip-trust", "--model", "gemini-fixture"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("gemini args=%v want=%v", args, want)
+	}
+	if _, err := p.Args(spec, config.Policy{}); err == nil {
+		t.Fatal("gemini accepted implicit approval policy")
+	}
+	desc, ok, err := ControlDescriptorFor(p)
+	if err != nil || !ok {
+		t.Fatalf("gemini control descriptor missing: ok=%v err=%v", ok, err)
+	}
+	if len(desc.Capabilities) == 0 {
+		t.Fatal("gemini lost certified stream/cancel control capabilities")
 	}
 }
