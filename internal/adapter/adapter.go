@@ -240,10 +240,19 @@ func (p *Parser) Line(line []byte) error {
 	str := func(k string) string { var s string; _ = json.Unmarshal(m[k], &s); return s }
 	kind := str("type")
 	typ := "runtime.diagnostic"
+	payload := line
+	sessionStarted := func(session string) {
+		if session == "" {
+			return
+		}
+		p.outcome.Session = session
+		typ = "session.started"
+		payload, _ = json.Marshal(map[string]string{"session_ref": session})
+	}
 	if p.Profile == "codex_exec" {
 		switch kind {
 		case "thread.started":
-			p.outcome.Session = str("thread_id")
+			sessionStarted(str("thread_id"))
 		case "turn.completed":
 			p.outcome.Final = true
 			p.outcome.Success = p.outcome.Code == ""
@@ -270,9 +279,7 @@ func (p *Parser) Line(line []byte) error {
 	} else {
 		switch kind {
 		case "system":
-			if s := str("session_id"); s != "" {
-				p.outcome.Session = s
-			}
+			sessionStarted(str("session_id"))
 		case "assistant":
 			typ = "message.completed"
 		case "stream_event":
@@ -296,7 +303,7 @@ func (p *Parser) Line(line []byte) error {
 	if p.Emit == nil {
 		return nil
 	}
-	return p.Emit(typ, line)
+	return p.Emit(typ, payload)
 }
 
 func Args(spec *pb.TaskSpec, policy config.Policy) ([]string, error) {
