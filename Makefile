@@ -1,7 +1,7 @@
 GO ?= go
 VERSION ?= 0.4.4
 
-.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-prepared-workspace-contract ci-long-run-flow ci-fair-flow ci-runtime-contract-flow ci-runtime-execution-flow ci-tool-contract-flow ci-environment-contract-flow ci-environment-execution-flow ci-agent-control-schema ci-agent-control-read ci-runtime-adapter-contract ci-agent-control-fencing ci-agent-control-negative ci-agent-control-dispatch ci-agent-control-approval ci-agent-control-resume capacity capacity-check release-package generate
+.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-prepared-workspace-contract ci-prepared-workspace-recovery ci-long-run-flow ci-fair-flow ci-runtime-contract-flow ci-runtime-execution-flow ci-tool-contract-flow ci-environment-contract-flow ci-environment-execution-flow ci-agent-control-schema ci-agent-control-read ci-runtime-adapter-contract ci-agent-control-fencing ci-agent-control-negative ci-agent-control-dispatch ci-agent-control-approval ci-agent-control-resume capacity capacity-check release-package generate
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w -X main.version=$(VERSION)' -o bin/computecloud ./cmd/computecloud
 test:
@@ -22,6 +22,8 @@ ci-workspace-flow:
 	python3 scripts/ci_workspace_flow.py --output dist/ci-workspace-flow/report.json
 ci-prepared-workspace-contract:
 	python3 scripts/ci_prepared_workspace_contract.py --output dist/ci-prepared-workspace-contract/report.json
+ci-prepared-workspace-recovery:
+	python3 scripts/ci_prepared_workspace_recovery.py --output dist/ci-prepared-workspace-recovery/report.json
 ci-long-run-flow:
 	python3 scripts/ci_long_run_flow.py --output dist/ci-long-run-flow/report.json
 ci-fair-flow:
