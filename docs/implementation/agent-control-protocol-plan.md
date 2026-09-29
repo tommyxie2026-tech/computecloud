@@ -3,7 +3,7 @@
 - 项目：computecloud
 - 日期：2026-09-29
 - 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3、ACP-4a 与 WS-E ACK PR #51 已合入并通过 v0.4.5 发布 CI；Goal bridge 依赖 WS-D；ACP-4b 当前见 PR #60，尚未进入本次基线
-- 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
+- 当前主线：v0.4.5 Prepared Workspace / Safe Control 已发布；下一横向控制主线为 ACP-4b Session Resume
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
 - 调研：[Agent 客户端控制端方案调研](../research/agent-control-client-landscape-2026.md)
