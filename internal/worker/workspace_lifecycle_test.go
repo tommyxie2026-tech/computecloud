@@ -300,6 +300,9 @@ func TestPreparedWorkspaceWorkerReusesTemplateWithoutSharingWritableState(t *tes
 	w := &Worker{db: db, cfg: config.Worker{
 		DataDir: dir,
 		Repositories: map[string]string{"repo": repo},
+		Runtimes: map[string]config.Runtime{
+			"codex": {Version: "fixture-runtime-v1"},
+		},
 	}}
 
 	paths := map[string]bool{}
@@ -346,5 +349,49 @@ func TestPreparedWorkspaceWorkerReusesTemplateWithoutSharingWritableState(t *tes
 	}
 	if templateDirs != 1 {
 		t.Fatalf("10 attempts should reuse exactly one prepared template, got %d", templateDirs)
+	}
+}
+
+
+func TestPreparedWorkspaceTemplateFingerprintTracksExecutionVersions(t *testing.T) {
+	a := workspaceAssignment("fingerprint", "task", 1, "commit")
+	a.Spec.RuntimeProfile = "codex_exec"
+	a.Spec.Model = "model-a"
+	a.Spec.RequiredCapabilities = []string{"environment:process", "tool:job_io_v1"}
+
+	w1 := &Worker{cfg: config.Worker{Runtimes: map[string]config.Runtime{
+		"codex_exec": {Version: "runtime-v1"},
+	}}}
+	w2 := &Worker{cfg: config.Worker{Runtimes: map[string]config.Runtime{
+		"codex_exec": {Version: "runtime-v2"},
+	}}}
+
+	t1, err := w1.preparedTemplateForAssignment(a, "repo", "commit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t2, err := w2.preparedTemplateForAssignment(a, "repo", "commit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if t1.RuntimeFingerprint == t2.RuntimeFingerprint {
+		t.Fatal("runtime version change did not invalidate prepared template fingerprint")
+	}
+	if t1.EnvironmentFingerprint == "" || t1.ToolFingerprint == "" {
+		t.Fatalf("execution component fingerprints missing: %+v", t1)
+	}
+	if t1.Fingerprint() == t2.Fingerprint() {
+		t.Fatal("runtime version change reused the same prepared template identity")
+	}
+}
+
+
+func TestPreparedWorkspaceTemplateRejectsMissingRuntimeVersion(t *testing.T) {
+	a := workspaceAssignment("missing-runtime", "task", 1, "commit")
+	a.Spec.RuntimeProfile = "missing"
+	w := &Worker{cfg: config.Worker{}}
+	if _, err := w.preparedTemplateForAssignment(a, "repo", "commit"); err == nil ||
+		!strings.Contains(err.Error(), "runtime/version") {
+		t.Fatalf("expected missing runtime/version rejection, got %v", err)
 	}
 }
