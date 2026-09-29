@@ -44,9 +44,21 @@ docker buildx build --platform linux/amd64 --target server \
   --build-arg "VERSION=$version" --build-arg "REVISION=${GITHUB_SHA:-local}" \
   --load -t computecloud-server:ci .
 docker run --rm --entrypoint /computecloud computecloud-server:ci version | grep -F "computecloud $version "
+test "$(docker image inspect --format '{{.Config.User}}' computecloud-server:ci)" = "65532:65532"
+if docker run --rm --entrypoint /bin/sh computecloud-server:ci -c true >/dev/null 2>&1; then
+  echo "server image unexpectedly contains /bin/sh" >&2
+  exit 1
+fi
 
 docker buildx build --platform linux/amd64 --target worker \
   --build-arg "VERSION=$version" --build-arg "REVISION=${GITHUB_SHA:-local}" \
   --load -t computecloud-worker:ci .
 docker run --rm --entrypoint /usr/local/bin/computecloud computecloud-worker:ci version | grep -F "computecloud $version "
-docker run --rm --entrypoint git computecloud-worker:ci --version
+test "$(docker image inspect --format '{{.Config.User}}' computecloud-worker:ci)" = "65532:65532"
+docker run --rm --entrypoint sh computecloud-worker:ci -ec '
+  test "$(id -u)" = "65532"
+  command -v git >/dev/null
+  command -v ssh >/dev/null
+  ! command -v codex >/dev/null
+  ! command -v claude >/dev/null
+'
