@@ -18,7 +18,7 @@ Orca、Paseo、Happy、Soromi、Codex Mobile 和 Claude Code Remote Control 均�
 3. 客户端采用无状态/弱状态设计：本地只保存设备凭据、用户偏好和可重建缓存，不保存权威任务状态。
 4. 第一可用版本为响应式 Web/PWA；验证工作流后使用 React Native + Expo 共享 Web、iOS、Android 代码。
 5. v0.3/v0.4 直接连接现有 HTTPS API，并增加 SSE；不提前增加独立 BFF、MQ 或外部数据库。
-6. 公网/NAT 场景得到验证后，才增加可选 E2EE Relay。Relay 只转发密文，不参与调度、租约或状态判断。
+6. 公网/NAT 场景得到验证后，才增加可选 E2EE Relay。Relay 只转发密文，不参与调度、租约或状态判断。Server–Worker 的网络回退遵循 [ADR-021](0021-relay-assisted-p2p-transport.md)：直连优先、Relay 回退、内层 TLS 端到端。
 7. 手机永不成为通用 Worker。受限 Android 边缘执行若未来存在需求，作为单独 Worker 类型设计和验收。
 8. 客户端新增写操作必须具备权限范围、`operation_id`、预期资源版本和 Attempt generation fencing。
 
