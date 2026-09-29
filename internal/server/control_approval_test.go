@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -241,11 +244,34 @@ func TestControlApprovalHTTPProjectionAndDecision(t *testing.T) {
 		"request_version": 1, "decision": "ACCEPT",
 	})
 	path := "/v1/jobs/" + jobID + "/approvals/approval"
-	code, body = h.request(t, "POST", path, "", decision)
+	lease, err := h.s.acquireControlWriteLease(h.ctx, jobID, "approval-http-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	postDecision := func() (int, []byte) {
+		req, reqErr := http.NewRequestWithContext(h.ctx, "POST", h.url+path, bytes.NewReader(decision))
+		if reqErr != nil {
+			t.Fatal(reqErr)
+		}
+		req.Header.Set("Authorization", "Bearer "+h.token)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Control-Lease", lease.LeaseToken)
+		res, reqErr := h.http.Do(req)
+		if reqErr != nil {
+			t.Fatal(reqErr)
+		}
+		defer res.Body.Close()
+		raw, reqErr := io.ReadAll(res.Body)
+		if reqErr != nil {
+			t.Fatal(reqErr)
+		}
+		return res.StatusCode, raw
+	}
+	code, body = postDecision()
 	if code != 202 {
 		t.Fatalf("decision status=%d body=%s", code, body)
 	}
-	code, body = h.request(t, "POST", path, "", decision)
+	code, body = postDecision()
 	var receipt ControlOperationReceipt
 	if err := json.Unmarshal(body, &receipt); err != nil || code != 200 || !receipt.Existing || receipt.State != "DISPATCHED" {
 		t.Fatalf("retry status=%d body=%s err=%v", code, body, err)

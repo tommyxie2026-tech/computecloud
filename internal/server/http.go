@@ -44,7 +44,8 @@ func httpError(w http.ResponseWriter, e error) {
 		code = 409
 	case codes.FailedPrecondition:
 		code = 400
-		if status.Convert(e).Message() == "JOB_NOT_FINISHED" {
+		switch status.Convert(e).Message() {
+		case "JOB_NOT_FINISHED", "WRITE_LEASE_REQUIRED", "WRITE_LEASE_INVALID":
 			code = 409
 		}
 	case codes.ResourceExhausted:
@@ -160,6 +161,10 @@ func (s *Server) HTTPHandler() http.Handler {
 		jsonResponse(w, code, j)
 	})
 	mux.HandleFunc("GET /v1/control/bootstrap", s.httpControlBootstrap)
+	mux.HandleFunc("POST /v1/jobs/{id}/control-lease", s.httpAcquireControlWriteLease)
+	mux.HandleFunc("PUT /v1/jobs/{id}/control-lease", s.httpRenewControlWriteLease)
+	mux.HandleFunc("DELETE /v1/jobs/{id}/control-lease", s.httpReleaseControlWriteLease)
+	mux.HandleFunc("POST /v1/jobs/{id}/control/cancel", s.httpControlCancel)
 	mux.HandleFunc("GET /v1/jobs/{id}/sessions", s.httpJobSessions)
 	mux.HandleFunc("GET /v1/jobs/{id}/sessions/{session}", s.httpJobSession)
 	mux.HandleFunc("POST /v1/jobs/{id}/sessions/{session}/inputs", s.httpSessionInput)

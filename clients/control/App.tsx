@@ -19,9 +19,17 @@ import type {
   JobSnapshot,
   JobSummary,
   WorkerPage,
+  ControlWriteLease,
+  SessionView,
+  ApprovalView,
 } from "./src/types";
 
 const terminal = new Set(["SUCCEEDED", "FAILED", "CANCELED"]);
+
+function operationID(prefix: string) {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  return `${prefix}-${uuid ?? Date.now().toString(36)}`;
+}
 
 function Button({ title, onPress, disabled = false }: { title: string; onPress: () => void; disabled?: boolean }) {
   return (
@@ -74,7 +82,10 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<JobSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [writeLease, setWriteLease] = useState<ControlWriteLease | null>(null);
+  const [sessionInput, setSessionInput] = useState("");
   const streamAbort = useRef<AbortController | null>(null);
+  const holderID = useRef(operationID("device"));
 
   const attention = useMemo(() => {
     if (!snapshot) return 0;
@@ -106,6 +117,7 @@ export default function App() {
       setBootstrap(boot);
       setSelected("");
       setSnapshot(null);
+      setWriteLease(null);
     } catch (e) {
       setAPI(null);
       setBootstrap(null);
@@ -147,6 +159,10 @@ export default function App() {
   const loadJob = useCallback(async (jobID: string) => {
     if (!api) return;
     streamAbort.current?.abort();
+    if (writeLease && selected) {
+      try { await api.releaseWriteLease(selected, holderID.current, writeLease.lease_token); } catch { /* lease expires quickly */ }
+      setWriteLease(null);
+    }
     const controller = new AbortController();
     streamAbort.current = controller;
     setSelected(jobID);
@@ -175,9 +191,106 @@ export default function App() {
     } finally {
       if (!controller.signal.aborted) setBusy(false);
     }
-  }, [api]);
+  }, [api, selected, writeLease]);
 
   useEffect(() => () => streamAbort.current?.abort(), []);
+
+  useEffect(() => {
+    if (!api || !selected || !writeLease) return;
+    const token = writeLease.lease_token;
+    const timer = setInterval(async () => {
+      try {
+        const renewed = await api.renewWriteLease(selected, holderID.current, token);
+        setWriteLease(renewed);
+      } catch (e) {
+        setWriteLease(null);
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [api, selected, writeLease?.lease_token]);
+
+  const takeControl = useCallback(async () => {
+    if (!api || !selected) return;
+    setBusy(true);
+    setError("");
+    try {
+      setWriteLease(await api.acquireWriteLease(selected, holderID.current));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [api, selected]);
+
+  const releaseControl = useCallback(async () => {
+    if (!api || !selected || !writeLease) return;
+    const current = writeLease;
+    setWriteLease(null);
+    try {
+      await api.releaseWriteLease(selected, holderID.current, current.lease_token);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [api, selected, writeLease]);
+
+  const refreshSelected = useCallback(async () => {
+    if (!api || !selected) return;
+    setSnapshot(await api.jobSnapshot(selected));
+  }, [api, selected]);
+
+  const cancelSelected = useCallback(async () => {
+    if (!api || !selected || !writeLease) return;
+    setBusy(true);
+    try {
+      await api.cancelJob(selected, writeLease.lease_token, operationID("cancel"), "Canceled from Control client");
+      await refreshSelected();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [api, selected, writeLease, refreshSelected]);
+
+  const sendSessionInput = useCallback(async (session: SessionView) => {
+    if (!api || !selected || !writeLease || !snapshot || !sessionInput.trim()) return;
+    setBusy(true);
+    try {
+      await api.sendInput(selected, session, writeLease.lease_token, operationID("input"), Number(snapshot.job.version), sessionInput.trim());
+      setSessionInput("");
+      await refreshSelected();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [api, selected, writeLease, snapshot, sessionInput, refreshSelected]);
+
+  const resumeSession = useCallback(async (session: SessionView) => {
+    if (!api || !selected || !writeLease || !snapshot) return;
+    setBusy(true);
+    try {
+      await api.resumeSession(selected, session, writeLease.lease_token, operationID("resume"), Number(snapshot.job.version));
+      await refreshSelected();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [api, selected, writeLease, snapshot, refreshSelected]);
+
+  const decideApproval = useCallback(async (approval: ApprovalView, decision: "ACCEPT" | "REJECT") => {
+    if (!api || !selected || !writeLease || !snapshot) return;
+    setBusy(true);
+    try {
+      await api.decideApproval(selected, approval, writeLease.lease_token, operationID("approval"), Number(snapshot.job.version), decision);
+      await refreshSelected();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [api, selected, writeLease, snapshot, refreshSelected]);
 
   const openArtifact = useCallback((artifactID: string) => {
     if (!api || !selected) return;
@@ -265,6 +378,13 @@ export default function App() {
                 </View>
                 <Text style={styles.muted}>mode {snapshot.job.mode} · seq {snapshot.job.last_seq} · updated {formatTime(snapshot.job.updated_at_ms)}</Text>
                 {!!snapshot.job.error_code && <Text style={styles.errorText}>{snapshot.job.error_code}</Text>}
+                <View style={styles.actionRow}>
+                  {writeLease
+                    ? <Button title="Release control" onPress={releaseControl} disabled={busy} />
+                    : <Button title="Take control" onPress={takeControl} disabled={busy || bootstrap?.read_only || terminal.has(snapshot.job.state)} />}
+                  {writeLease && !terminal.has(snapshot.job.state) && <Button title="Cancel job" onPress={cancelSelected} disabled={busy} />}
+                  {writeLease && <StatePill value="WRITE LEASE" />}
+                </View>
               </View>
 
               <View style={[styles.grid, compact && styles.gridCompact]}>
@@ -287,6 +407,15 @@ export default function App() {
                       <View style={styles.rowBetween}><Text style={styles.jobID}>{session.runtime}</Text><StatePill value={session.state} /></View>
                       <Text style={styles.muted}>{session.runtime_version ?? "version unknown"} · gen {session.generation}</Text>
                       <Text style={styles.capabilities}>{session.capabilities.join(" · ") || "no interactive capabilities"}</Text>
+                      {writeLease && session.capabilities.includes("interactive_input") && (
+                        <View style={styles.controlStack}>
+                          <TextInput value={sessionInput} onChangeText={setSessionInput} style={styles.input} placeholder="Send input to this session" placeholderTextColor="#66717f" />
+                          <Button title="Send input" onPress={() => sendSessionInput(session)} disabled={busy || !sessionInput.trim()} />
+                        </View>
+                      )}
+                      {writeLease && session.capabilities.includes("session_resume") && (
+                        <View style={styles.controlStack}><Button title="Resume session" onPress={() => resumeSession(session)} disabled={busy} /></View>
+                      )}
                     </View>
                   ))}
                   {!snapshot.sessions.length && <Empty>No sessions.</Empty>}
@@ -300,6 +429,12 @@ export default function App() {
                       <Text>{approval.action}</Text>
                       <Text style={styles.muted}>{approval.risk_class} · request v{approval.request_version}</Text>
                       {!!approval.arguments_summary && <Text style={styles.mono}>{approval.arguments_summary}</Text>}
+                      {writeLease && approval.state === "PENDING" && (
+                        <View style={styles.actionRow}>
+                          <Button title="Approve" onPress={() => decideApproval(approval, "ACCEPT")} disabled={busy} />
+                          <Button title="Reject" onPress={() => decideApproval(approval, "REJECT")} disabled={busy} />
+                        </View>
+                      )}
                     </View>
                   ))}
                   {!snapshot.approvals.length && <Empty>No pending or historical approvals.</Empty>}
@@ -329,7 +464,7 @@ export default function App() {
           )}
         </ScrollView>
       </View>
-      <Text style={styles.footer}>C1 Observe · No write operations · Token is not persisted by the app.</Text>
+      <Text style={styles.footer}>C2 Operate · Writes require a short-lived single-writer lease · Bearer and lease tokens stay memory-only.</Text>
     </View>
   );
 }
@@ -348,6 +483,8 @@ const styles = StyleSheet.create({
   buttonPressed: { opacity: 0.82 },
   buttonDisabled: { opacity: 0.4 },
   buttonText: { color: "#101318", fontWeight: "700" },
+  actionRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 10 },
+  controlStack: { gap: 8, marginTop: 8 },
   errorBox: { marginHorizontal: 16, marginTop: 12, borderWidth: 1, borderColor: "#71343c", backgroundColor: "#2a161a", borderRadius: 8, padding: 10 },
   errorText: { color: "#ff9ea8" },
   body: { flex: 1, flexDirection: "row" },

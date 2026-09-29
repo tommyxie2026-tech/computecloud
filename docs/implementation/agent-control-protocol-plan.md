@@ -3,7 +3,7 @@
 - 项目：computecloud
 - 日期：2026-09-29
 - 状态：ACP-0～ACP-5 仓库级实现已完成；ACP-4b Session Resume 已合入 main（ca2264e9d026b6cd2c2c002e41191041f533d185），ACP-5 Gemini Runtime 已合入 main（602bb4d080753b1c43f32ada88521d67222492a2）；main CI 36598835158（run #1120）全功能 Gate、verify、package、container-image 与 container-publish PASS
-- 当前主线：v0.4.5 Prepared Workspace / Safe Control 为稳定发布基线；ACP-4b Resume + ACP-5 Gemini 已完成；ACP-6 C1 已实现 UI-01 只读 collection contract 与 UI-02 Observe PWA；下一切片为 UI-03 / C2 Operate
+- 当前主线：v0.4.5 Prepared Workspace / Safe Control 为稳定发布基线；ACP-4b Resume + ACP-5 Gemini 已完成；ACP-6 C1 已实现 UI-01 只读 collection contract 与 UI-02 Observe PWA；UI-03a C2 Operate single-writer lease + cancel/input/approval/resume 已实现待 CI；下一切片 UI-03b submit/retry
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
 - 调研：[Agent 客户端控制端方案调研](../research/agent-control-client-landscape-2026.md)
@@ -34,7 +34,7 @@
 | ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
 | ACP-4 | v0.4.x | Approval + Resume | **已完成**：ACP-4a durable Approval 已发布于 v0.4.5；ACP-4b current-Attempt Session Resume 已合入 main，独立 `agent-control-resume` Gate PASS |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | **已完成（仓库级）**：Gemini CLI Provider、provider-neutral Job/Task runtime_profile、stream-json parser、transport-neutral execution、safe approval policy、legacy engine alias fencing；PR #66 / main CI PASS |
-| ACP-6 | C1/C2：后续 v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | **进行中**：C1 UI-01 read contract + UI-02 Observe PWA 已实现；下一步 UI-03 / C2 Operate，按已认证能力开放；C3 Mobile |
+| ACP-6 | C1/C2：后续 v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | **进行中**：C1 UI-01/UI-02 已完成；UI-03a single-writer C2 Operate 已实现待 CI；UI-03b submit/retry 待实施；C3 Mobile |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
 
 ## 3. ACP-0 — 协议基线
@@ -356,7 +356,7 @@ UI-01 已实现分页 Job list、Worker read、稳定 snapshot watermark、Serve
 
 ### 9.2 C2 Operate PWA
 
-仅开放已通过 ACP-3/4 且原生 Runtime 对应能力已认证的操作。C2 开放多设备写入前实现短期单写者 lease；C4 只扩展企业策略。以下是目标清单，retry/resume 等不能仅凭通用控制协议存在就标为已交付：
+仅开放已通过 ACP-3/4 且原生 Runtime 对应能力已认证的操作。C2 开放多设备写入前实现短期单写者 lease；UI-03a 已实现 Job-scoped 30s write lease，详见 [UI-03a C2 Operate](ui03-c2-operate.md)；C4 只扩展企业策略。以下是目标清单，retry/resume 等不能仅凭通用控制协议存在就标为已交付：
 
 - submit；
 - cancel；

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
+	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
@@ -91,14 +92,15 @@ func (s *Server) controlRuntimeSnapshot() []ControlRuntime {
 }
 
 func (s *Server) ControlBootstrap(ctx context.Context) (*ControlBootstrap, error) {
-	if _, err := rpcutil.Require(ctx, "jobs:read", false); err != nil {
+	principal, err := rpcutil.Require(ctx, "jobs:read", false)
+	if err != nil {
 		return nil, err
 	}
 	return &ControlBootstrap{
 		ProtocolMin: control.ProtocolV1Alpha1,
 		ProtocolMax: control.ProtocolV1Alpha1,
 		ServerEpoch: s.controlEpoch,
-		ReadOnly:    false,
+		ReadOnly:    !config.Contains(principal.Identity.Scopes, "jobs:control"),
 		Runtimes:    s.controlRuntimeSnapshot(),
 	}, nil
 }

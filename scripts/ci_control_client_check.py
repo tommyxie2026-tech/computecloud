@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and statically validate the C1 Observe client."""
+"""Build and statically validate the C2 Operate client."""
 import argparse
 import json
 from pathlib import Path
@@ -36,7 +36,7 @@ def main():
         if result["returncode"] != 0:
             sys.stderr.write(result["stdout"])
             sys.stderr.write(result["stderr"])
-            out.write_text(json.dumps({"schema_version":"control-client-check.v1","status":"FAILED","steps":steps},indent=2)+"\n")
+            out.write_text(json.dumps({"schema_version":"control-client-check.v2","status":"FAILED","steps":steps},indent=2)+"\n")
             raise SystemExit(1)
 
     sources="\n".join(p.read_text(encoding="utf-8") for p in [
@@ -45,13 +45,14 @@ def main():
     violations=[]
     for forbidden in ["localStorage", "sessionStorage", "EventSource(", "token=", "access_token="]:
         if forbidden in sources:
-            violations.append("forbidden C1 credential/transport pattern: "+forbidden)
+            violations.append("forbidden Control client credential/transport pattern: "+forbidden)
     if 'headers.set("Authorization"' not in sources:
         violations.append("Bearer authorization header missing")
     if "streamEvents(" not in sources or ".body.getReader()" not in sources:
         violations.append("authenticated fetch-based SSE transport missing")
-    if 'method: "POST"' in sources or "method: 'POST'" in sources:
-        violations.append("C1 Observe client contains write HTTP operation")
+    for required in ["acquireWriteLease(", "renewWriteLease(", "releaseWriteLease(", "X-Control-Lease", "cancelJob(", "sendInput(", "decideApproval(", "resumeSession("]:
+        if required not in sources:
+            violations.append("C2 write contract missing: "+required)
     if not (client/"dist"/"index.html").exists():
         violations.append("Expo web export did not produce index.html")
 
@@ -62,7 +63,7 @@ def main():
         "real_model_calls":False,
         "expo_web_export":True,
         "bearer_token_persistence":"memory_only",
-        "write_operations":False,
+        "write_operations":"lease_gated",
         "authenticated_sse":"fetch_stream",
         "steps":steps,
         "violations":violations,

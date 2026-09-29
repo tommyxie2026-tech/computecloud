@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""C1 Control client E2E: real Server + fixture Worker + Node HTTP client, no model calls."""
+"""C2 Control client E2E: real Server + fixture Worker + Node HTTP client, no model calls."""
 import argparse
 import json
 import os
@@ -12,10 +12,12 @@ import tempfile
 import time
 
 FIXTURE = r'''#!/usr/bin/env python3
-import json, pathlib, sys
+import json, pathlib, sys, time
 if sys.argv[1:] == ['--version']:
     print('control-client-fixture-1'); sys.exit(0)
-_ = sys.stdin.read()
+prompt = sys.stdin.read()
+if 'hold-control' in prompt:
+    time.sleep(15)
 pathlib.Path('README.md').touch()
 if sys.argv[1] == 'exec':
     print(json.dumps({'type':'thread.started','thread_id':'control-client'}))
@@ -126,7 +128,7 @@ def main():
                 "tick_ms":30,"lease_seconds":4,"max_project_tasks":4,"credentials":{"fixture":1},
                 "jobs":{"enabled":True,"templates":templates},
                 "users":[{"token_file":str(user_token),"owner":"ui","projects":["control"],"credentials":["fixture"],
-                          "scopes":["jobs:submit","jobs:read","jobs:cancel"]}],
+                          "scopes":["jobs:submit","jobs:read","jobs:cancel","jobs:control"]}],
                 "workers":[{"token_file":str(worker_token),"worker_id":"worker-control","projects":["control"],"credentials":["fixture"]}]
             }})
             client_cfg = write("client.json", {"client":{"address":grpc_addr,"http_url":"http://"+http_addr,"token_file":str(user_token),"tls":tls}})
@@ -151,11 +153,19 @@ def main():
                 if state != "SUCCEEDED":
                     raise AssertionError(f"fixture Job {job_id} ended {state}")
 
-            node = run("node", str(e2e), "--base-url", "http://"+http_addr, "--token-file", str(user_token), timeout=30)
+            slow_spec = dict(spec)
+            slow_spec["input"] = {"text":"hold-control"}
+            slow_path = write("job-write.json", slow_spec)
+            slow = json.loads(cli("job","submit","--key","control-e2e-write","--file",str(slow_path)))
+            write_job = slow["job_id"]
+            wait_for(lambda: (j if (j:=json.loads(cli("job","get","--id",write_job)))["state"] in {"EXECUTING","MAPPING","REDUCING","STOPPING"} else None))
+
+            node = run("node", str(e2e), "--base-url", "http://"+http_addr, "--token-file", str(user_token), "--write-job", write_job, timeout=30)
             evidence = json.loads(node.splitlines()[-1])
             if evidence.get("status") != "PASSED":
                 raise AssertionError(evidence)
-            report.update(status="PASSED", evidence=evidence, topology={"servers":1,"workers":1,"jobs":3})
+            wait_for(lambda: (j if (j:=json.loads(cli("job","get","--id",write_job)))["state"] == "CANCELED" else None))
+            report.update(status="PASSED", evidence=evidence, topology={"servers":1,"workers":1,"jobs":4,"write_job":write_job})
     except BaseException as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"
         raise
