@@ -9,6 +9,7 @@ import (
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"google.golang.org/grpc"
@@ -109,9 +110,9 @@ func (s *Server) SubmitTask(ctx context.Context, in *pb.TaskSpec) (*pb.Task, err
 		return nil, status.Error(codes.InvalidArgument, "idempotency_key, input and repository with fixed commit required")
 	}
 	if spec.RuntimeProfile == "" {
-		spec.RuntimeProfile = map[string]string{"codex": "codex_exec", "claude": "claude_print"}[spec.Engine]
+		spec.RuntimeProfile = job.LegacyRuntimeProfile(spec.Engine)
 	}
-	if !((spec.Engine == "codex" && spec.RuntimeProfile == "codex_exec") || (spec.Engine == "claude" && spec.RuntimeProfile == "claude_print")) {
+	if !job.Ref(spec.RuntimeProfile) || (spec.Engine != "" && job.LegacyRuntimeProfile(spec.Engine) != spec.RuntimeProfile) {
 		return nil, status.Error(codes.FailedPrecondition, "unsupported runtime")
 	}
 	if spec.SessionRef != "" || spec.ProviderRef != "" {
