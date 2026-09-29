@@ -438,6 +438,51 @@ jobs:
           path: dist/ci-agent-control-resume
           if-no-files-found: error
           retention-days: 30
+  control-client-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+          cache-dependency-path: clients/control/package-lock.json
+      - name: Build and validate C1 Observe client
+        run: make ci-control-client-check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: control-client-web-${{ github.run_id }}
+          path: |
+            dist/control-client-check
+            clients/control/dist
+          if-no-files-found: error
+          retention-days: 30
+
+  control-client-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - run: go mod verify
+      - name: Exercise C1 Observe against real Server and fixture Worker
+        run: make ci-control-client-e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: control-client-e2e-${{ github.run_id }}
+          path: dist/control-client-e2e
+          if-no-files-found: error
+          retention-days: 30
+
   container-image:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.run_slow)
     runs-on: ubuntu-latest
@@ -460,7 +505,7 @@ jobs:
 
   package:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [verify, task-flow, retry-flow, artifact-flow, workspace-flow, prepared-workspace-contract, prepared-workspace-recovery, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, agent-control-fencing, agent-control-negative, agent-control-dispatch, agent-control-approval, agent-control-resume, container-image]
+    needs: [verify, task-flow, retry-flow, artifact-flow, workspace-flow, prepared-workspace-contract, prepared-workspace-recovery, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, agent-control-fencing, agent-control-negative, agent-control-dispatch, agent-control-approval, agent-control-resume, control-client-check, control-client-e2e, container-image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
