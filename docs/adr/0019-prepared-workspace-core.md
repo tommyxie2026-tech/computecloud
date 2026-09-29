@@ -70,7 +70,7 @@ Local provider：
 1. 从 authorized local repository clone 固定 base commit；
 2. 写入 template manifest；
 3. 计算完整 tree digest；
-4. 去除 template tree 的写权限；
+4. regular files 去除写权限；目录保留 owner 可写，以保证 cache tree 可安全删除；
 5. materialize 前重新校验 manifest + digest。
 
 发现篡改时 fail closed，不允许 materialize。
