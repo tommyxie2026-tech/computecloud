@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-28
-- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval lifecycle 已实现待 CI；ACP-4b Session Resume 待实施
+- 状态：实施中；ACP-0/ACP-1/ACP-2/ACP-3 已完成；ACP-4a durable Approval lifecycle 已完成并通过 main CI；ACP-4b current-Attempt Session Resume 已实现待最新 main CI
 - 当前主线：v0.4.4 EnvironmentProvider Execution 已完成
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
@@ -31,7 +31,7 @@
 | ACP-1 | v0.4.x | 只读 Agent Control 面 | **已完成**：bootstrap、Session projection、durable replay、SSE、capability |
 | ACP-2 | v0.4.x | Runtime Adapter 统一 | **已完成**：Codex + Claude certified control descriptor / contract tests；main CI 36375760435 PASS |
 | ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
-| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已实现待 CI**：durable approval request/version/state、expiry/supersede、Worker Approve dispatch/ACK、HTTP decision；**ACP-4b 待实施**：session resume |
+| ACP-4 | v0.4.x | Approval + Resume | **ACP-4a 已完成**：durable approval lifecycle + main CI；**ACP-4b 已实现待最新 main CI**：current-Attempt explicit SessionRef rebind、Workspace/Environment compatibility、Worker at-most-once Resume、HTTP resume |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | Gemini CLI 或 OpenCode，验证无名称分支 |
 | ACP-6 | v0.5.x | Control PWA/Mobile 接入 | C1/C2/C3 |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
@@ -259,7 +259,7 @@ POST /v1/jobs/{job}/cancel
 
 ## 7. ACP-4 — Approval 与 Session Resume
 
-### 7.1 Approval — ACP-4a 已实现待 CI
+### 7.1 Approval — ACP-4a 已完成
 
 已实现：
 - Server schema v12 `approval_requests`；
@@ -289,20 +289,36 @@ PENDING
 
 审批必须 audit。
 
-### 7.2 Resume — ACP-4b 待实施
+### 7.2 Resume — ACP-4b 已实现待最新 main CI
 
-Resume 不与 Approval 混在同一提交中。现有 Attempt completion 会 release Attempt，Worker restart 也会先 reconciliation/cleanup，因此不能简单把 Resume 实现成“对已释放 Attempt 再发一条控制命令”。
+ACP-4b 将 Resume 明确定义为 **current-Attempt session transport/rebind**，而不是 retry、terminal Job continuation 或 released Attempt 复活。
 
-实现目标：
+已实现：
 
-`POST /v1/jobs/{job}/sessions/{session}/resume`
+- `POST /v1/jobs/{job}/sessions/{session}/resume`；
+- durable `control_operations` / operation idempotency 复用 ACP-3；
+- current Attempt + generation + Job resource version fencing；
+- Runtime 必须显式广告 `session_resume`；
+- 必须存在显式 durable RuntimeSessionRef，不使用 implicit last session；
+- Worker 只接受未 completion 的当前 Attempt；
+- Workspace 必须为 `IN_USE`；
+- Environment 必须为 `ACTIVE`；
+- Runtime state 仅允许 `RUNNING/UNKNOWN` 进入 rebind；
+- `SessionControlProvider.Resume()` 返回的新 ExecutionRef 必须保持同 Provider；
+- 新 ExecutionRef durable 替换 `runtime_transport/runtime_ref`，Runtime state 恢复为 `RUNNING`；
+- Worker control execution ledger 保证同一 resume command 不自动重复执行；
+- released Attempt / terminal Job 继续由既有 control fence 拒绝；
+- Runtime parser 规范化 `session.started`，Server 在 completion 前 durable 保存 SessionRef；
+- 独立 `agent-control-resume` CI Gate。
 
-要求：
-- explicit SessionRef；
-- capability= session_resume；
-- workspace/environment compatible；
-- current generation policy；
-- 不使用隐式 last session。
+明确不包含：
+
+- 已完成 Session 的“继续聊天/继续编码”；
+- Worker 重启后重建完整执行 goroutine；
+- terminal Job reopen；
+- retry 与 resume 混合。
+
+这些需求应定义为后续 continuation / durable reattachment 语义，而不能伪装成 ACP-4b Resume。
 
 ### 7.3 测试
 
@@ -310,8 +326,8 @@ Resume 不与 Approval 混在同一提交中。现有 Attempt completion 会 rel
 - [ ] old Attempt approval。
 - [ ] expired approval。
 - [ ] Worker restart then resume。
-- [ ] Workspace changed -> resume rejected。
-- [ ] Environment unavailable -> explicit failure。
+- [x] Workspace 非 IN_USE -> resume rejected。
+- [x] Environment 非 ACTIVE -> resume rejected。
 
 ## 8. ACP-5 — 第三个 Runtime 验证
 
@@ -545,10 +561,10 @@ agent-control-fencing
 
 建议紧接当前工作执行：
 
-1. ACP-4a：通过 `agent-control-approval` PR CI 并合并；Package Gate 必须依赖该 Gate。
-2. ACP-4b：先定义 Resume Attempt transition / Workspace / Environment compatibility，再实现 Worker Resume dispatch。
+1. ACP-4b：通过刷新分支的 `agent-control-resume` Gate 与全套 CI，并合入 current-Attempt rebind foundation。
+2. ACP-5：选择 Gemini CLI 或 OpenCode，验证第三 Runtime 只新增 Adapter/descriptor/tests，不修改 Scheduler core。
 3. 增加 multi-process fault injection：approval decision commit 后重启、Provider side-effect 后 ACK 前断线、旧 generation Client 恢复。
 4. Codex/Claude 继续不暴露 Input/Approval/Resume/Interrupt，直到各自原生能力 contract 通过；fixture 只用于验证抽象。
-5. Prepared Workspace 主线继续推进；Resume 必须复用其 fingerprint/compatibility 语义，不能建立第二套 Workspace 状态机。
+5. “完成后继续 Session”与“Worker restart durable reattachment”另立 continuation/reattachment 设计，不复用 ACP-4b current-Attempt Resume。
 
 这一顺序可以最小化返工，同时确保 Control App 不先于服务端语义成熟。
