@@ -4,6 +4,16 @@
 - 状态：Planned；本文件只冻结后续实现，不表示功能已交付
 - 产品边界：Agent-aware Distributed Job Execution Platform / Agent Job Executor
 
+## 0. Version Placement
+
+本特性分阶段进入长期路线图：
+
+- **v0.4.x**：交付 Relay foundation / experimental transport，包括 Transport seam、无状态 Relay fixture、短期配对、直连优先回退、连接 fencing、背压、恢复测试与独立 CI Gate；`direct` 仍为默认模式。
+- **v0.5.x**：只做 Agent-aware Scheduler 与移动端对 Relay 观测能力的兼容验证，不把 Relay 变成调度事实源，也不把手机客户端变成通用 Worker。
+- **v0.6.x**：交付设备身份、OIDC/RBAC、审计、企业 Lease，以及基于证据决定是否需要 Blind E2EE Relay；这些不属于 v0.4.x foundation。
+
+v0.4.x 的 Relay 仍是实验性、显式 opt-in 能力。没有真实双机/NAT/断网/长任务验证之前，不改变生产默认路径，不在版本号中暗示公网 Relay 已经生产认证。
+
 ## 1. Current State
 
 - Worker 主动建立 gRPC 双向流，Server 维护唯一执行事实。
@@ -69,6 +79,8 @@ transport:
 
 这是目标配置，功能未实现前不能写入生产配置。
 
+实现后配置兼容约束为：`mode: direct` 保持现有行为；`mode: direct_then_relay` 才启用 v0.4.x 实验性回退。未知模式、缺少 relay 地址或票据校验失败必须 fail closed，不得隐式降级或隐藏重试。
+
 ## 5. Schema Changes
 
 首阶段 **无 SQLite migration**。Relay 不持久化 Job/Task/Attempt，也不成为第二事实源。
@@ -117,6 +129,16 @@ relay_bytes_in/out
 relay_rejected_pair_total{reason}
 relay_backpressure_total
 ~~~
+
+### v0.4.x Release Gate
+
+v0.4.x 实现按 RLY-1 至 RLY-5 分小版本合入；每一步都必须保持现有 Runtime/Tool/Environment contract 和 direct path 不变。最终 release gate 为：
+
+- `direct` 回归与现有完整 CI 通过；
+- `relay-contract`、`relay-security-negative`、`relay-direct-fallback`、`relay-restart-recovery` 可独立执行并纳入 main CI；
+- Server/Worker/Relay restart、duplicate delivery、stale generation 和 connection epoch fencing 有自动化证据；
+- 无 SQLite migration、无 Relay 业务事实源、无真实 Codex/Claude 额度依赖；
+- 双机/NAT/断网/长任务手动验收记录完成，且具备显式回退开关和运维文档。
 
 ## 7. Tests
 
@@ -183,4 +205,3 @@ generation fencing 保持
 main CI 与手动 Gate 可定位
 部署和回退文档完成
 ~~~
-
