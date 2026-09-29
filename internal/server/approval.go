@@ -169,7 +169,7 @@ func (s *Server) JobApprovals(ctx context.Context, jobID string) ([]control.Appr
 	if _, err := s.jobAuthorized(ctx, jobID, "jobs:read"); err != nil {
 		return nil, err
 	}
-	var out []control.ApprovalRequest
+	out := []control.ApprovalRequest{}
 	err := s.db.Tx(ctx, func(q store.Query) error {
 		if err := expireJobApprovals(ctx, q, jobID); err != nil {
 			return err

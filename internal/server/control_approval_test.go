@@ -301,3 +301,32 @@ func TestControlApprovalDecisionPayloadValidation(t *testing.T) {
 		}
 	}
 }
+
+
+func TestControlApprovalEmptyHTTPCollectionIsArray(t *testing.T) {
+	h, _, jobID := approvalControlHarness(t)
+	if _, err := h.s.db.SQL.Exec("DELETE FROM approval_requests"); err != nil {
+		t.Fatal(err)
+	}
+	hs := httptest.NewServer(h.s.HTTPHandler())
+	defer hs.Close()
+	h.url, h.http = hs.URL, hs.Client()
+
+	code, body := h.request(t, "GET", "/v1/jobs/"+jobID+"/approvals", "", nil)
+	if code != 200 {
+		t.Fatalf("projection status=%d body=%s", code, body)
+	}
+	var projection struct {
+		Approvals json.RawMessage `json:"approvals"`
+	}
+	if err := json.Unmarshal(body, &projection); err != nil {
+		t.Fatal(err)
+	}
+	var items []control.ApprovalRequest
+	if err := json.Unmarshal(projection.Approvals, &items); err != nil {
+		t.Fatalf("approvals must be JSON array: body=%s err=%v", body, err)
+	}
+	if items == nil || len(items) != 0 {
+		t.Fatalf("empty approvals must be [] not null: body=%s", body)
+	}
+}

@@ -10,3 +10,7 @@ coverage.out
 secrets/
 .env
 __pycache__/
+
+clients/control/node_modules/
+clients/control/dist/
+clients/control/.expo/
