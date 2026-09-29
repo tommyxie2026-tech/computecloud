@@ -867,7 +867,7 @@ feat/control-approval
 
 新增 Gate 必须避免全部串行。
 
-以下是目标矩阵，不是当前 workflow 的完成清单。当前 `.github/workflows/ci.yml` 仍在 push / PR 执行完整验证，尚未实施分层或并发去重；CI-01 单独交付后才能切换。未实现的 readiness、governance、cache、Goal/client Gate 按台账逐项加入。
+以下是目标矩阵。CI-01 已落地：PR 与普通分支 push 默认执行 Fast/常规验证；耗时 Gate 仅在 `main`、版本 tag 自动执行，或通过 `workflow_dispatch` 手动启用 `run_slow=true`。未实现的 readiness、governance、cache、Goal/client Gate 仍按台账逐项加入。
 
 建议矩阵：
 
@@ -898,7 +898,16 @@ Slow / Nightly
 
 目标：PR 通过 Fast + 相关 Integration，main / release candidate 跑完整矩阵。
 
-在 CI-01 的分层依赖和 required checks 评审并落地前，继续执行现有完整 CI，不跳过 Gate 或删减 package 的 needs。CI-01 要避免误取消 main/release，不把 fixture long-run 等同真实多主机 Nightly。
+### 10.1 当前执行策略（CI-01）
+
+`.github/workflows/ci.yml` 使用同一套 Gate，通过事件和手动输入分层执行：
+
+- Pull Request、普通分支 push：执行快速契约与常规集成 Gate；跳过 `prepared-workspace-recovery`、`long-run-flow`、`fair-flow`、`runtime-execution-flow`、`environment-execution-flow`、`container-image` 六个耗时 Gate。
+- `main` push、版本 tag：自动执行完整验证矩阵，保证合并和发布候选仍经过完整检查。
+- Actions 页面手动运行：`run_slow=false`（默认）执行快速验证；勾选 `run_slow=true` 后补充六个耗时 Gate，适用于按需回归。
+- `package`、`container-publish`、`release` 的触发条件和依赖保持不变；发布只能由 `main`/tag push 进入，不会因为 PR 跳过耗时 Gate 而提前发布。
+
+该策略只改变调度，不改变 Job/Stage/Task/Attempt 运行时契约，也不新增 schema 或外部基础设施依赖。CI-01 仍需避免误取消 main/release，不把 fixture long-run 等同真实多主机 Nightly。
 
 # 11. 4 周并行实施计划
 
