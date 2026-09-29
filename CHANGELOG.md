@@ -1,6 +1,20 @@
 # 版本记录
 
-## 未发布 — ACP-3 Safe Control Foundation
+## 0.4.5 — Prepared Workspace / Safe Control 阶段性交付
+
+正式发布以 `v0.4.5` GitHub Release 及其完整 CI 成功为准；本节也作为发布候选的范围声明。
+
+- 累计交付 v0.3.2 之后的 Workspace、长任务、公平调度和 Runtime/Tool/Environment 分层能力；下列阶段编号不代表单独发布过同名 tag。
+- Prepared Workspace Core：固定 commit 模板、摘要验证、独立可写 Attempt materialization、重启/损坏恢复和十次 Attempt 模板复用测试。
+- 修复 Prepared Workspace 目录权限导致的非 root 清理失败；模板完整性由摘要验证，目录仍可回收。
+- Agent Control ACP-3b/3c 与 ACP-4a：structured Worker dispatch、持久 ACK/receipt、HTTP input/interrupt、Runtime approval lifecycle；修复重复 ACK 和旧 generation ACK 落库。
+- Goal computing / Re-plan Guard RPG-1～3 已在主线；RPG-4 / Goal Approval bridge 仍待实现，未声明整个 Goal Governance 完成。
+- Schema 目标为 Server v12 / Worker v6。升级前 drain、离线备份；回退恢复旧数据目录，不降低 schema version。
+- 发布依赖完整 CI、Prepared Workspace contract/recovery、Agent Control approval Gate；产物为 Linux amd64/arm64 和 SHA256SUMS。
+- ACP-4b Resume、PWA/Mobile、Workspace warm pool/GC、readiness scoring 不在本次交付；Codex/Claude 未认证交互能力继续 fail closed。
+- 当前部署与升级指南随包提供为 DEPLOYMENT.md；旧基础配置说明保留为 DEPLOYMENT-v0.2.md。
+
+### 收录变更 — ACP-3 Safe Control Foundation
 
 - Server schema 升级到 v8，新增 durable `control_operations` ledger，以 `(principal_id, operation_id)` 作为幂等边界。
 - 控制意图固定 request hash、resource、expected Attempt、generation 与 resource version；同 operation 同参数返回原回执，异参数返回 `OPERATION_CONFLICT`。
@@ -9,7 +23,7 @@
 - 新增独立 `agent-control-fencing` CI Gate，并纳入 package 依赖。
 - Codex/Claude 仍只暴露已认证能力；Input/Approval/Resume/Interrupt 不因客户端需求提前开放。
 
-## 未发布 — Agent Control Protocol ACP-0/ACP-2
+### 收录变更 — Agent Control Protocol ACP-0/ACP-2
 
 - 新增 `control.v1alpha1` Session/Event/Approval/Capability schema、Go model、版本协商与独立 `agent-control-schema` Gate。
 - 新增只读 Agent Control 面：bootstrap、当前 Attempt Session 投影、Runtime event durable replay、SSE cursor/Last-Event-ID 恢复与 `agent-control-read` Gate。
@@ -19,7 +33,7 @@
 - ACP-3 才进入 durable control operation、operation-id 幂等与 generation fencing；交互式 Runtime 能力不会因 UI 需求提前伪造。
 
 
-## 未发布 — v0.4.4 EnvironmentProvider Execution（实现完成，待版本发布）
+### 收录变更 — v0.4.4 EnvironmentProvider Execution（本版累计交付）
 
 - 新增独立 Environment Provider lifecycle：Descriptor / Prepare / Activate / Inspect / Release。
 - 新增 transport-neutral EnvironmentRef、EnvironmentState 与 CleanupState；Worker schema 升级到 v5，持久 environment provider/ref/state/cleanup。
@@ -32,7 +46,7 @@
 - release package 增加 environment-execution-flow 依赖。
 - 生产 container/VM/external sandbox、NetworkPolicy enforcement、snapshot/checkpoint、Prepared Workspace 与 v0.5 scoring 不属于 v0.4.4。
 
-## 未发布 — v0.4.3 EnvironmentCapability Foundation
+### 收录变更 — v0.4.3 EnvironmentCapability Foundation
 
 - 新增独立 `internal/environment` Registry，Descriptor 包含 name / version / isolation_class / filesystem_mode / network_mode / legacy_default。
 - 首个内建 Environment 为 `process`，保持当前可信 Worker process + workspace 执行模式。
@@ -43,7 +57,7 @@
 - Scheduler 继续只处理 generic `required_capabilities`，不增加 Environment 名称特例。
 - 新增独立 `environment-contract-flow`；release package 增加该 Gate 依赖。
 - container/VM/external sandbox execution、Prepared Workspace、network isolation 与 v0.5 scoring 不属于 v0.4.3。
-## 未发布 — v0.4.2 ToolCapability Foundation
+### 收录变更 — v0.4.2 ToolCapability Foundation
 
 - 新增独立 `internal/tool` Registry，Tool descriptor 包含 name / version / side_effect / legacy_default；Tool existence 不再只由 Runtime Provider 声明。
 - 首批内建 platform ToolCapability 为 `artifact_inputs_v1` 与 `job_io_v1`；本版本不增加通用外部 Tool execution proxy。
@@ -56,7 +70,7 @@
 - Tool side_effect 目前只做描述，不自动推断 replay_safe、Retry 或审批决策。
 - 真实外部 Tool invocation、interactive approval、EnvironmentProvider、Prepared Workspace、v0.5 scoring 不属于 v0.4.2。
 
-## 未发布 — v0.4.1 Transport-neutral Runtime Execution（实现完成，待版本发布）
+### 收录变更 — v0.4.1 Transport-neutral Runtime Execution（本版累计交付）
 
 - Runtime Provider contract 增加 Version / Transport / Prepare / Start / Inspect / Stop，使 Agent execution transport 不再由 Worker 按 profile 或 PID 模型决定。
 - 新增 transport-neutral ExecutionRef、RuntimeState 与 CleanupState；remote/API-backed Runtime 可使用稳定远端 ID 而无需本地 PID。
@@ -68,7 +82,7 @@
 - Built-in CLI Runtime 新增 `runtime:local_cli` capability；remote fixture 使用 `runtime:remote_api`。
 - 新增独立 GitHub Actions `runtime-execution-flow`；release package 依赖既有八个 Gate + runtime-execution-flow。
 - Session resume、Approval、Tool execution framework、EnvironmentProvider、Prepared Workspace 和 v0.5 scheduling 不属于 v0.4.1。
-## 未发布 — v0.4.0 Runtime API v2（实现完成，待版本发布）
+### 收录变更 — v0.4.0 Runtime API v2（本版累计交付）
 
 - Runtime 接入从 Worker profile 特例改为注册式 Provider Registry；内置 `codex_exec` 与 `claude_print` 作为 Provider。
 - Provider contract 统一 `Profile / Probe / Args / Parser / Capabilities / SupportsGateway`，新增 Runtime 不需要修改 Scheduler profile 分支。
@@ -79,7 +93,7 @@
 - 新增独立 GitHub Actions `runtime-contract-flow`，并静态检查 Worker/Server 核心文件不重新引入 Codex/Claude profile 特例。
 - Release package 依赖 verify、task-flow、retry-flow、artifact-flow、workspace-flow、long-run-flow、fair-flow、runtime-contract-flow 八个 Gate。
 - v0.4.0 不实现 API-backed Runtime、EnvironmentProvider、Prepared Workspace、interactive approval 或 breaking protobuf migration。
-## 未发布 — v0.3.5 Fair Scheduling（实现完成，待版本发布）
+### 收录变更 — v0.3.5 Fair Scheduling（本版累计交付）
 
 - Scheduler 从固定 priority + 单 group cursor 演进为 `effective priority -> Project round-robin -> Job/group round-robin -> Task` 的有界公平队列。
 - JobSpec 新增向后兼容的可选 `limits.priority`（0..10，省略等价 0），并明确传播到 managed Task 的 TaskSpec 与持久 `tasks.priority`。
@@ -91,7 +105,7 @@
 - 单次 Scheduler candidate group scan 上限 512；公平 cursor 只存在内存，Server restart 允许短期顺序重置而不影响 durable correctness。
 - 新增独立 GitHub Actions `fair-flow`；package 依赖 verify、task-flow、retry-flow、artifact-flow、workspace-flow、long-run-flow、fair-flow 七个 Gate。
 - v0.3.5 不引入 preemption、DRF、CPU/GPU placement、Workspace affinity 或 Agent-aware score；这些属于后续 Scheduler 演进。
-## 未发布 — v0.3.4 Long-running Job Reliability（实现完成，待版本发布）
+### 收录变更 — v0.3.4 Long-running Job Reliability（本版累计交付）
 
 - Server schema 升级到 v7：Attempt 增加 `last_renewed`，Task 增加 `event_floor_seq`，新增紧凑 `event_dedup` replay hash 索引。
 - Worker Renew 成为 Attempt liveness 的事实依据；Runtime 长时间无 stdout/stderr 不再等同于 hung。
@@ -104,7 +118,7 @@
 - 新增独立 GitHub Actions `long-run-flow`；release package 依赖 verify、task-flow、retry-flow、artifact-flow、workspace-flow、long-run-flow 六个 Gate。
 - 真实 Codex/Claude 24h+、独立主机与真实网络故障仍由 Production Baseline #1 独立验收。
 
-## 未发布 — v0.3.3 Workspace Lifecycle（实现完成，待版本发布）
+### 收录变更 — v0.3.3 Workspace Lifecycle（本版累计交付）
 
 - Worker schema 升级到 v3，新增 `workspaces` metadata，把 Workspace 与 Attempt / Task / generation / repository baseline / path 一次性绑定。
 - Workspace 生命周期明确为 `PREPARING -> READY -> IN_USE -> RETAINED -> DELETING -> DELETED`；cleanup proof 不确定时进入 `QUARANTINED`，默认不自动 GC。
@@ -117,7 +131,7 @@
 - Release package 现在依赖 verify、task-flow、retry-flow、artifact-flow、workspace-flow 五个 Gate。
 - Prepared/warm Workspace、共享 Workspace、snapshot/checkpoint、EnvironmentProvider 与全局历史 GC 不属于 v0.3.3。
 
-## 未发布 — Control Client Design
+### 收录变更 — Control Client Design
 
 - 在既有 v0.2.x→v1.0 Agent Job Executor 路线图中新增 Control 客户端横向能力线。
 - 增加客户端控制端竞品调研、ADR-008 和完整技术方案；确定 Server 单事实源、PWA 先行、移动端不作为通用 Worker、E2EE Relay 延后按证据引入。
