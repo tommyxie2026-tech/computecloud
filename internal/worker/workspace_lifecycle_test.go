@@ -49,6 +49,7 @@ func workspaceAssignment(id, task string, generation int64, commit string) *pb.A
 		Generation: generation,
 		LeaseToken: "lease-" + id,
 		Spec: &pb.TaskSpec{
+			RuntimeProfile: "workspace_fixture",
 			Workspace: &pb.Workspace{RepositoryRef: "repo", BaseCommit: commit},
 		},
 	}
@@ -80,6 +81,7 @@ func TestWorkspaceLifecycleOwnershipRetentionAndGC(t *testing.T) {
 		DataDir: dir,
 		Repositories: map[string]string{"repo": repo},
 		WorkspaceRetentionMS: 1,
+		Runtimes: map[string]config.Runtime{"workspace_fixture": {Version: "fixture-v1"}},
 	}}
 	a := workspaceAssignment("attempt-one", "task", 1, commit)
 	insertWorkspaceRun(t, w, a, "ACCEPTED")
@@ -146,7 +148,10 @@ func TestWorkspaceGenerationIsolationAndOwnership(t *testing.T) {
 	}
 	defer db.Close()
 	repo, commit := workspaceTestRepo(t)
-	w := &Worker{db: db, cfg: config.Worker{DataDir: dir, Repositories: map[string]string{"repo": repo}}}
+	w := &Worker{db: db, cfg: config.Worker{
+		DataDir: dir, Repositories: map[string]string{"repo": repo},
+		Runtimes: map[string]config.Runtime{"workspace_fixture": {Version: "fixture-v1"}},
+	}}
 
 	a1 := workspaceAssignment("attempt-g1", "same-task", 1, commit)
 	a2 := workspaceAssignment("attempt-g2", "same-task", 2, commit)
