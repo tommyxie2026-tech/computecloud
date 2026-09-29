@@ -209,3 +209,31 @@ func (s *Server) httpReleaseControlWriteLease(w http.ResponseWriter, r *http.Req
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+
+func (s *Server) httpControlCancel(w http.ResponseWriter, r *http.Request) {
+	if err := s.requireControlWriteLease(r, r.PathValue("id")); err != nil {
+		httpError(w, err)
+		return
+	}
+	b, err := readJSONBody(w, r, 4096)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	var in CancelJobRequest
+	if err = json.Unmarshal(b, &in); err != nil {
+		httpError(w, status.Error(codes.InvalidArgument, "invalid cancellation JSON"))
+		return
+	}
+	j, err := s.CancelJob(r.Context(), r.PathValue("id"), in)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	code := http.StatusAccepted
+	if terminal(j.State) || j.Existing {
+		code = http.StatusOK
+	}
+	jsonResponse(w, code, j)
+}
