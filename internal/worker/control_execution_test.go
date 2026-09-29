@@ -18,6 +18,7 @@ type controlWorkerFixture struct {
 	profile   string
 	inputs    int
 	approvals int
+	resumes   int
 }
 
 func (p *controlWorkerFixture) Profile() string {
@@ -55,11 +56,22 @@ func (p *controlWorkerFixture) ControlDescriptor() adapter.ControlDescriptor {
 			control.CapabilityQueueNextInput,
 			control.CapabilityInterrupt,
 			control.CapabilityApproval,
+			control.CapabilitySessionResume,
 		},
 	}
 }
-func (p *controlWorkerFixture) Resume(context.Context, adapter.ControlResumeRequest) (adapter.ExecutionRef, error) {
-	return adapter.ExecutionRef{}, adapter.ErrControlCapabilityUnsupported
+func (p *controlWorkerFixture) Resume(_ context.Context, req adapter.ControlResumeRequest) (adapter.ExecutionRef, error) {
+	if req.SessionRef == "" || req.AttemptID == "" || req.Generation < 1 {
+		return adapter.ExecutionRef{}, adapter.ErrControlCapabilityUnsupported
+	}
+	p.mu.Lock()
+	p.resumes++
+	p.mu.Unlock()
+	return adapter.ExecutionRef{
+		Provider:  p.Profile(),
+		Transport: "remote_api",
+		ID:        "resumed-" + req.SessionRef,
+	}, nil
 }
 func (p *controlWorkerFixture) Input(_ context.Context, _ adapter.ControlInputRequest) error {
 	p.mu.Lock()
