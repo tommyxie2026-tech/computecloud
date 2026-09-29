@@ -1,9 +1,11 @@
 # RPG-3 Loop / Failure / Progress Guard 实施记录
 
 - 日期：2026-09-28
-- 状态：Implemented on main, CI pending
+- 状态：DONE（Guard 原语）；v0.4.5 发布 CI 的 verify 已覆盖包测试，Goal 执行集成仍待完成
 - 依赖：[ADR-018](../adr/0018-replan-guard-loop-prevention.md)、[RPG-2](rpg-2-evidence-plan-guard.md)
 - 范围：strategy signature / short-cycle detection / repeated failure guard / progress guard / structured strategy_delta
+
+发布依据：[CI 36575512360](https://github.com/tommyxie2026-tech/computecloud/actions/runs/36575512360)。当前 `GuardReplan` 尚未接入生产执行路径；不得把包测试通过视为 Goal/Graph/Evaluator 端到端通过。后续集成见[GI-01～GI-04](v0.4.5-roadmap-reconciliation.md)。
 
 ## 1. 目标
 

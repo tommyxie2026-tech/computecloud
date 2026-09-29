@@ -365,15 +365,17 @@ Server 新增但控制基数的指标：
 
 ## 15. 交付阶段
 
+2026-09-29 核对：v0.4.5 已发布服务端 read/control 基础，尚无 PWA/Mobile 应用。以下是目标里程碑，不是已实现接口清单；当前缺分页 Job collection、Worker read 和客户端恢复同步契约，按[UI-01/UI-02](../implementation/v0.4.5-roadmap-reconciliation.md)独立认领。现有 input/interrupt 使用 `/v1/jobs/{id}/sessions/{session}/...`，不得依据本文早期目标路径重复建设别名。
+
 客户端阶段与既有主路线绑定，不另起版本体系：
 
 | Control 里程碑 | 对齐主版本 | 交付 | 前置条件 |
 | --- | --- | --- | --- |
 | C0 设计基线 | v0.3.2 | 调研、ADR、API/安全/UX 设计、契约草案 | 本文档合入即完成 |
-| C1 Observe PWA | v0.3.3+ | Jobs/Tasks/Attempts/Workers/Artifacts、SSE、attention 只读视图 | v0.3.0–v0.3.2 已完成；补 Job list、稳定事件 cursor、查询投影 |
-| C2 Operate PWA | v0.4.x | 提交、取消、输入、审批、重试、只读 Diff/测试 | Runtime 原生输入/审批能力逐项验收 |
+| C1 Observe PWA | 后续 v0.4.x（尚未交付） | Jobs/Tasks/Attempts/Workers/Artifacts、SSE、attention 只读视图 | 复用 v0.4.5 read/SSE 基础；补 Job list、Worker read、快照 watermark / dataset 恢复语义与客户端 E2E |
+| C2 Operate PWA | 后续 v0.4.x | 提交、取消、输入、审批、重试、只读 Diff/测试、短期单写者 lease | 幂等/fencing；多设备写入 lease 与接管审计；Runtime 原生能力逐项验收 |
 | C3 Mobile Beta | v0.5.x | Expo iOS/Android、QR 配对、Push、主机/模型/运行时选择 | Agent-aware Scheduler、设备身份 |
-| C4 Governed Remote | v0.6.x | OIDC/RBAC、设备策略、审计、单写者 Lease、可选 E2EE Relay | 治理模型和威胁测试通过 |
+| C4 Governed Remote | v0.6.x | OIDC/RBAC、设备策略、审计、企业 Lease 策略、可选 E2EE Relay | 治理模型和威胁测试通过 |
 | C5 Production | v0.7.x/v1.0 | 弱网/规模、兼容矩阵、商店发布、SLO、企业分发 | Scale/Resilience 门槛完成 |
 
 ## 16. 验收矩阵
@@ -403,7 +405,7 @@ Server 新增但控制基数的指标：
 新增独立客户端 job，不改变现有 Go 发布门槛：
 
 - TypeScript 类型、lint、单元测试和 Expo Web build。
-- 根据 `api/control/v1` 生成/校验客户端类型，禁止手写契约漂移。
+- 根据当前 `api/control/v1alpha1` 生成/校验客户端类型，禁止手写契约漂移；升级稳定版协议须独立兼容性评审。
 - 使用真实 computecloud Server + fixture Worker 跑 Playwright PWA 流程。
 - C2 后增加重复控制、stale Attempt、SSE 断连/重连测试。
 - C3 后增加 Android/iOS 构建检查、Deep Link、SecureStore 和 Push 模拟。

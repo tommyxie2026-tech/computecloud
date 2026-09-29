@@ -1,8 +1,8 @@
 # computecloud 3–5 人并行开发计划
 
-- 日期：2026-09-28
+- 日期：2026-09-29
 - 适用周期：未来 4–6 周
-- 当前稳定发布基线：v0.3.2
+- 当前稳定发布基线：v0.4.5 Prepared Workspace / Safe Control
 - 当前 main 功能基线：v0.4.x Runtime / Tool / Environment Ecosystem
 - 当前产品主线：Prepared Workspace / Workspace Template
 - 并行旁路：RPG-4 FINAL / Goal Governance 收尾、Agent Control Approval
@@ -12,14 +12,18 @@
 
 ~~~text
 WS-A Prepared Workspace Core
-Owner: active implementation
-Status: code + ADR + dedicated CI Gate implemented, CI validation pending
+Owner: core implementation complete; follow-up ownership remains WS-A
+Status: DONE for v0.4.5 core scope; prepared-workspace-contract/recovery release CI PASS
 
-WS-B / WS-C / WS-D / WS-E
-Follow current repository facts before claiming; parallel agents may update main independently.
+WS-B: PARTIAL — template reuse foundation exists; cache/warm/GC/benchmark pending
+WS-C: TODO — readiness contract/observer/explain/scoring pending
+WS-D: TODO — Goal governance pending; RPG primitives are not an execution loop
+WS-E: PARTIAL — Runtime Approval/ACK merged; Goal bridge blocked on WS-D
 ~~~
 
 认领者必须先检查 main 最近提交，避免依据静态文档重复实现。
+
+本轮核对基线为发布提交 `607d1d4`；当前 Server v12 / Worker v6。后续完整任务与责任角色见[v0.4.5 实施台账](v0.4.5-roadmap-reconciliation.md)。角色分配不等于开发者已认领。Goal G0～G4 集成和客户端 C1 是原路线中缺少落地任务的切片，不隐式扩大 WS-D / WS-E 的代码 ownership；涉及公共 API / Store / Server 的变更须先独立 Contract / integration review。
 
 ## 1. 目标
 
@@ -250,7 +254,7 @@ prepared-workspace-recovery
 必须测试：
 
 - 两 Attempt 不共享 writable path；
-- Template 不可写；
+- Template 文件保持只读，摘要变更 fail closed；owner 可写目录用于安全清理，不能把文件权限当作不可信进程隔离边界；
 - Template fingerprint mismatch；
 - Worker restart；
 - stale TemplateRef；
@@ -261,9 +265,9 @@ prepared-workspace-recovery
 
 ~~~text
 同一 repository baseline
-连续执行 10 个 Job
-至少 90% 可复用相同 Template
-且不破坏 Attempt isolation
+WS-A 当前证据：Worker 级 10 个 Attempt 复用模板且 writable workspace 隔离
+WS-B 性能验收：连续 10 个 Job 至少 90% 可复用相同 Template
+并提供 cold/warm latency、命中率与运行条件，不将 Core 用例等同 Job benchmark
 ~~~
 
 # 4. Workstream B — Workspace Template / Cache / Warm Path
@@ -784,6 +788,8 @@ C5 Control Approval envelope
 C6 schema target version
 ~~~
 
+截至 v0.4.5，C1/C2 已存在；C5 Runtime control/approval 已存在但不包含 Goal bridge。C3 readiness 与 C4 Goal Approval 尚待独立 Contract PR，不能视为已经冻结。C6 仅记录当前 Server v12 / Worker v6，不预占下一版本。这里 C1～C6 是共享契约编号，与客户端 C1～C5 里程碑不是同一组编号。
+
 ## 8.1 Contract Change PR
 
 若开发过程中必须修改公共 contract：
@@ -861,6 +867,8 @@ feat/control-approval
 
 新增 Gate 必须避免全部串行。
 
+以下是目标矩阵，不是当前 workflow 的完成清单。当前 `.github/workflows/ci.yml` 仍在 push / PR 执行完整验证，尚未实施分层或并发去重；CI-01 单独交付后才能切换。未实现的 readiness、governance、cache、Goal/client Gate 按台账逐项加入。
+
 建议矩阵：
 
 ~~~text
@@ -888,13 +896,13 @@ Slow / Nightly
 └── multi-host
 ~~~
 
-PR 必须通过 Fast + 相关 Integration。
+目标：PR 通过 Fast + 相关 Integration，main / release candidate 跑完整矩阵。
 
-不要求每个小 PR 都等待全部长耗时 Gate。
-
-main / release candidate 再跑完整矩阵。
+在 CI-01 的分层依赖和 required checks 评审并落地前，继续执行现有完整 CI，不跳过 Gate 或删减 package 的 needs。CI-01 要避免误取消 main/release，不把 fixture long-run 等同真实多主机 Nightly。
 
 # 11. 4 周并行实施计划
+
+以下为原计划的相对周期，不是实际完成记录。重新认领从 §0 和实施台账出发：已完成 WS-A 不重做；WS-D 的最终验收依赖 GI-04；C1 UI-01/UI-02 可以独立推进。
 
 ## Week 0 / 2–3 天 — Contract Freeze
 

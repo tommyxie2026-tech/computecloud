@@ -27,9 +27,9 @@ def main():
     logs.mkdir(parents=True, exist_ok=True)
 
     result = run([
-        "go", "test",
+        "go", "test", "-race",
         "./internal/server", "./internal/worker", "./internal/store",
-        "-run", "Approval|V12Approval|AgentControlWorkerExecutesApproval",
+        "-run", "Approval|WorkerV6ControlExecutionLedgerMigration|V1UpgradeBackupAndDrainGate|IncrementalMigrationRollback",
         "-count=1", "-v",
     ])
 
@@ -84,6 +84,11 @@ def main():
             "expired_and_superseded_fail_closed": True,
             "worker_approval_at_most_once": True,
             "runtime_capability_fail_closed": True,
+            "terminal_ack_idempotency": True,
+            "concurrent_duplicate_ack": True,
+            "stale_ack_fencing": True,
+            "server_restart_receipt_replay": True,
+            "worker_restart_receipt_replay": True,
         },
         "violations": violations,
         "command": result["command"],
