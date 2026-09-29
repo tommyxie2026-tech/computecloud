@@ -11,9 +11,10 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - main 功能基线：**v0.4.x Runtime / Tool / Environment Ecosystem**
 - 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
 - 当前功能主线：**Prepared Workspace / Workspace Template**
-- Goal-oriented Computing：已完成计算模型与 Re-plan Guard RPG-1～RPG-3
+- Goal-oriented Computing：计算模型与 Re-plan Guard RPG-1～RPG-3 持久化原语已实现；Goal/Plan/Graph/Evaluator 与实际执行路径的集成尚未完成
 - RPG：固定只做 RPG-1～RPG-4，RPG-4 完成后正式关闭，不继续 RPG-5
-- 当前 Server schema：**v12**
+- 当前 Server schema：**v12**；Worker schema：**v6**
+- 下一轮任务与缺口：[v0.4.5 后路线图核对与实施台账](docs/implementation/v0.4.5-roadmap-reconciliation.md)；PWA、Goal 闭环与生产基线不能由本版发布状态推定完成
 - 发布状态以 [GitHub Actions](https://github.com/tommyxie2026-tech/computecloud/actions) 与 [GitHub Releases](https://github.com/tommyxie2026-tech/computecloud/releases) 为准；代码实现完成不等于已发布
 
 当前演进关系：
@@ -41,6 +42,8 @@ Goal -> Plan -> Execution Graph -> Scheduler -> Worker
 ~~~
 
 ### Re-plan Guard 当前进度
+
+以下 RPG-1～3 状态指 Guard 原语及其测试，不表示 Guard 已接入 Server 的 Attempt 创建与自动 Re-plan 执行闭环。
 
 ~~~text
 RPG-1  ✅ Bound
