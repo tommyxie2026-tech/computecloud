@@ -130,6 +130,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 12
 	}
+	if schema == ServerSchema && version < 13 {
+		if _, err = tx.Exec(serverV13); err != nil {
+			return err
+		}
+		version = 13
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}
@@ -720,4 +726,16 @@ const serverV12 = `CREATE TABLE approval_requests (
 );
 CREATE INDEX approval_requests_job_state ON approval_requests(job_id,state,requested_at);
 CREATE INDEX approval_requests_attempt ON approval_requests(attempt_id,generation,state);
+`;
+
+
+const serverV13 = `CREATE TABLE control_write_leases (
+  job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+  principal_id TEXT NOT NULL,
+  holder_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  updated INTEGER NOT NULL
+);
+CREATE INDEX control_write_leases_expiry ON control_write_leases(expires_at,job_id);
 `;
