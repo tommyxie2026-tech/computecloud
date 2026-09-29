@@ -32,11 +32,14 @@ def main():
     ])
 
     control_text = pathlib.Path("internal/server/control_read.go").read_text(encoding="utf-8")
+    collection_text = pathlib.Path("internal/server/control_collection.go").read_text(encoding="utf-8")
     results_text = pathlib.Path("internal/server/results.go").read_text(encoding="utf-8")
     http_text = pathlib.Path("internal/server/http.go").read_text(encoding="utf-8")
     violations = []
     for required in [
         'GET /v1/control/bootstrap',
+        'GET /v1/jobs',
+        'GET /v1/workers',
         'GET /v1/jobs/{id}/sessions',
         'GET /v1/jobs/{id}/events/stream',
     ]:
@@ -44,6 +47,9 @@ def main():
             violations.append("missing HTTP route: " + required)
     if "mirrorRuntimeEventToJob(ctx, q, ev)" not in results_text:
         violations.append("worker runtime events are not mirrored into durable job replay")
+    for required in ["SNAPSHOT_EPOCH_CHANGED", "snapshot_ms", "before_created_ms", "visibleProject"]:
+        if required not in collection_text:
+            violations.append("missing C1 collection contract: " + required)
     if "Last-Event-ID" not in control_text:
         violations.append("SSE replay does not support Last-Event-ID")
     if "time.Time{}" not in control_text:
@@ -65,6 +71,9 @@ def main():
             "sse_after_seq": True,
             "sse_last_event_id": True,
             "runtime_neutral_server_projection": not any("runtime profile" in v for v in violations),
+            "stable_job_collection_snapshot": True,
+            "worker_project_scoping": True,
+            "snapshot_epoch_reset": True,
             "no_new_message_broker": True,
         },
         "violations": violations,
