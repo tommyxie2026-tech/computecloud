@@ -7,7 +7,7 @@
     "userInterfaceStyle": "automatic",
     "web": {
       "bundler": "metro",
-      "output": "static"
+      "output": "single"
     }
   }
 }
