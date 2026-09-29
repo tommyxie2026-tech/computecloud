@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 )
@@ -34,8 +35,8 @@ func TestAgentControlReadBootstrapSessionsAndReplay(t *testing.T) {
 	if err = json.Unmarshal(body, &bootstrap); err != nil {
 		t.Fatal(err)
 	}
-	if bootstrap.ProtocolMin != control.ProtocolV1Alpha1 || bootstrap.ProtocolMax != control.ProtocolV1Alpha1 || bootstrap.ServerEpoch == "" || bootstrap.ReadOnly {
-		t.Fatalf("invalid bootstrap: %+v", bootstrap)
+	if bootstrap.ProtocolMin != control.ProtocolV1Alpha1 || bootstrap.ProtocolMax != control.ProtocolV1Alpha1 || bootstrap.ServerEpoch == "" || !bootstrap.ReadOnly {
+		t.Fatalf("invalid read-only bootstrap: %+v", bootstrap)
 	}
 	if len(bootstrap.Runtimes) == 0 {
 		t.Fatal("runtime matrix empty")
@@ -172,4 +173,18 @@ func containsControlCapability(values []control.Capability, value control.Capabi
 		}
 	}
 	return false
+}
+
+
+func TestAgentControlBootstrapWriteScope(t *testing.T) {
+	h := newJobHarness(t, false, func(cfg *config.Server) {
+		cfg.Users[0].Scopes = append(cfg.Users[0].Scopes, "jobs:control")
+	})
+	bootstrap, err := h.s.ControlBootstrap(h.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bootstrap.ReadOnly {
+		t.Fatalf("jobs:control principal projected read-only: %+v", bootstrap)
+	}
 }
