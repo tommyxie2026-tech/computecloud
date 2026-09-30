@@ -214,12 +214,14 @@ v0.4.x 的发布门槛是：`direct` 仍为默认模式，`direct_then_relay` �
 
 ### 3.1 Control 客户端横向能力线
 
-当前 Control Protocol 进度（2026-09-29）：
+当前 Control Protocol 进度（2026-09-30）：
 
-- ACP-0/1/2：Protocol、read/replay、Runtime Adapter contract 已完成；
-- ACP-3：durable write、generation fencing、Worker structured dispatch、result ACK、HTTP input/interrupt 已完成；
-- ACP-4a durable Approval：已合并并进入 v0.4.5 stable release，含 ACK 幂等与 generation fencing；
-- ACP-4b Session Resume：旧 PR #50 已关闭未合并；当前 [PR #60](https://github.com/tommyxie2026-tech/computecloud/pull/60) 已基于 v0.4.5 重建，尚未合入；继续验收 Prepared Workspace 的 Runtime/Tool/Environment fingerprint 兼容判定；
+- ACP-0～ACP-5 仓库级主线已完成；
+- ACP-4b Session Resume 已合入 main；Prepared Workspace compatibility 已进入独立 Gate；
+- ACP-5 Gemini Runtime 已合入 main；
+- C1 UI-01 collection contract 与 UI-02 Observe PWA 已合入 main；
+- C2 UI-03a single-writer lease + cancel/input/approval/resume 已合入 main；
+- C2 UI-03b Job Submit + bounded Manual Retry 正在实现/验收，首版 Retry 仅覆盖 single-mode frozen Job；
 - Codex/Claude 的交互 capability 继续 fail-closed，只有 Runtime 原生 contract 通过后才广告。
 
 
@@ -230,8 +232,8 @@ Control 是既有 Agent Job Executor 的产品表面，不是第二个调度器�
 | Control 里程碑 | 对齐主版本 | 核心交付 | 状态/门槛 |
 | --- | --- | --- | --- |
 | C0 Design Baseline | v0.3.2 | 调研、ADR-008、API/安全/UX 技术方案 | 当前完成 |
-| C1 Observe PWA | 后续 v0.4.x（尚未交付） | Job/Task/Attempt/Worker/Artifact 只读投影、稳定分页、SSE、attention | 复用 v0.4.5 read/SSE；补 Job list、Worker read、快照/恢复契约与客户端 E2E；独立 UI-01/UI-02 |
-| C2 Operate PWA | 后续 v0.4.x | 提交、取消、输入、审批、重试、Diff/测试审阅、短期单写者 lease | Runtime 原生能力逐项验收；所有写操作幂等并带 generation fencing；多设备写入前具备 lease 与接管审计 |
+| C1 Observe PWA | v0.4.x | Job/Task/Attempt/Worker/Artifact 只读投影、稳定分页、SSE、attention | **已完成**：UI-01/UI-02 已合入 main，独立 client check/E2E 通过 |
+| C2 Operate PWA | v0.4.x | 提交、取消、输入、审批、重试、Diff/测试审阅、短期单写者 lease | **进行中**：UI-03a 已合入；UI-03b submit + bounded manual retry 待 CI/merge；Diff/测试审阅继续后续切片 |
 | C3 Mobile Beta | v0.5.x | Expo iOS/Android、QR 配对、Push、主机/运行时选择 | Agent-aware Scheduler 与设备身份可用 |
 | C4 Governed Remote | v0.6.x | OIDC/RBAC、设备策略、审计、企业 Lease 策略、可选 E2EE Relay；Server–Worker Relay-assisted P2P 传输 | 先完成 [ADR-021](../adr/0021-relay-assisted-p2p-transport.md) 的直连回退与威胁测试；Relay 不参与调度判断 |
 | C5 Production | v0.7.x/v1.0 | 弱网、规模、兼容矩阵、应用商店/企业分发、SLO | Scale & Resilience 门槛完成 |

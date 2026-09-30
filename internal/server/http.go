@@ -165,6 +165,7 @@ func (s *Server) HTTPHandler() http.Handler {
 	mux.HandleFunc("PUT /v1/jobs/{id}/control-lease", s.httpRenewControlWriteLease)
 	mux.HandleFunc("DELETE /v1/jobs/{id}/control-lease", s.httpReleaseControlWriteLease)
 	mux.HandleFunc("POST /v1/jobs/{id}/control/cancel", s.httpControlCancel)
+	mux.HandleFunc("POST /v1/jobs/{id}/retry", s.httpManualRetry)
 	mux.HandleFunc("GET /v1/jobs/{id}/sessions", s.httpJobSessions)
 	mux.HandleFunc("GET /v1/jobs/{id}/sessions/{session}", s.httpJobSession)
 	mux.HandleFunc("POST /v1/jobs/{id}/sessions/{session}/inputs", s.httpSessionInput)
@@ -312,7 +313,7 @@ func (s *Server) httpJobTasks(w http.ResponseWriter, r *http.Request) {
 		httpError(w, e)
 		return
 	}
-	rows, e := s.db.SQL.QueryContext(r.Context(), `SELECT t.id,t.state,t.stage,t.partition_key,t.attempt,t.worker,t.error_code,t.blocker,
+	rows, e := s.db.SQL.QueryContext(r.Context(), `SELECT t.id,t.state,t.stage,t.partition_key,t.attempt,t.current_generation,t.worker,t.error_code,t.blocker,
 		coalesce(a.last_renewed,0),coalesce(a.lease_until,0)
 		FROM tasks t LEFT JOIN attempts a ON a.id=t.attempt
 		WHERE t.job_id=? AND t.id>? ORDER BY t.id LIMIT ?`, id, r.URL.Query().Get("after"), limit+1)
@@ -324,12 +325,12 @@ func (s *Server) httpJobTasks(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]string{}
 	for rows.Next() {
 		var id, state, stage, key, attempt, worker, code, blocker string
-		var lastRenewed, leaseUntil int64
-		if e = rows.Scan(&id, &state, &stage, &key, &attempt, &worker, &code, &blocker, &lastRenewed, &leaseUntil); e != nil {
+		var generation, lastRenewed, leaseUntil int64
+		if e = rows.Scan(&id, &state, &stage, &key, &attempt, &generation, &worker, &code, &blocker, &lastRenewed, &leaseUntil); e != nil {
 			httpError(w, dbErr(e))
 			return
 		}
-		items = append(items, map[string]string{"task_id": id, "state": state, "stage": stage, "partition_key": key, "attempt_id": attempt, "worker_id": worker, "error_code": code, "scheduling_blocker": blocker, "last_renewed_ms": strconv.FormatInt(lastRenewed, 10), "lease_until_ms": strconv.FormatInt(leaseUntil, 10)})
+		items = append(items, map[string]string{"task_id": id, "state": state, "stage": stage, "partition_key": key, "attempt_id": attempt, "generation": strconv.FormatInt(generation, 10), "worker_id": worker, "error_code": code, "scheduling_blocker": blocker, "last_renewed_ms": strconv.FormatInt(lastRenewed, 10), "lease_until_ms": strconv.FormatInt(leaseUntil, 10)})
 	}
 	if e = rows.Err(); e != nil {
 		httpError(w, dbErr(e))

@@ -22,7 +22,7 @@ func offlineJobServer(t *testing.T) (*Server, context.Context, context.Context, 
 	t.Helper()
 	u, w := testutil.Token(t, "u"), testutil.Token(t, "w")
 	wc := config.Worker{Runtimes: map[string]config.Runtime{"codex_exec": {Version: "fixture-1"}, "claude_print": {Version: "fixture-1"}}, Policies: map[string]config.Policy{"review": {CodexSandbox: "read-only", ClaudePermissionMode: "dontAsk", ClaudeAllowedTools: []string{"Read"}}}, Verifiers: map[string][][]string{"check": {}}}
-	cfg := config.Server{DataDir: t.TempDir(), TLS: config.TLS{InsecureLoopback: true}, LeaseSeconds: 60, TickMS: 20, MaxArtifactBytes: 32 << 20, MaxProjectTasks: 8, Credentials: map[string]int{"account": 1}, Jobs: config.Jobs{Enabled: true, Templates: config.Templates(wc)}, Users: []config.Identity{{TokenFile: u, Owner: "owner", Projects: []string{"project"}, Credentials: []string{"account"}, Scopes: []string{"jobs:submit", "jobs:read", "jobs:cancel"}}}, Workers: []config.Identity{{TokenFile: w, WorkerID: "w", Projects: []string{"project"}, Credentials: []string{"account"}}}}
+	cfg := config.Server{DataDir: t.TempDir(), TLS: config.TLS{InsecureLoopback: true}, LeaseSeconds: 60, TickMS: 20, MaxArtifactBytes: 32 << 20, MaxProjectTasks: 8, Credentials: map[string]int{"account": 1}, Jobs: config.Jobs{Enabled: true, Templates: config.Templates(wc)}, Users: []config.Identity{{TokenFile: u, Owner: "owner", Projects: []string{"project"}, Credentials: []string{"account"}, Scopes: []string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:control", "jobs:retry"}}}, Workers: []config.Identity{{TokenFile: w, WorkerID: "w", Projects: []string{"project"}, Credentials: []string{"account"}}}}
 	s, e := New(cfg)
 	if e != nil {
 		t.Fatal(e)

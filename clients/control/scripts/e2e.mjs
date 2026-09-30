@@ -23,6 +23,30 @@ async function request(path, expected = 200, init = {}) {
 const bootstrap = (await request("/v1/control/bootstrap")).json();
 if (!bootstrap.server_epoch || !bootstrap.protocol_max) throw new Error("bootstrap missing protocol/epoch");
 
+// UI-03b Job submit remains Server-validated and idempotency-keyed.
+const submitSpec = args["submit-spec"] ? JSON.parse(fs.readFileSync(String(args["submit-spec"]), "utf8")) : null;
+let submittedJob = "";
+if (submitSpec) {
+  const submitHeaders = { "Content-Type": "application/json", "Idempotency-Key": "ui03b-e2e-submit" };
+  const firstSubmit = (await request("/v1/jobs", 202, {
+    method: "POST", headers: submitHeaders, body: JSON.stringify(submitSpec),
+  })).json();
+  submittedJob = firstSubmit.job_id;
+  if (!submittedJob || firstSubmit.existing) throw new Error("first idempotent submit was not newly accepted");
+
+  const replay = (await request("/v1/jobs", 200, {
+    method: "POST", headers: submitHeaders, body: JSON.stringify(submitSpec),
+  })).json();
+  if (replay.job_id !== submittedJob || !replay.existing) throw new Error("same-key submit did not replay existing Job");
+
+  const changed = structuredClone(submitSpec);
+  changed.input = { ...(changed.input || {}), text: String(changed.input?.text || "") + " changed" };
+  const conflict = await request("/v1/jobs", 409, {
+    method: "POST", headers: submitHeaders, body: JSON.stringify(changed),
+  });
+  if (conflict.json().error?.code !== "IDEMPOTENCY_CONFLICT") throw new Error("changed payload reused submit key without conflict");
+}
+
 const first = (await request("/v1/jobs?limit=2&epoch=" + encodeURIComponent(bootstrap.server_epoch))).json();
 if (!first.snapshot_ms || !first.snapshot_id || first.jobs.length !== 2 || !first.has_more || !first.next) {
   throw new Error("job collection does not expose stable pagination");
@@ -81,6 +105,22 @@ if (staleBody.error?.code !== "SNAPSHOT_EPOCH_CHANGED") throw new Error("stale e
 
 if (writeJob) {
   const holder = "e2e-device-a";
+
+  const taskPage = (await request("/v1/jobs/" + writeJob + "/tasks?limit=100")).json();
+  const retryCandidate = taskPage.tasks[0];
+  if (!retryCandidate || retryCandidate.generation === undefined) throw new Error("Task projection missing generation for UI-03b retry fencing");
+  const retryBody = JSON.stringify({
+    operation_id: "ui03b-no-lease-retry",
+    task_id: retryCandidate.task_id,
+    expected_attempt_id: retryCandidate.attempt_id,
+    expected_generation: Number(retryCandidate.generation),
+  });
+  const retryNoLease = await request("/v1/jobs/" + writeJob + "/retry", 409, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: retryBody,
+  });
+  if (retryNoLease.json().error?.code !== "WRITE_LEASE_REQUIRED") throw new Error("manual retry did not require write lease");
+
+
   const body = JSON.stringify({ control_id: "e2e-control-cancel", reason: "UI-03a E2E" });
   const noLease = await request("/v1/jobs/" + writeJob + "/control/cancel", 409, {
     method: "POST", headers: { "Content-Type": "application/json" }, body,
@@ -124,4 +164,6 @@ console.log(JSON.stringify({
   target_job: target,
   events: ids.length,
   token_in_url: false,
+  submitted_job: submittedJob,
+  manual_retry_lease_fenced: Boolean(writeJob),
 }));

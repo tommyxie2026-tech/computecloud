@@ -11,6 +11,7 @@ import type {
   WorkerPage,
   ControlWriteLease,
   ControlOperationReceipt,
+  ManualRetryReceipt,
 } from "./types";
 
 export class ControlAPIError extends Error {
@@ -73,6 +74,28 @@ export class ControlAPI {
   bootstrap(): Promise<ControlBootstrap> {
     return this.json("/v1/control/bootstrap");
   }
+
+  submitJob(spec: unknown, idempotencyKey: string): Promise<JobDetail> {
+    const headers = new Headers({
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    });
+    return this.fetch("/v1/jobs", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(spec),
+    }).then(async (response) => await response.json() as JobDetail);
+  }
+
+  manualRetry(jobID: string, task: TaskView, leaseToken: string, operationID: string): Promise<ManualRetryReceipt> {
+    return this.writeJSON(`/v1/jobs/${encodeURIComponent(jobID)}/retry`, "POST", {
+      operation_id: operationID,
+      task_id: task.task_id,
+      expected_attempt_id: task.attempt_id,
+      expected_generation: Number(task.generation),
+    }, leaseToken);
+  }
+
 
   listJobs(query: URLSearchParams = new URLSearchParams()): Promise<JobPage> {
     const suffix = query.size ? `?${query.toString()}` : "";

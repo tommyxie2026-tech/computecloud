@@ -87,6 +87,7 @@ export type TaskView = {
   stage: string;
   partition_key: string;
   attempt_id: string;
+  generation: string;
   worker_id: string;
   error_code: string;
   scheduling_blocker: string;
@@ -168,4 +169,16 @@ export type ControlOperationReceipt = {
   existing?: boolean;
   error_code?: string;
   error_message?: string;
+};
+
+
+export type ManualRetryReceipt = {
+  operation_id: string;
+  job_id: string;
+  task_id: string;
+  attempt_id: string;
+  generation: number;
+  next_generation: number;
+  state: string;
+  existing?: boolean;
 };
