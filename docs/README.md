@@ -1,5 +1,13 @@
 # computecloud 文档
 
+
+## 当前进度快照（2026-09-30）
+
+- 稳定发布基线：v0.4.5；main 已包含 Runtime/Tool/Environment、Control 与移动端基础能力的持续迭代。
+- Relay/P2P：设计已冻结并纳入 v0.4.x，当前仍是 Planned，尚未进入运行时代码交付。
+- 下一步：RLY-1 Transport seam，保持 direct 路径零回归；Relay 默认关闭、无 SQLite migration。
+- v0.6.x 保留设备身份、OIDC/RBAC、审计、企业 Lease 与可选 Blind E2EE Relay。
+
 | 文档 | 内容 | 状态 |
 | --- | --- | --- |
 | [多架构容器镜像部署与发布](deployment/container-images.md) | Server scratch、Worker Debian slim、amd64/arm64、size gate、GHCR/SBOM/provenance | 当前容器部署依据 |

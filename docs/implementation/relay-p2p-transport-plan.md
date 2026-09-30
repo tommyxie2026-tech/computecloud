@@ -1,7 +1,7 @@
 # Relay-assisted P2P 传输实施计划
 
 - 对齐 ADR：[ADR-021：Server–Worker Relay-assisted P2P 传输](../adr/0021-relay-assisted-p2p-transport.md)
-- 状态：Planned；本文件只冻结后续实现，不表示功能已交付
+- 状态：v0.4.x Planned；设计已冻结，运行时代码尚未交付
 - 产品边界：Agent-aware Distributed Job Execution Platform / Agent Job Executor
 
 ## 0. Version Placement
@@ -13,6 +13,13 @@
 - **v0.6.x**：交付设备身份、OIDC/RBAC、审计、企业 Lease，以及基于证据决定是否需要 Blind E2EE Relay；这些不属于 v0.4.x foundation。
 
 v0.4.x 的 Relay 仍是实验性、显式 opt-in 能力。没有真实双机/NAT/断网/长任务验证之前，不改变生产默认路径，不在版本号中暗示公网 Relay 已经生产认证。
+
+## 当前进度
+
+- RLY-0 设计、ADR-021、路线图归属：已完成并进入 `main`。
+- RLY-1 Transport seam：下一实现切片，尚未开始。
+- RLY-2～RLY-5：待 RLY-1 后按独立 contract、security-negative、fallback、restart-recovery Gate 实施。
+- Schema：无 SQLite migration；Relay 不保存 Job/Task/Attempt，不成为第二事实源。
 
 ## 1. Current State
 
