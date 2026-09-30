@@ -2,7 +2,7 @@
 
 - 项目：computecloud
 - 日期：2026-09-29
-- 当前稳定发布基线：v0.4.5 Prepared Workspace / Safe Control；main 已包含 EnvironmentProvider Execution、Prepared Workspace Core、ACP-3/ACP-4a 与 ACK fencing 修复
+- 当前稳定发布基线：v0.4.6 Post-0.4.5 Stabilization；main 已包含 C2 Job Submit、bounded Manual Retry、UI-04a Mobile Control Foundation 与 v0.4.5 既有能力
 - 产品类别：**Agent Job Executor**
 - 长期定位：**Agent-aware Distributed Job Execution Platform**
 - 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
@@ -10,7 +10,7 @@
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
-- 当前实现依据：[v0.4.5 发布记录](v0.4.5-release-status.md)、[Prepared Workspace Core](prepared-workspace-core.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[本轮核对与实施台账](v0.4.5-roadmap-reconciliation.md)；Server v12 / Worker v6
+- 当前实现依据：[v0.4.6 发布记录](v0.4.6-release-status.md)、[Prepared Workspace Core](prepared-workspace-core.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[本轮核对与实施台账](v0.4.5-roadmap-reconciliation.md)；Server v12 / Worker v6
 - 当前实施跟踪：WS-A Core 已通过发布 CI；下一功能主线仍为 WS-B Cache / Warm Path 与 WS-C Readiness；Goal G0～G4 执行集成、WS-D RPG-4、WS-E Goal bridge、C1 Observe PWA 按实施台账独立验收；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪，尚未完成
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
