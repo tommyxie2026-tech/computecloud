@@ -178,7 +178,7 @@ func (c Server) ValidateV02() error {
 	}
 	for _, id := range c.Users {
 		for _, scope := range id.Scopes {
-			if !Contains([]string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:extend", "jobs:control", "models:invoke", "tasks:submit", "tasks:read", "tasks:cancel"}, scope) {
+			if !Contains([]string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:extend", "jobs:control", "jobs:retry", "models:invoke", "tasks:submit", "tasks:read", "tasks:cancel"}, scope) {
 				return fmt.Errorf("unknown identity scope")
 			}
 		}
