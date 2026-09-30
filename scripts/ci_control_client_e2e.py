@@ -128,7 +128,7 @@ def main():
                 "tick_ms":30,"lease_seconds":4,"max_project_tasks":4,"credentials":{"fixture":1},
                 "jobs":{"enabled":True,"templates":templates},
                 "users":[{"token_file":str(user_token),"owner":"ui","projects":["control"],"credentials":["fixture"],
-                          "scopes":["jobs:submit","jobs:read","jobs:cancel","jobs:control"]}],
+                          "scopes":["jobs:submit","jobs:read","jobs:cancel","jobs:control","jobs:retry"]}],
                 "workers":[{"token_file":str(worker_token),"worker_id":"worker-control","projects":["control"],"credentials":["fixture"]}]
             }})
             client_cfg = write("client.json", {"client":{"address":grpc_addr,"http_url":"http://"+http_addr,"token_file":str(user_token),"tls":tls}})
