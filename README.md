@@ -6,8 +6,8 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 
 ## 当前状态
 
-- 稳定发布基线：**[v0.4.5 Prepared Workspace / Safe Control](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.5)**
-- v0.4.5 已通过完整 CI、package 与 release；发布范围和升级步骤见 [v0.4.5 部署指南](docs/deployment/production-v0.4.5.md)，验收证据见 [发布记录](docs/implementation/v0.4.5-release-status.md)
+- 稳定发布基线：**[v0.4.6 Post-0.4.5 Stabilization](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.6)**
+- v0.4.6 已通过完整 CI、package、multi-arch container 与 release；发布范围和升级步骤见 [v0.4.6 部署指南](docs/deployment/production-v0.4.6.md)，验收证据见 [v0.4.6 发布记录](docs/implementation/v0.4.6-release-status.md)
 - main 功能基线：**v0.4.x Runtime / Tool / Environment Ecosystem**
 - 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
 - 当前功能主线：**Prepared Workspace / Workspace Template**
@@ -17,7 +17,7 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - Goal-oriented Computing：计算模型与 Re-plan Guard RPG-1～RPG-3 持久化原语已实现；Goal/Plan/Graph/Evaluator 与实际执行路径的集成尚未完成
 - RPG：固定只做 RPG-1～RPG-4，RPG-4 完成后正式关闭，不继续 RPG-5
 - 当前 Server schema：**v12**；Worker schema：**v6**
-- 下一轮任务与缺口：[v0.4.5 后路线图核对与实施台账](docs/implementation/v0.4.5-roadmap-reconciliation.md)；PWA、Goal 闭环与生产基线不能由本版发布状态推定完成
+- 下一轮任务与缺口：[v0.4.5 后续发布计划](docs/implementation/v0.4.5-follow-up-release-plan.md)；Relay RLY-1 及 Goal/生产验收仍按路线图独立推进；PWA、Goal 闭环与生产基线不能由本版发布状态推定完成
 - 发布状态以 [GitHub Actions](https://github.com/tommyxie2026-tech/computecloud/actions) 与 [GitHub Releases](https://github.com/tommyxie2026-tech/computecloud/releases) 为准；代码实现完成不等于已发布
 
 当前演进关系：
