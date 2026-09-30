@@ -12,6 +12,7 @@ import {
 } from "react-native";
 
 import { ControlAPI, isSnapshotReset } from "./src/api";
+import { clearMobileProfile, initialConnectURL, isNativeMobile, loadMobileProfile, loadOrCreateDeviceID, saveMobileProfile, serverFromConnectURL, subscribeConnectURLs } from "./src/mobile";
 import type {
   ControlBootstrap,
   JobEvent,
@@ -88,6 +89,37 @@ export default function App() {
   const [newJobKey, setNewJobKey] = useState(operationID("job"));
   const streamAbort = useRef<AbortController | null>(null);
   const holderID = useRef(operationID("device"));
+  const nativeMobile = isNativeMobile();
+
+  useEffect(() => {
+    let mounted = true;
+    let unsubscribe = () => {};
+    void loadOrCreateDeviceID().then((deviceID) => {
+      if (mounted) holderID.current = deviceID;
+    });
+    if (nativeMobile) {
+      void loadMobileProfile().then((profile) => {
+        if (!mounted || !profile) return;
+        holderID.current = profile.deviceID;
+        setServerURL(profile.serverURL);
+        setToken(profile.token);
+      });
+      const applyConnectURL = (value: string | null) => {
+        if (!mounted || !value) return;
+        const server = serverFromConnectURL(value);
+        if (server) setServerURL(server);
+        else if (value.startsWith("computecloud://connect")) {
+          setError("Invalid connect link. Tokens are not accepted in deep links.");
+        }
+      };
+      void initialConnectURL().then(applyConnectURL);
+      unsubscribe = subscribeConnectURLs((value) => applyConnectURL(value));
+    }
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [nativeMobile]);
 
   const attention = useMemo(() => {
     if (!snapshot) return 0;
@@ -120,6 +152,9 @@ export default function App() {
       setSelected("");
       setSnapshot(null);
       setWriteLease(null);
+      if (nativeMobile) {
+        await saveMobileProfile(client.baseURL, token.trim(), holderID.current);
+      }
     } catch (e) {
       setAPI(null);
       setBootstrap(null);
@@ -127,7 +162,19 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [refreshCollections, serverURL, token]);
+  }, [nativeMobile, refreshCollections, serverURL, token]);
+
+  const forgetMobileProfile = useCallback(async () => {
+    if (!nativeMobile) return;
+    streamAbort.current?.abort();
+    await clearMobileProfile();
+    setToken("");
+    setAPI(null);
+    setBootstrap(null);
+    setSelected("");
+    setSnapshot(null);
+    setWriteLease(null);
+  }, [nativeMobile]);
 
   const resetSnapshot = useCallback(async () => {
     if (!api) return;
@@ -356,10 +403,11 @@ export default function App() {
           <TextInput autoCapitalize="none" value={serverURL} onChangeText={setServerURL} style={styles.input} placeholder="https://control.example.com" />
         </View>
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Bearer token · memory only</Text>
+          <Text style={styles.label}>{nativeMobile ? "Bearer token · OS secure storage" : "Bearer token · memory only"}</Text>
           <TextInput autoCapitalize="none" secureTextEntry value={token} onChangeText={setToken} style={styles.input} placeholder="Paste token" />
         </View>
         <Button title={busy && !api ? "Connecting…" : "Connect"} disabled={busy || !token.trim()} onPress={connect} />
+        {nativeMobile && <Button title="Forget profile" disabled={busy || !token} onPress={() => { void forgetMobileProfile(); }} />}
       </View>
 
       {!!error && <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View>}

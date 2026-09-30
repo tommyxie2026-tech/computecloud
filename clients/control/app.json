@@ -2,9 +2,17 @@
   "expo": {
     "name": "computecloud Control",
     "slug": "computecloud-control",
-    "version": "0.1.0",
+    "version": "0.2.0",
+    "scheme": "computecloud",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "tech.tommyxie.computecloud.control",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "tech.tommyxie.computecloud.control"
+    },
     "web": {
       "bundler": "metro",
       "output": "single"

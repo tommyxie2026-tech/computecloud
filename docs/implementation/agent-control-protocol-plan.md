@@ -3,7 +3,7 @@
 - 项目：computecloud
 - 日期：2026-09-29
 - 状态：ACP-0～ACP-5 仓库级实现已完成；ACP-4b Session Resume 已合入 main（ca2264e9d026b6cd2c2c002e41191041f533d185），ACP-5 Gemini Runtime 已合入 main（602bb4d080753b1c43f32ada88521d67222492a2）；main CI 36598835158（run #1120）全功能 Gate、verify、package、container-image 与 container-publish PASS
-- 当前主线：ACP-6 C2 Operate；UI-01/UI-02 C1 已完成，UI-03a lease-gated cancel/input/approval/resume 已合入 main；UI-03b Job Submit + bounded Manual Retry 已实现于功能分支，等待独立 `manual-retry-negative`、client check/E2E 与完整 PR CI。
+- 当前主线：ACP-6 C3 Mobile；UI-01/UI-02 C1 已完成，UI-03a/UI-03b C2 Operate 已进入 main 并通过专用 Gate；下一切片 UI-04a 建立 iOS/Android 原生壳、SecureStore、稳定 device_id 与安全 Deep Link。
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
 - 调研：[Agent 客户端控制端方案调研](../research/agent-control-client-landscape-2026.md)
@@ -34,7 +34,7 @@
 | ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
 | ACP-4 | v0.4.x | Approval + Resume | **已完成**：ACP-4a durable Approval 已发布于 v0.4.5；ACP-4b current-Attempt Session Resume 已合入 main，独立 `agent-control-resume` Gate PASS |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | **已完成（仓库级）**：Gemini CLI Provider、provider-neutral Job/Task runtime_profile、stream-json parser、transport-neutral execution、safe approval policy、legacy engine alias fencing；PR #66 / main CI PASS |
-| ACP-6 | C1/C2：v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | **进行中**：C1 UI-01/UI-02 已完成；UI-03a 已合入；UI-03b submit + single-mode fenced manual retry 已实现待 CI；C3 Mobile 后续 |
+| ACP-6 | C1/C2：v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | **进行中**：C1 与 C2 基线已完成；UI-04a C3 Mobile Foundation 实施中，后续 UI-04b pairing / UI-04c push |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
 
 ## 3. ACP-0 — 协议基线
@@ -376,7 +376,13 @@ React Native + Expo：
 - deep link；
 - secure credential storage。
 
-Mobile 仍通过同一 Agent Control API，不新增 mobile-only 业务协议。
+分片：
+
+- UI-04a：iOS/Android identity、SecureStore、稳定 device_id、安全 Deep Link；
+- UI-04b：短 TTL/一次性 QR pairing、设备注册/撤销；
+- UI-04c：APNs/FCM opaque notification + authenticated app fetch。
+
+Mobile 仍通过同一 Agent Control API，不新增 mobile-only execution 业务协议。
 
 ### 9.4 UI-03b — Job Submit + bounded Manual Retry
 
