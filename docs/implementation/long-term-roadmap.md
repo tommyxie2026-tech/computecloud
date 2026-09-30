@@ -234,7 +234,7 @@ Control 是既有 Agent Job Executor 的产品表面，不是第二个调度器�
 | C0 Design Baseline | v0.3.2 | 调研、ADR-008、API/安全/UX 技术方案 | 当前完成 |
 | C1 Observe PWA | v0.4.x | Job/Task/Attempt/Worker/Artifact 只读投影、稳定分页、SSE、attention | **已完成**：UI-01/UI-02 已合入 main，独立 client check/E2E 通过 |
 | C2 Operate PWA | v0.4.x | 提交、取消、输入、审批、重试、Diff/测试审阅、短期单写者 lease | **进行中**：UI-03a 已合入；UI-03b submit + bounded manual retry 待 CI/merge；Diff/测试审阅继续后续切片 |
-| C3 Mobile Beta | v0.5.x | Expo iOS/Android、QR 配对、Push、主机/运行时选择 | Agent-aware Scheduler 与设备身份可用 |
+| C3 Mobile Beta | v0.5.x | Expo iOS/Android、QR 配对、Push、主机/运行时选择 | **进行中**：UI-04a SecureStore/device_id/deep-link foundation；UI-04b pairing 与 UI-04c push 后续 |
 | C4 Governed Remote | v0.6.x | OIDC/RBAC、设备策略、审计、企业 Lease 策略、可选 E2EE Relay；Server–Worker Relay-assisted P2P 传输 | 先完成 [ADR-021](../adr/0021-relay-assisted-p2p-transport.md) 的直连回退与威胁测试；Relay 不参与调度判断 |
 | C5 Production | v0.7.x/v1.0 | 弱网、规模、兼容矩阵、应用商店/企业分发、SLO | Scale & Resilience 门槛完成 |
 
