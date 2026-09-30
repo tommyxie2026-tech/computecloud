@@ -1,10 +1,12 @@
 package server
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
+	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"google.golang.org/grpc/codes"
