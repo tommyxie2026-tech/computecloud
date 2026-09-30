@@ -1,7 +1,7 @@
 GO ?= go
 VERSION ?= 0.4.5
 
-.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-prepared-workspace-contract ci-prepared-workspace-recovery ci-long-run-flow ci-fair-flow ci-runtime-contract-flow ci-runtime-execution-flow ci-tool-contract-flow ci-environment-contract-flow ci-environment-execution-flow ci-agent-control-schema ci-agent-control-read ci-runtime-adapter-contract ci-agent-control-fencing ci-agent-control-negative ci-agent-control-dispatch ci-agent-control-approval ci-agent-control-resume ci-control-client-check ci-control-client-e2e ci-container-image container-build capacity capacity-check release-package generate
+.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-prepared-workspace-contract ci-prepared-workspace-recovery ci-long-run-flow ci-fair-flow ci-runtime-contract-flow ci-runtime-execution-flow ci-tool-contract-flow ci-environment-contract-flow ci-environment-execution-flow ci-agent-control-schema ci-agent-control-read ci-runtime-adapter-contract ci-agent-control-fencing ci-agent-control-negative ci-agent-control-dispatch ci-agent-control-approval ci-agent-control-resume ci-control-client-check ci-control-client-e2e ci-manual-retry-negative ci-container-image container-build capacity capacity-check release-package generate
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w -X main.version=$(VERSION)' -o bin/computecloud ./cmd/computecloud
 test:
@@ -58,6 +58,8 @@ ci-control-client-check:
 	python3 scripts/ci_control_client_check.py --output dist/control-client-check/report.json
 ci-control-client-e2e: build
 	python3 scripts/ci_control_client_e2e.py --binary bin/computecloud --output dist/control-client-e2e/report.json
+ci-manual-retry-negative:
+	python3 scripts/ci_manual_retry_negative.py --output dist/ci-manual-retry-negative/report.json
 ci-container-image:
 	bash scripts/build-container-images.sh $(VERSION) dist/container
 container-build: ci-container-image
