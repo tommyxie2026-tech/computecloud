@@ -2,7 +2,7 @@
   "expo": {
     "name": "computecloud Control",
     "slug": "computecloud-control",
-    "version": "0.2.0",
+    "version": "0.4.6",
     "scheme": "computecloud",
     "orientation": "default",
     "userInterfaceStyle": "automatic",

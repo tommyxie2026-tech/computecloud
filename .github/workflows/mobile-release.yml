@@ -1,0 +1,82 @@
+name: Mobile Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Control client release version without leading v"
+        required: true
+        default: "0.4.6"
+        type: string
+      publish_release:
+        description: "Publish immutable control-v<version> GitHub Release"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: npm
+          cache-dependency-path: clients/control/package-lock.json
+      - name: Install locked client dependencies
+        working-directory: clients/control
+        run: npm ci --ignore-scripts
+      - name: Typecheck mobile client
+        working-directory: clients/control
+        run: npm run typecheck
+      - name: Export iOS bundle
+        working-directory: clients/control
+        run: npx expo export --platform ios --output-dir dist-ios
+      - name: Export Android bundle
+        working-directory: clients/control
+        run: npx expo export --platform android --output-dir dist-android
+      - name: Run mobile security contract
+        run: python3 scripts/ci_control_mobile_check.py --output dist/control-mobile-check/report.json
+      - name: Package verified mobile release
+        env:
+          VERSION: ${{ inputs.version }}
+        run: scripts/package-mobile-release.sh "$VERSION" dist/mobile-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: computecloud-control-mobile-${{ inputs.version }}
+          path: dist/mobile-release/*
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    if: inputs.publish_release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: computecloud-control-mobile-${{ inputs.version }}
+          path: dist/mobile-release
+      - name: Publish immutable Control client release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          tag="control-v${VERSION}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag already exists; refusing to overwrite" >&2
+            exit 2
+          fi
+          gh release create "$tag" dist/mobile-release/*             --target "$TARGET_SHA"             --title "computecloud Control $VERSION"             --notes "Verified Expo iOS/Android bundle and source release. This is not a signed IPA/APK/AAB; native signing requires the organization's Apple/Android credentials and EAS/native build gate."
