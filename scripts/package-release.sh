@@ -44,7 +44,7 @@ for arch in amd64 arm64; do
     esac
   fi
   cp README.md CHANGELOG.md "$root/"
-  cp docs/deployment/production-v0.4.5.md "$root/DEPLOYMENT.md"
+  cp docs/deployment/production-v0.4.6.md "$root/DEPLOYMENT.md"
   cp docs/deployment/production-v0.2.md "$root/DEPLOYMENT-v0.2.md"
   cp docs/deployment/container-images.md "$root/CONTAINERS.md"
   cp -R examples "$root/"
