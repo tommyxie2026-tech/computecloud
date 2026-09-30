@@ -192,11 +192,25 @@ v1.0
 | --- | --- | --- |
 | v0.2.x | Production Baseline | 真实 Codex/Claude/MCP、多机、故障、容量、部署 |
 | v0.3.x | Reliability Kernel | Stage、Attempt fencing、Retry Safety、Artifact/Workspace lifecycle、长任务 |
-| v0.4.x | Runtime / Tool / Environment Ecosystem | Runtime API v2、ToolCapability、EnvironmentProvider、Prepared Workspace、更多 Agent、Approval |
+| v0.4.x | Runtime / Tool / Environment Ecosystem + Relay Foundation | Runtime API v2、ToolCapability、EnvironmentProvider、Prepared Workspace、更多 Agent、Approval、实验性 Server–Worker Relay 传输基础 |
 | v0.5.x | Agent-aware Scheduler | Capability、Credential、Environment readiness、Workspace/Repo affinity、Network、Fair Queue、Resource |
 | v0.6.x | Enterprise Governance | Multi-tenant、RBAC、Quota、Secret、Policy、Audit、Private Worker / Trust Domain |
 | v0.7.x | Scale & Resilience | Worker Group、GC、调度扩展、容量治理、按需 HA |
 | v1.0 | Stable Platform | 稳定协议、SDK、兼容矩阵、SLO、运维体系 |
+
+### 3.1.1 v0.4.x Relay-assisted P2P Foundation
+
+Relay 传输基础纳入 v0.4.x，定位为 Runtime/Tool/Environment 横向传输能力，而不是新的调度器或独立平台。它只解决 Server 与远程 Worker 在直连不可用时的受控传输问题；Server 仍是 Job、Task、Attempt、Artifact 和 Worker 状态的唯一事实源。
+
+| 里程碑 | v0.4.x 交付范围 | 状态 |
+| --- | --- | --- |
+| RLY-0 | ADR-021、Transport contract、威胁模型与版本边界 | 设计已合并 |
+| RLY-1 | Transport seam；direct 路径零回归 | Planned |
+| RLY-2 | 轻量无状态 Relay、一次性短期配对票据、内层 TLS | Planned |
+| RLY-3 | direct-first / relay-fallback、`connection_epoch` fencing、重连 | Planned |
+| RLY-4 | Contract、安全负向、回退、重启恢复 CI Gate 与双机/NAT 验证 | Planned |
+
+v0.4.x 的发布门槛是：`direct` 仍为默认模式，`direct_then_relay` 必须显式启用；在真实双主机、NAT、断网和长任务证据完成前，不宣称 Relay 已达到生产默认状态。设备身份、OIDC/RBAC、审计、企业 Lease 与可选 Blind E2EE Relay 仍属于 v0.6.x 治理范围。
 
 ### 3.1 Control 客户端横向能力线
 
