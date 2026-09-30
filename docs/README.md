@@ -15,6 +15,7 @@
 | [ADR-021：Server–Worker Relay-assisted P2P 传输](adr/0021-relay-assisted-p2p-transport.md) | 直连优先、Relay 回退、内层 TLS 端到端、无状态转发与 P2P 边界 | 设计冻结，尚未实现 |
 | [Relay/P2P 传输实施计划](implementation/relay-p2p-transport-plan.md) | v0.4.x 实验性配对票据、Transport seam、回退、背压、安全负向测试与 CI Gate | v0.4.x Planned；设计已冻结 |
 | [Agent-aware Distributed Job Execution Platform 总体架构](design/agent-job-executor-architecture.md) | Job/Stage/Task/Attempt、Runtime/Tool 分层、Artifact/Workspace 生命周期与 Agent-aware Scheduler | 当前目标架构 |
+| [v0.4.5 后续发布计划](implementation/v0.4.5-follow-up-release-plan.md) | v0.4.5 后续 v0.4.6～v0.4.10 发布序列、Relay 分阶段门禁、升级/回滚与发布证据 | 当前发布规划 |
 | [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性内核、Agent Runtime/Tool、Agent-aware Scheduler、治理与规模化 | 当前长期主路线 |
 | [Control 客户端控制面技术方案](design/client-control-plane.md) | Web/iOS/Android、API、事件同步、设备身份、E2EE、Push、CI 和验收 | C0 设计基线完成；按 C1–C5 实施 |
 | [Agent 客户端控制端方案调研](research/agent-control-client-landscape-2026.md) | Orca、Paseo、Happy、Soromi、Codex/Claude Remote 等比较 | 2026-09-26 快照；已形成 ADR-008 |
