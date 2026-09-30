@@ -34,6 +34,14 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		if active != 0 {
 			return errors.New("schema upgrade requires all attempts drained using the old binary")
 		}
+		if version >= 3 {
+			if err := db.QueryRow("SELECT count(*) FROM gateway_requests WHERE state='STARTED'").Scan(&active); err != nil {
+				return err
+			}
+			if active != 0 {
+				return errors.New("schema upgrade requires all model requests drained using the old binary")
+			}
+		}
 	}
 	if version == target {
 		return nil
@@ -100,6 +108,29 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 7
 	}
+	// Experimental tracing shipped as v7 (without liveness), then v8
+	// (with liveness, but without main's control_operations). Normalize only
+	// those historical shapes inside this transaction before main migrations.
+	if schema == ServerSchema && (version == 7 || version == 8) {
+		var traces, controls, liveness int
+		if err = tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='traces'").Scan(&traces); err != nil {
+			return err
+		}
+		if err = tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='control_operations'").Scan(&controls); err != nil {
+			return err
+		}
+		if traces != 0 && controls == 0 {
+			if err = tx.QueryRow("SELECT count(*) FROM pragma_table_info('attempts') WHERE name='last_renewed'").Scan(&liveness); err != nil {
+				return err
+			}
+			if version == 7 && liveness == 0 {
+				if _, err = tx.Exec(serverV7); err != nil {
+					return err
+				}
+			}
+			version = 7
+		}
+	}
 	if schema == ServerSchema && version < 8 {
 		if _, err = tx.Exec(serverV8); err != nil {
 			return err
@@ -124,6 +155,20 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 11
 	}
+	// The tracing branch also shipped v12, but without ACP-4a approvals.
+	// Keep its trace data and apply the mainline approval migration first.
+	if schema == ServerSchema && version == 12 {
+		var traces, approvals int
+		if err = tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='traces'").Scan(&traces); err != nil {
+			return err
+		}
+		if err = tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='approval_requests'").Scan(&approvals); err != nil {
+			return err
+		}
+		if traces != 0 && approvals == 0 {
+			version = 11
+		}
+	}
 	if schema == ServerSchema && version < 12 {
 		if _, err = tx.Exec(serverV12); err != nil {
 			return err
@@ -135,6 +180,49 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 			return err
 		}
 		version = 13
+	}
+	if schema == ServerSchema && version < 14 {
+		// v13 was the mainline lease migration. Older tracing builds also
+		// used that number, so add whichever side is missing before v14.
+		var leases, traces int
+		if err = tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='control_write_leases'").Scan(&leases); err != nil {
+			return err
+		}
+		if leases == 0 {
+			if _, err = tx.Exec(serverV13); err != nil {
+				return err
+			}
+		}
+		if err = tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='traces'").Scan(&traces); err != nil {
+			return err
+		}
+		if traces == 0 {
+			if _, err = tx.Exec(serverV14); err != nil {
+				return err
+			}
+		}
+		// Reject partial or corrupt historical variants instead of stamping
+		// them as the current schema.
+		for _, query := range []string{
+			"SELECT approval_id,request_version,job_id,task_id,attempt_id,generation,state,request_hash FROM approval_requests LIMIT 0",
+			"SELECT principal_id,operation_id,state FROM control_operations LIMIT 0",
+			"SELECT last_renewed FROM attempts LIMIT 0",
+			"SELECT event_floor_seq FROM tasks LIMIT 0",
+			"SELECT attempt,worker_seq,hash FROM event_dedup LIMIT 0",
+			"SELECT id,owner,project,scope,created FROM traces LIMIT 0",
+			"SELECT trace_id FROM jobs LIMIT 0",
+			"SELECT trace_id FROM gateway_requests LIMIT 0",
+			"SELECT attempt_id,payload,recorded_at FROM attempt_metrics LIMIT 0",
+		} {
+			rows, e := tx.Query(query)
+			if e != nil {
+				return e
+			}
+			if e = rows.Close(); e != nil {
+				return e
+			}
+		}
+		version = 14
 	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
@@ -272,7 +360,6 @@ CREATE TABLE gateway_requests (
 );
 CREATE INDEX gateway_requests_job ON gateway_requests(job_id, started);`
 
-
 const serverV4 = `CREATE TABLE stages (
   id TEXT PRIMARY KEY,
   job_id TEXT NOT NULL REFERENCES jobs(id),
@@ -379,10 +466,8 @@ SET state = 'ORPHANED'
 WHERE state='STAGED' AND attempt IN (SELECT id FROM attempts WHERE released=1);
 `
 
-
 const serverV5 = `ALTER TABLE tasks ADD COLUMN retry_after INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX tasks_retry_queue ON tasks(state,retry_after,priority DESC,created);`
-
 
 const serverV6 = `CREATE TABLE artifacts_v6 (
   id TEXT PRIMARY KEY,
@@ -490,7 +575,6 @@ JOIN artifacts a ON a.id=json_extract(item.value,'$.artifact_id')
 WHERE a.state='ACCEPTED';
 `
 
-
 const workerV3 = `CREATE TABLE workspaces (
   attempt TEXT PRIMARY KEY REFERENCES runs(id),
   task TEXT NOT NULL,
@@ -532,7 +616,6 @@ BEGIN
 END;
 `
 
-
 const serverV7 = `ALTER TABLE attempts ADD COLUMN last_renewed INTEGER NOT NULL DEFAULT 0;
 UPDATE attempts SET last_renewed=lease_until WHERE last_renewed=0;
 
@@ -551,7 +634,6 @@ WHERE worker_seq IS NOT NULL;
 
 CREATE INDEX event_dedup_attempt_seq ON event_dedup(attempt,worker_seq);
 `
-
 
 const serverV8 = `CREATE TABLE control_operations (
   principal_id TEXT NOT NULL,
@@ -577,7 +659,6 @@ CREATE INDEX control_operations_job
   ON control_operations(job_id,created);
 `
 
-
 const workerV4 = `ALTER TABLE runs ADD COLUMN runtime_provider TEXT NOT NULL DEFAULT '';
 ALTER TABLE runs ADD COLUMN runtime_transport TEXT NOT NULL DEFAULT '';
 ALTER TABLE runs ADD COLUMN runtime_ref BLOB;
@@ -588,7 +669,6 @@ CREATE INDEX runs_runtime_recovery
   ON runs(completed,runtime_provider,runtime_state,id);
 `
 
-
 const workerV5 = `ALTER TABLE runs ADD COLUMN environment_provider TEXT NOT NULL DEFAULT '';
 ALTER TABLE runs ADD COLUMN environment_ref BLOB;
 ALTER TABLE runs ADD COLUMN environment_state TEXT NOT NULL DEFAULT '';
@@ -597,7 +677,6 @@ ALTER TABLE runs ADD COLUMN environment_cleanup TEXT NOT NULL DEFAULT '';
 CREATE INDEX runs_environment_recovery
   ON runs(completed,environment_provider,environment_state,id);
 `
-
 
 const serverV9 = `CREATE TABLE goals (
   id TEXT PRIMARY KEY,
@@ -636,8 +715,7 @@ CREATE TABLE replan_requests (
   UNIQUE(goal_id,evaluation_id)
 );
 CREATE INDEX replan_requests_goal ON replan_requests(goal_id,created);
-`;
-
+`
 
 const serverV10 = `ALTER TABLE replan_requests ADD COLUMN failure_class TEXT NOT NULL DEFAULT '';
 ALTER TABLE replan_requests ADD COLUMN evidence_fingerprint TEXT NOT NULL DEFAULT '';
@@ -661,8 +739,7 @@ CREATE TABLE plan_fingerprints (
   PRIMARY KEY(goal_id,plan_revision),
   UNIQUE(goal_id,fingerprint)
 );
-`;
-
+`
 
 const workerV6 = `ALTER TABLE commands ADD COLUMN state TEXT NOT NULL DEFAULT 'COMPLETED'
   CHECK (state IN ('PENDING','EXECUTING','COMPLETED','REJECTED','UNKNOWN'));
@@ -672,8 +749,7 @@ ALTER TABLE commands ADD COLUMN updated INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE commands ADD COLUMN error_code TEXT NOT NULL DEFAULT '';
 ALTER TABLE commands ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
 CREATE INDEX commands_control_state ON commands(state,attempt,operation_id);
-`;
-
+`
 
 const serverV11 = `ALTER TABLE plan_fingerprints ADD COLUMN strategy_signature TEXT NOT NULL DEFAULT '';
 ALTER TABLE replan_requests ADD COLUMN strategy_signature TEXT NOT NULL DEFAULT '';
@@ -699,8 +775,7 @@ CREATE TABLE replan_history (
 CREATE INDEX replan_history_recent ON replan_history(goal_id,ordinal DESC);
 CREATE INDEX replan_history_failure ON replan_history(goal_id,failure_class,ordinal DESC);
 CREATE INDEX replan_history_strategy ON replan_history(goal_id,strategy_signature,ordinal DESC);
-`;
-
+`
 
 const serverV12 = `CREATE TABLE approval_requests (
   approval_id TEXT NOT NULL,
@@ -726,8 +801,7 @@ const serverV12 = `CREATE TABLE approval_requests (
 );
 CREATE INDEX approval_requests_job_state ON approval_requests(job_id,state,requested_at);
 CREATE INDEX approval_requests_attempt ON approval_requests(attempt_id,generation,state);
-`;
-
+`
 
 const serverV13 = `CREATE TABLE control_write_leases (
   job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
@@ -738,4 +812,12 @@ const serverV13 = `CREATE TABLE control_write_leases (
   updated INTEGER NOT NULL
 );
 CREATE INDEX control_write_leases_expiry ON control_write_leases(expires_at,job_id);
-`;
+`
+const serverV14 = `
+CREATE TABLE traces (id TEXT PRIMARY KEY, owner TEXT NOT NULL, project TEXT NOT NULL, scope TEXT NOT NULL, created INTEGER NOT NULL);
+ALTER TABLE jobs ADD COLUMN trace_id TEXT REFERENCES traces(id);
+ALTER TABLE gateway_requests ADD COLUMN trace_id TEXT REFERENCES traces(id);
+CREATE INDEX jobs_trace ON jobs(trace_id);
+CREATE INDEX gateway_requests_trace ON gateway_requests(trace_id,started,id);
+CREATE TABLE attempt_metrics (attempt_id TEXT PRIMARY KEY REFERENCES attempts(id), payload BLOB NOT NULL, recorded_at INTEGER NOT NULL);
+`

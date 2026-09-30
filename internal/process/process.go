@@ -1,20 +1,22 @@
-// Package process supervises trusted Linux subprocess groups. It is not a sandbox.
+// Package process supervises trusted Linux and macOS subprocess groups. It is not a sandbox.
 package process
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"strconv"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/tommyxie2026-tech/computecloud/internal/telemetry"
 )
 
 type Result struct {
+	Metrics  *telemetry.Process
 	ExitCode int
 	Cleanup  bool
 	TermSent bool
@@ -39,11 +41,11 @@ func Inspect(pid int, identity string) InspectResult {
 	if pid <= 1 || identity == "" {
 		return InspectResult{Unknown: true}
 	}
-	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	boot, err := bootIdentity()
 	if err != nil {
 		return InspectResult{Unknown: true}
 	}
-	if !strings.HasPrefix(identity, strings.TrimSpace(string(boot))+":") {
+	if !strings.HasPrefix(identity, boot+":") {
 		// A process identity from another boot cannot still be running.
 		return InspectResult{Exited: true, Cleanup: true}
 	}
@@ -61,59 +63,15 @@ func Inspect(pid int, identity string) InspectResult {
 	return InspectResult{Exited: true, Cleanup: true}
 }
 
-func Identity(pid int) (string, error) {
-	b, e := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-	if e != nil {
-		return "", e
-	}
-	i := strings.LastIndexByte(string(b), ')')
-	if i < 0 {
-		return "", errors.New("invalid process stat")
-	}
-	f := strings.Fields(string(b[i+1:]))
-	if len(f) < 20 {
-		return "", errors.New("short process stat")
-	}
-	boot, e := os.ReadFile("/proc/sys/kernel/random/boot_id")
-	if e != nil {
-		return "", e
-	}
-	return strings.TrimSpace(string(boot)) + ":" + f[19], nil
-}
-func groupAlive(pgid int) bool {
-	entries, e := os.ReadDir("/proc")
-	if e != nil {
-		return true
-	}
-	for _, v := range entries {
-		pid, e := strconv.Atoi(v.Name())
-		if e != nil {
-			continue
-		}
-		b, e := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-		if e != nil {
-			continue
-		}
-		i := strings.LastIndexByte(string(b), ')')
-		if i < 0 {
-			continue
-		}
-		f := strings.Fields(string(b[i+1:]))
-		if len(f) > 2 && f[0] != "Z" && f[0] != "X" && f[2] == strconv.Itoa(pgid) {
-			return true
-		}
-	}
-	return false
-}
 func StopDetailed(pid int, identity string, grace time.Duration) StopResult {
 	if pid <= 1 || identity == "" {
 		return StopResult{}
 	}
-	boot, e := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	boot, e := bootIdentity()
 	if e != nil {
 		return StopResult{}
 	}
-	if !strings.HasPrefix(identity, strings.TrimSpace(string(boot))+":") {
+	if !strings.HasPrefix(identity, boot+":") {
 		return StopResult{Cleanup: true}
 	}
 	current, e := Identity(pid)
@@ -153,7 +111,21 @@ func StopDetailed(pid int, identity string, grace time.Duration) StopResult {
 func Stop(pid int, identity string, grace time.Duration) bool {
 	return StopDetailed(pid, identity, grace).Cleanup
 }
-func Run(ctx context.Context, exe string, args, env []string, cwd string, stdin io.Reader, stdout, stderr io.Writer, grace time.Duration, onStart func(int, string) error) Result {
+func Run(ctx context.Context, exe string, args, env []string, cwd string, stdin io.Reader, stdout, stderr io.Writer, grace time.Duration, onStart func(int, string) error) (result Result) {
+	started := time.Now()
+	var state *os.ProcessState
+	defer func() {
+		if state != nil {
+			m := &telemetry.Process{WallMS: time.Since(started).Milliseconds(), UserCPUMS: state.UserTime().Milliseconds(), SystemCPUMS: state.SystemTime().Milliseconds()}
+			if u, ok := state.SysUsage().(*syscall.Rusage); ok {
+				m.PeakRSSBytes = u.Maxrss
+				if runtime.GOOS == "linux" {
+					m.PeakRSSBytes *= 1024
+				}
+			}
+			result.Metrics = m
+		}
+	}()
 	if e := ctx.Err(); e != nil {
 		return Result{ExitCode: -1, Cleanup: true, Err: e}
 	}
@@ -172,12 +144,14 @@ func Run(ctx context.Context, exe string, args, env []string, cwd string, stdin 
 	if e != nil {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		_ = cmd.Wait()
+		state = cmd.ProcessState
 		return Result{ExitCode: -1, Cleanup: false, Err: e}
 	}
 	if onStart != nil {
 		if e = onStart(cmd.Process.Pid, id); e != nil {
 			clean := Stop(cmd.Process.Pid, id, grace)
 			_ = cmd.Wait()
+			state = cmd.ProcessState
 			return Result{ExitCode: -1, Cleanup: clean, Err: e}
 		}
 	}
@@ -188,8 +162,10 @@ func Run(ctx context.Context, exe string, args, env []string, cwd string, stdin 
 	case <-ctx.Done():
 		stopped := StopDetailed(cmd.Process.Pid, id, grace)
 		e = <-done
+		state = cmd.ProcessState
 		return Result{ExitCode: cmd.ProcessState.ExitCode(), Cleanup: stopped.Cleanup, TermSent: stopped.TermSent, KillSent: stopped.KillSent, Err: errors.Join(ctx.Err(), e)}
 	}
+	state = cmd.ProcessState
 	stopped := StopDetailed(cmd.Process.Pid, id, grace)
 	return Result{ExitCode: cmd.ProcessState.ExitCode(), Cleanup: stopped.Cleanup, TermSent: stopped.TermSent, KillSent: stopped.KillSent, Err: e}
 }

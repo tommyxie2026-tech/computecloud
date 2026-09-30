@@ -2,6 +2,7 @@
 """CI end-to-end task flow using protocol fixtures; never calls a model provider."""
 
 import argparse
+from process_utils import process_alive
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -219,8 +220,7 @@ def main():
         pid_file = root / task["worker_id"] / "workspaces" / task["attempt_id"] / "fixture.pid"
         wait_for(lambda: pid_file.exists())
         pid = pid_file.read_text().strip()
-        stat = Path("/proc") / pid / "stat"
-        wait_for(lambda: not stat.exists() or ") Z " in stat.read_text())
+        wait_for(lambda: not process_alive(int(pid)))
         return pid
 
     try:

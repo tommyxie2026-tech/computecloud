@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
@@ -31,14 +32,15 @@ type gatewayRoute struct {
 	slots  chan struct{}
 }
 type modelGateway struct {
-	s      *Server
-	client *http.Client
-	slots  chan struct{}
-	routes map[string]*gatewayRoute
+	cliBlocked atomic.Bool
+	s          *Server
+	client     *http.Client
+	slots      chan struct{}
+	routes     map[string]*gatewayRoute
 }
 type modelIdentity struct {
-	owner, project, job, attempt, route, model string
-	deadline                                   int64
+	owner, project, job, attempt, route, model, traceOwner string
+	deadline                                               int64
 }
 
 func newModelGateway(s *Server) (*modelGateway, error) {
@@ -46,6 +48,13 @@ func newModelGateway(s *Server) (*modelGateway, error) {
 	tr := &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: time.Duration(g.ConnectTimeoutSeconds) * time.Second, KeepAlive: 30 * time.Second}).DialContext, TLSHandshakeTimeout: time.Duration(g.ConnectTimeoutSeconds) * time.Second, ResponseHeaderTimeout: time.Duration(g.HeaderTimeoutSeconds) * time.Second, IdleConnTimeout: 90 * time.Second, MaxIdleConns: g.MaxInflight, MaxIdleConnsPerHost: g.MaxInflight, MaxConnsPerHost: g.MaxInflight, MaxResponseHeaderBytes: 64 << 10, DisableCompression: true}
 	out := &modelGateway{s: s, client: &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, slots: make(chan struct{}, g.MaxInflight), routes: map[string]*gatewayRoute{}}
 	for name, r := range g.Routes {
+		if r.Backend == "codex_cli" {
+			if e := out.prepareCLI(r); e != nil {
+				return nil, e
+			}
+			out.routes[name] = &gatewayRoute{config: r, slots: make(chan struct{}, r.MaxInflight)}
+			continue
+		}
 		b, e := os.ReadFile(r.APIKeyFile)
 		if e != nil {
 			return nil, errors.New("gateway upstream key unavailable")
@@ -131,6 +140,7 @@ func (g *modelGateway) identity(ctx context.Context, header string) (modelIdenti
 		return id, "", status.Error(codes.PermissionDenied, "models:invoke required")
 	}
 	id.owner = p.Identity.Owner
+	id.traceOwner = p.Identity.TraceOwner
 	id.project = p.Identity.ModelProject
 	id.route = p.Identity.ModelRoute
 	if g.routes[id.route] == nil {
@@ -204,6 +214,12 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		modelError(w, status.Error(codes.InvalidArgument, "MODEL_OBJECT_REQUIRED"))
 		return
 	}
+	if route.config.Backend == "codex_cli" {
+		if e = normalizeCLIRequest(fields); e != nil {
+			modelError(w, status.Error(codes.InvalidArgument, e.Error()))
+			return
+		}
+	}
 	if e = validateModelBody(fields, r.URL.Path == "/v1/responses/compact"); e != nil {
 		modelError(w, status.Error(codes.InvalidArgument, e.Error()))
 		return
@@ -248,6 +264,7 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	rid := store.ID()
 	w.Header().Set("X-Request-ID", rid)
+	var traceID string
 	e = g.s.db.Tx(ctx, func(q store.Query) error {
 		if hash != "" {
 			current, e := g.attemptIdentity(ctx, q, hash)
@@ -256,18 +273,28 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			id = current
 		}
-		var jid, aid any
+		var traceErr error
+		traceID, traceErr = g.requestTrace(ctx, q, id, r, fields)
+		if traceErr != nil {
+			return traceErr
+		}
+		var jid, aid, tid any
+		if traceID != "" {
+			tid = traceID
+		}
 		if id.job != "" {
 			jid = id.job
 			aid = id.attempt
 		}
-		_, e := q.ExecContext(ctx, "INSERT INTO gateway_requests(id,owner,project,job_id,attempt_id,route,model,endpoint,state,started) VALUES(?,?,?,?,?,?,?,?,'STARTED',?)", rid, id.owner, id.project, jid, aid, id.route, model, r.URL.Path, store.Now())
+		_, e := q.ExecContext(ctx, "INSERT INTO gateway_requests(id,owner,project,job_id,attempt_id,route,model,endpoint,state,started,trace_id) VALUES(?,?,?,?,?,?,?,?,'STARTED',?,?)", rid, id.owner, id.project, jid, aid, id.route, model, r.URL.Path, store.Now(), tid)
 		return e
 	})
 	if e != nil {
 		modelError(w, dbErr(e))
 		return
 	}
+	w.Header().Set("X-Computecloud-Trace-ID", traceID)
+	ctx = withTrace(ctx, traceID)
 	outcome := gatewayOutcome{state: "UNKNOWN", code: "UPSTREAM_INTERRUPTED"}
 	defer func() { g.record(rid, outcome) }()
 	done := make(chan struct{})
@@ -290,6 +317,10 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}()
+	}
+	if route.config.Backend == "codex_cli" {
+		outcome = g.serveCLI(ctx, w, route.config, fields, r.URL.Path, stream, rid, model)
+		return
 	}
 	endpoint := strings.TrimPrefix(r.URL.Path, "/v1")
 	req, e := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(route.config.BaseURL, "/")+endpoint, bytes.NewReader(body))

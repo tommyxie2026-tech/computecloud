@@ -17,6 +17,27 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 jobs:
+  verify-macos:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: go mod download
+      - run: go mod verify
+      - run: make vet test race smoke ci-flow ci-retry-flow ci-artifact-flow capacity-check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-validation-${{ github.run_id }}
+          path: dist/
+          if-no-files-found: ignore
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15

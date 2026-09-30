@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/maintenance"
+	"github.com/tommyxie2026-tech/computecloud/internal/process"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/server"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
@@ -209,6 +211,15 @@ func TestTwoWorkersLifecycle(t *testing.T) {
 		slow, e = client.GetTask(ctx, &pb.TaskRef{TaskId: slow.TaskId})
 		return e == nil && slow.State == "RUNNING"
 	})
+	pidFile := filepath.Join(workerDirs[slow.WorkerId], "workspaces", slow.AttemptId, "descendant.pid")
+	eventually(t, ctx, func() bool {
+		b, err := os.ReadFile(pidFile)
+		if err != nil {
+			return false
+		}
+		_, err = strconv.Atoi(strings.TrimSpace(string(b)))
+		return err == nil
+	})
 	_, e = client.CancelTask(ctx, &pb.CancelRequest{TaskId: slow.TaskId, ControlId: "stop-slow"})
 	if e != nil {
 		t.Fatal(e)
@@ -217,13 +228,18 @@ func TestTwoWorkersLifecycle(t *testing.T) {
 		slow, e = client.GetTask(ctx, &pb.TaskRef{TaskId: slow.TaskId})
 		return e == nil && slow.State == "CANCELED"
 	})
-	pidFile := filepath.Join(workerDirs[slow.WorkerId], "workspaces", slow.AttemptId, "descendant.pid")
-	if b, e := os.ReadFile(pidFile); e == nil {
-		pid := strings.TrimSpace(string(b))
-		if b, e := os.ReadFile("/proc/" + pid + "/stat"); e == nil && !strings.Contains(string(b), ") Z ") {
-			t.Fatalf("live descendant remains: %s", b)
-		}
+	b, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
 	}
+	childPID, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alive, err := process.Alive(childPID); err != nil || alive {
+		t.Fatalf("live descendant remains or inspection failed: alive=%v err=%v", alive, err)
+	}
+
 	if e := maintenance.Backup(ctx, cfg.DataDir, filepath.Join(t.TempDir(), "backup.tar.gz")); e == nil {
 		t.Fatal("online backup should be refused")
 	}

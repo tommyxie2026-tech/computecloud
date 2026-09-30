@@ -213,6 +213,8 @@ make ci-container-image
 
 `make ci-container-image` 使用 Docker Buildx 构建并验证 Server/Worker 的 linux/amd64 + linux/arm64 OCI 镜像，同时执行镜像体积预算和本机 smoke。容器部署与 GHCR tag 规则见 [多架构容器镜像部署](docs/deployment/container-images.md)。
 
+macOS 原生验证使用系统进程接口；`make race` 需要 Xcode Command Line Tools。详见 [macOS 验证指南](docs/validation/macos-local.md)。
+
 make smoke 临时启动一个 server、两个 Worker 进程和协议测试程序，验证执行、取消、崩溃恢复、事件与产物、备份；结束后清理临时目录。
 
 make capacity-check 运行轻量容量工具自测与小矩阵；make capacity 运行完整 Worker/槽位矩阵并输出 JSON。指标口径与真实部署清单见[容量与部署验收](docs/validation/capacity.md)。

@@ -74,7 +74,7 @@ fi
 func JobCLI(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "job-fixture")
-	body := `#!/usr/bin/python3
+	body := `#!/usr/bin/env python3
 import json, pathlib, sys, time, os, urllib.request
 if sys.argv[1:] == ['--version']:
     print('fixture-1'); sys.exit(0)

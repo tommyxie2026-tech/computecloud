@@ -106,6 +106,8 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 	}
 	path := "/v1/jobs/" + url.PathEscape(o.id)
 	switch o.op {
+	case "list":
+		return print("GET", "/v1/jobs?limit="+strconv.Itoa(o.limit)+"&before="+url.QueryEscape(o.cursor), nil)
 	case "submit":
 		if o.key == "" || o.file == "" {
 			return fmt.Errorf("job submit requires --key and --file; reuse the key after transport failure")
@@ -122,6 +124,8 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		return fmt.Errorf("--id required")
 	}
 	switch o.op {
+	case "trace":
+		return print("GET", path+"/trace?limit="+strconv.Itoa(o.limit)+"&before="+url.QueryEscape(o.cursor), nil)
 	case "get":
 		return print("GET", path, nil)
 	case "result":

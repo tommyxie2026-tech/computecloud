@@ -89,6 +89,21 @@ func newJobHarness(t *testing.T, workers bool, options ...func(*config.Server)) 
 				w.Close()
 			})
 		}
+		// Short-deadline tests measure execution, not CLI startup probes.
+		// Wait for both handshakes before allowing the test to submit work.
+		for {
+			s.mu.Lock()
+			ready := len(s.peers) == len(wtokens)
+			s.mu.Unlock()
+			if ready {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal("workers did not register before fixture deadline")
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
 	}
 	return h
 }

@@ -13,6 +13,7 @@ import (
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/process"
+	"github.com/tommyxie2026-tech/computecloud/internal/telemetry"
 )
 
 type RuntimeState string
@@ -80,6 +81,7 @@ type PreparedExecution struct {
 }
 
 type StartResult struct {
+	Metrics     *telemetry.Process
 	Ref         ExecutionRef
 	State       RuntimeState
 	Cleanup     CleanupState
@@ -272,7 +274,7 @@ func startLocalCLI(ctx context.Context, p Provider, prepared PreparedExecution, 
 		ref = ExecutionRef{Provider: p.Profile(), Transport: p.Transport(), ID: "not-started"}
 	}
 	return StartResult{
-		Ref: ref, State: RuntimeExited, Cleanup: cleanup, ExitCode: run.ExitCode,
+		Metrics: run.Metrics, Ref: ref, State: RuntimeExited, Cleanup: cleanup, ExitCode: run.ExitCode,
 		TermSent: run.TermSent, KillSent: run.KillSent, Outcome: parser.Outcome(),
 		ProtocolErr: protocolErr, Err: run.Err,
 	}

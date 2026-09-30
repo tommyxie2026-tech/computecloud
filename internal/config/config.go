@@ -20,6 +20,7 @@ type TLS struct {
 	InsecureLoopback bool   `yaml:"insecure_loopback"`
 }
 type Identity struct {
+	TraceOwner   string   `yaml:"trace_owner"`
 	TokenFile    string   `yaml:"token_file"`
 	Owner        string   `yaml:"owner"`
 	Projects     []string `yaml:"projects"`
@@ -127,6 +128,9 @@ func Load(path string) (Config, error) {
 	}
 	for key, route := range c.Server.ModelGateway.Routes {
 		route.APIKeyFile = abs(route.APIKeyFile)
+		if route.CLI != nil && strings.ContainsRune(route.CLI.Executable, '/') {
+			route.CLI.Executable = abs(route.CLI.Executable)
+		}
 		c.Server.ModelGateway.Routes[key] = route
 	}
 	for k, v := range c.Worker.Repositories {

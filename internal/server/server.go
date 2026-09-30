@@ -28,20 +28,20 @@ type session struct {
 }
 type Server struct {
 	pb.UnimplementedRuntimeServiceServer
-	cfg          config.Server
-	db           *store.DB
-	auth         *rpcutil.Auth
-	mu           sync.Mutex
-	peers        map[string]*session
-	notify       chan struct{}
-	grpc         *grpc.Server
-	jobCursor    string
-	projectCursor map[int32]string
-	groupCursor   map[string]string
-	modelHandler  http.Handler
+	cfg             config.Server
+	db              *store.DB
+	auth            *rpcutil.Auth
+	mu              sync.Mutex
+	peers           map[string]*session
+	notify          chan struct{}
+	grpc            *grpc.Server
+	jobCursor       string
+	projectCursor   map[int32]string
+	groupCursor     map[string]string
+	modelHandler    http.Handler
 	artifactSweepAt int64
 	eventSweepAt    int64
-	controlEpoch     string
+	controlEpoch    string
 }
 
 func New(c config.Server) (*Server, error) {
@@ -58,6 +58,11 @@ func New(c config.Server) (*Server, error) {
 		return nil, e
 	}
 	s := &Server{cfg: c, db: d, auth: a, peers: map[string]*session{}, notify: make(chan struct{}, 1), projectCursor: map[int32]string{}, groupCursor: map[string]string{}, controlEpoch: store.ID()}
+	// Recover CLI children even when the gateway is disabled after a crash.
+	if err := (&modelGateway{s: s}).recoverCLI(); err != nil {
+		d.Close()
+		return nil, err
+	}
 	if c.ModelGateway.Enabled {
 		g, e := newModelGateway(s)
 		if e != nil {

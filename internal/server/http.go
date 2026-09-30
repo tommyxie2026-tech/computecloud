@@ -86,6 +86,24 @@ func (s *Server) HTTPHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/jobs", s.httpControlJobs)
 	mux.HandleFunc("GET /v1/workers", s.httpControlWorkers)
+
+	mux.HandleFunc("GET /v1/jobs/{id}/trace", func(w http.ResponseWriter, r *http.Request) {
+		limit := 50
+		var e error
+		if v := r.URL.Query().Get("limit"); v != "" {
+			limit, e = strconv.Atoi(v)
+		}
+		if e != nil {
+			httpError(w, status.Error(codes.InvalidArgument, "INVALID_LIMIT"))
+			return
+		}
+		out, e := s.JobTrace(r.Context(), r.PathValue("id"), r.URL.Query().Get("before"), limit)
+		if e != nil {
+			httpError(w, e)
+			return
+		}
+		jsonResponse(w, 200, out)
+	})
 	mux.HandleFunc("POST /v1/jobs", func(w http.ResponseWriter, r *http.Request) {
 		b, e := readJSONBody(w, r, s.cfg.Jobs.MaxRequestBytes)
 		if e != nil {
@@ -96,7 +114,7 @@ func (s *Server) HTTPHandler() http.Handler {
 			httpError(w, status.Error(codes.InvalidArgument, "Idempotency-Key required"))
 			return
 		}
-		j, e := s.SubmitJob(r.Context(), r.Header.Get("Idempotency-Key"), b)
+		j, e := s.SubmitJob(withTrace(r.Context(), r.Header.Get("X-Computecloud-Trace-ID")), r.Header.Get("Idempotency-Key"), b)
 		if e != nil {
 			httpError(w, e)
 			return
