@@ -257,3 +257,8 @@ main：`edge`、`sha-<commit>`。
 ## 12. 回退
 
 镜像回退不能绕过 DB schema compatibility。仅 packaging 回退时可切回 previous image digest 并复用兼容 data volume；若应用版本包含 schema migration，仍按对应版本 runbook 的 backup/restore 规则处理。
+
+
+## 9.1 移动端 Control
+
+移动端不是 Server/Worker 容器，也不连接 7443。它以 companion client 访问 Server 的 HTTPS 7444，并使用 SecureStore 保存设备 profile。v0.4.6 没有签名 IPA/APK/AAB；部署、CI artifact 和本地 iOS/Android 构建见 [移动端 Control 部署指南](mobile-control.md)。跨主机移动访问必须校验 HTTPS 证书和最小权限 Token，禁止把 Token 放进 computecloud: 深链。
