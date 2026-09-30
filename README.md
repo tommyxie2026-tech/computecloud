@@ -11,6 +11,9 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - main 功能基线：**v0.4.x Runtime / Tool / Environment Ecosystem**
 - 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
 - 当前功能主线：**Prepared Workspace / Workspace Template**
+- Relay/P2P 当前进度：**设计已纳入 v0.4.x，代码实现尚未开始**；v0.4.x 只交付实验性 Transport foundation，`direct` 仍为默认路径
+- Relay 设计与实施计划：[ADR-021](docs/adr/0021-relay-assisted-p2p-transport.md) / [v0.4.x Relay 传输计划](docs/implementation/relay-p2p-transport-plan.md)
+- 下一步 Relay：**RLY-1 Transport seam**；RLY-2～RLY-5 按独立 contract、security-negative、fallback、restart-recovery Gate 逐步实施
 - Goal-oriented Computing：计算模型与 Re-plan Guard RPG-1～RPG-3 持久化原语已实现；Goal/Plan/Graph/Evaluator 与实际执行路径的集成尚未完成
 - RPG：固定只做 RPG-1～RPG-4，RPG-4 完成后正式关闭，不继续 RPG-5
 - 当前 Server schema：**v12**；Worker schema：**v6**
@@ -21,7 +24,7 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 
 ~~~text
 Product Mainline
-v0.4.x Runtime / Tool / Environment
+v0.4.x Runtime / Tool / Environment + Relay Foundation (experimental)
         ↓
 Prepared Workspace / Workspace Template
         ↓
