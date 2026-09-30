@@ -160,7 +160,7 @@ def main():
             write_job = slow["job_id"]
             wait_for(lambda: (j if (j:=json.loads(cli("job","get","--id",write_job)))["state"] in {"EXECUTING","MAPPING","REDUCING","STOPPING"} else None))
 
-            node = run("node", str(e2e), "--base-url", "http://"+http_addr, "--token-file", str(user_token), "--write-job", write_job, timeout=30)
+            node = run("node", str(e2e), "--base-url", "http://"+http_addr, "--token-file", str(user_token), "--write-job", write_job, "--submit-spec", str(spec_path), timeout=30)
             evidence = json.loads(node.splitlines()[-1])
             if evidence.get("status") != "PASSED":
                 raise AssertionError(evidence)
