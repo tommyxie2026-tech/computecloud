@@ -3,7 +3,7 @@
 - 项目：computecloud
 - 日期：2026-09-29
 - 状态：ACP-0～ACP-5 仓库级实现已完成；ACP-4b Session Resume 已合入 main（ca2264e9d026b6cd2c2c002e41191041f533d185），ACP-5 Gemini Runtime 已合入 main（602bb4d080753b1c43f32ada88521d67222492a2）；main CI 36598835158（run #1120）全功能 Gate、verify、package、container-image 与 container-publish PASS
-- 当前主线：v0.4.5 Prepared Workspace / Safe Control 为稳定发布基线；ACP-4b Resume + ACP-5 Gemini 已完成；ACP-6 C1 已实现 UI-01 只读 collection contract 与 UI-02 Observe PWA；UI-03a C2 Operate single-writer lease + cancel/input/approval/resume 已实现待 CI；下一切片 UI-03b submit/retry
+- 当前主线：ACP-6 C2 Operate；UI-01/UI-02 C1 已完成，UI-03a lease-gated cancel/input/approval/resume 已合入 main；UI-03b Job Submit + bounded Manual Retry 已实现于功能分支，等待独立 `manual-retry-negative`、client check/E2E 与完整 PR CI。
 - 设计：[Agent Control Protocol 与 Runtime Adapter](../design/agent-control-protocol.md)
 - 客户端设计：[Control 客户端控制面](../design/client-control-plane.md)
 - 调研：[Agent 客户端控制端方案调研](../research/agent-control-client-landscape-2026.md)
@@ -34,7 +34,7 @@
 | ACP-3 | v0.4.x | 安全写控制 | **已完成**：durable ledger、idempotency/fencing、structured Worker control dispatch、terminal ACK、Worker at-most-once ledger、UNKNOWN fail-closed、HTTP input/interrupt write endpoints |
 | ACP-4 | v0.4.x | Approval + Resume | **已完成**：ACP-4a durable Approval 已发布于 v0.4.5；ACP-4b current-Attempt Session Resume 已合入 main，独立 `agent-control-resume` Gate PASS |
 | ACP-5 | v0.4.x/v0.5 | 第三 Runtime | **已完成（仓库级）**：Gemini CLI Provider、provider-neutral Job/Task runtime_profile、stream-json parser、transport-neutral execution、safe approval policy、legacy engine alias fencing；PR #66 / main CI PASS |
-| ACP-6 | C1/C2：后续 v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | **进行中**：C1 UI-01/UI-02 已完成；UI-03a single-writer C2 Operate 已实现待 CI；UI-03b submit/retry 待实施；C3 Mobile |
+| ACP-6 | C1/C2：v0.4.x；C3：v0.5.x | Control PWA/Mobile 接入 | **进行中**：C1 UI-01/UI-02 已完成；UI-03a 已合入；UI-03b submit + single-mode fenced manual retry 已实现待 CI；C3 Mobile 后续 |
 | ACP-7 | v0.6.x | 企业治理 | device/RBAC/audit/E2EE optional |
 
 ## 3. ACP-0 — 协议基线
@@ -377,6 +377,22 @@ React Native + Expo：
 - secure credential storage。
 
 Mobile 仍通过同一 Agent Control API，不新增 mobile-only 业务协议。
+
+### 9.4 UI-03b — Job Submit + bounded Manual Retry
+
+当前实现边界：
+
+- New Job 复用既有 `POST /v1/jobs`，客户端显式持有 `Idempotency-Key`；响应丢失后同 key + 同 spec 返回 existing Job，同 key + 异 spec 返回 `IDEMPOTENCY_CONFLICT`。
+- 首版 New Job 使用 Server-validated JSON spec 编辑器，不伪造当前 bootstrap 尚未提供的 repository/template/credential 下拉目录。
+- Manual Retry 使用独立 `POST /v1/jobs/{id}/retry`，并要求现有 Job write lease + `jobs:retry` scope。
+- Manual Retry 首版仅允许 single-mode、当前 FAILED Job/Task、旧 Attempt 已 released、execution replay_safe、deadline/attempt budget 未耗尽。
+- 请求携带 `operation_id / task_id / expected_attempt_id / expected_generation`；stale generation 返回 `ATTEMPT_FENCED`。
+- 同 operation_id 同参只返回已有 receipt；异参返回 `OPERATION_CONFLICT`。
+- Retry 只重开当前 frozen Job/Stage/Task 到下一 Attempt generation，不修改 frozen spec、Runtime、credential、template、deadline 或最大 Attempt 预算。
+- `RECONCILING / EXECUTION_UNVERIFIABLE`、cleanup 未证明、Map/Reduce 首版全部 fail closed。
+- 独立 `manual-retry-negative` fast Gate，并继续依赖 `retry-flow`、`control-client-check`、`control-client-e2e`。
+
+Map/Reduce manual retry 留到 graph-aware retry 设计，不通过 UI-03b 偷做 “retry whole workflow”。
 
 ## 10. ACP-7 — Governance / Remote
 
