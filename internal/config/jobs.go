@@ -42,11 +42,18 @@ type Jobs struct {
 	MaxQueuedTasksPerProject int           `yaml:"max_queued_tasks_per_project"`
 	Templates                []JobTemplate `yaml:"templates"`
 }
+type CodexCLI struct {
+	Executable string `yaml:"executable"`
+	Version    string `yaml:"version"`
+}
+
 type ModelRoute struct {
-	BaseURL       string   `yaml:"base_url"`
-	APIKeyFile    string   `yaml:"api_key_file"`
-	AllowedModels []string `yaml:"allowed_models"`
-	MaxInflight   int      `yaml:"max_inflight"`
+	Backend       string    `yaml:"backend"`
+	CLI           *CodexCLI `yaml:"cli"`
+	BaseURL       string    `yaml:"base_url"`
+	APIKeyFile    string    `yaml:"api_key_file"`
+	AllowedModels []string  `yaml:"allowed_models"`
+	MaxInflight   int       `yaml:"max_inflight"`
 }
 type ModelGateway struct {
 	Enabled                  bool                  `yaml:"enabled"`
@@ -165,9 +172,21 @@ func (c Server) ValidateV02() error {
 			return fmt.Errorf("invalid gateway limits/routes")
 		}
 		for _, r := range g.Routes {
-			u, e := url.Parse(r.BaseURL)
-			if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || r.APIKeyFile == "" || len(r.AllowedModels) == 0 || r.MaxInflight < 1 {
-				return fmt.Errorf("invalid HTTPS gateway route")
+			if len(r.AllowedModels) == 0 || r.MaxInflight < 1 {
+				return fmt.Errorf("invalid gateway route limits")
+			}
+			if r.Backend == "codex_cli" {
+				if r.CLI == nil || r.CLI.Executable == "" || r.CLI.Version == "" || r.BaseURL != "" || r.APIKeyFile != "" {
+					return fmt.Errorf("codex_cli route requires executable/version and no upstream credentials")
+				}
+			} else {
+				if r.Backend != "" && r.Backend != "http" || r.CLI != nil {
+					return fmt.Errorf("invalid gateway backend")
+				}
+				u, e := url.Parse(r.BaseURL)
+				if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || r.APIKeyFile == "" {
+					return fmt.Errorf("invalid HTTPS gateway route")
+				}
 			}
 		}
 		for cred, route := range g.CredentialRoutes {
@@ -177,12 +196,23 @@ func (c Server) ValidateV02() error {
 		}
 	}
 	for _, id := range c.Users {
+		if id.TraceOwner != "" {
+			valid := false
+			for _, target := range c.Users {
+				if target.Owner == id.TraceOwner && Contains(target.Projects, id.ModelProject) && Contains(target.Scopes, "jobs:submit") && Contains(target.Scopes, "jobs:read") {
+					valid = true
+				}
+			}
+			if !Contains(id.Scopes, "models:invoke") || !valid {
+				return fmt.Errorf("trace_owner requires an authorized job identity in model project")
+			}
+		}
 		for _, scope := range id.Scopes {
 			if !Contains([]string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:extend", "jobs:control", "jobs:retry", "models:invoke", "tasks:submit", "tasks:read", "tasks:cancel"}, scope) {
 				return fmt.Errorf("unknown identity scope")
 			}
 		}
-		if Contains(id.Scopes, "models:invoke") && (!Contains(id.Projects, id.ModelProject) || c.ModelGateway.Routes[id.ModelRoute].BaseURL == "") {
+		if Contains(id.Scopes, "models:invoke") && (!Contains(id.Projects, id.ModelProject) || !c.ModelGateway.Routes[id.ModelRoute].Configured()) {
 			return fmt.Errorf("model identity requires authorized fixed project/route")
 		}
 	}
@@ -218,8 +248,15 @@ func Templates(w Worker) []JobTemplate {
 	return out
 }
 
+func (r ModelRoute) Configured() bool {
+	return r.BaseURL != "" || r.Backend == "codex_cli" && r.CLI != nil
+}
+
 func RouteDigest(r ModelRoute) string {
 	models := append([]string(nil), r.AllowedModels...)
 	sort.Strings(models)
+	if r.Backend == "codex_cli" {
+		return job.Hash(job.JSON(map[string]any{"version": "codex-cli-route-v1", "cli": r.CLI, "models": models}))
+	}
 	return job.Hash(job.JSON(map[string]any{"version": "model-route-v1", "base_url": strings.TrimRight(r.BaseURL, "/"), "models": models}))
 }

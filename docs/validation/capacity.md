@@ -13,7 +13,7 @@ python3 scripts/capacity.py --jobs 32 --output dist/capacity-run-001.json
 python3 scripts/capacity.py --workers 2,4 --slots 1,2 --jobs 64 --submitters 4 --timeout 300 --output dist/capacity-run-002.json
 ```
 
-需要 Linux `/proc`、Python 3.12+、Git 和构建后的二进制，无 pip 依赖。`make capacity` 使用完整默认矩阵，写入 `dist/capacity.json`，已有文件时明确拒绝覆盖。`capacity-check` 使用 1/2 Worker、每节点 1 slot、每组 4 Job，适合 CI 功能门槛，不设易受共享运行环境影响的性能阈值。CI 同时保存 JSON 报告。
+需要 Linux 或 macOS、Python 3.12+、Git 和构建后的二进制，无 pip 依赖。Linux 使用 `/proc` 采样，macOS 使用系统 `ps` 的累计 CPU 时间与 RSS（KiB 转字节）；macOS 的 cgroup 指标为空，跨平台 CPU 采样精度和开销不同，不应直接比较性能排名。`make capacity` 使用完整默认矩阵，写入 `dist/capacity.json`，已有文件时明确拒绝覆盖。`capacity-check` 使用 1/2 Worker、每节点 1 slot、每组 4 Job，适合 CI 功能门槛，不设易受共享运行环境影响的性能阈值。CI 同时保存 JSON 报告。
 
 每组建立独立临时仓库、令牌、配置和本机数据库。每一对 Job 包含一个 single、一个两分片 `report_merge_v1`，Map 混合 Codex/Claude 协议，每 Task fixture 暂停 200ms。32 Job 对应 64 Task。Server 调度 tick 为 50ms、租约 15s；账号和项目额度均等于总槽位数，避免默认额度干扰槽位维度。
 

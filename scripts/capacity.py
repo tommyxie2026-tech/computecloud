@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Local Linux fixture capacity probe; standard library only, never calls a model.
+"""Local Linux/macOS fixture capacity probe; standard library only, never calls a model.
 
 Creates an isolated Server and Workers per matrix cell. Only ephemeral databases
 are inspected, read-only and after execution. Not a production load generator.
 """
 import argparse
+from process_utils import process_sample
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
@@ -68,11 +69,6 @@ def dimensions(value):
     return result
 
 
-def process_sample(pid):
-    # /proc stat comm may contain whitespace or closing parentheses.
-    fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
-    return ((int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK"),
-            int(fields[21]) * os.sysconf("SC_PAGE_SIZE"))
 
 
 def cgroup_limits():
@@ -375,8 +371,8 @@ def main():
     args = parser.parse_args()
     if not (2 <= args.jobs <= 4096 and 1 <= args.submitters <= 32 and 10 <= args.timeout <= 3600):
         parser.error("jobs must be 2..4096, submitters 1..32, timeout 10..3600")
-    if sys.platform != "linux":
-        parser.error("Linux /proc is required")
+    if sys.platform not in ("linux", "darwin"):
+        parser.error("Linux or macOS is required")
     binary = str(Path(args.binary).resolve())
     report = {"schema_version": "capacity.v1", "timestamp": datetime.now(timezone.utc).isoformat(),
         "environment": {"platform": platform.platform(), "python": platform.python_version(),

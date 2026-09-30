@@ -22,6 +22,7 @@ import (
 	envreg "github.com/tommyxie2026-tech/computecloud/internal/environment"
 	"github.com/tommyxie2026-tech/computecloud/internal/process"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
+	"github.com/tommyxie2026-tech/computecloud/internal/telemetry"
 	toolreg "github.com/tommyxie2026-tech/computecloud/internal/tool"
 	"github.com/tommyxie2026-tech/computecloud/internal/workspace"
 )
@@ -218,11 +219,11 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 	}
 	var environmentRef envreg.Ref
 	environmentPrepared, e := environmentProvider.Prepare(execCtx, envreg.PrepareRequest{
-		AttemptID: a.AttemptId,
-		TaskID: a.TaskId,
+		AttemptID:  a.AttemptId,
+		TaskID:     a.TaskId,
 		Generation: a.Generation,
-		CWD: cwd,
-		Env: env,
+		CWD:        cwd,
+		Env:        env,
 	}, func(ref envreg.Ref) error {
 		environmentRef = ref
 		return w.recordEnvironmentPrepared(persistCtx, a, ref)
@@ -247,15 +248,15 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 	}
 	stderr := &capped{limit: 1 << 20}
 	prepared, e := provider.Prepare(adapter.PrepareRequest{
-		Runtime: runtimeConfig,
-		Spec: a.Spec,
-		Policy: policy,
-		Gateway: a.Gateway,
-		Env: environmentPrepared.Env,
-		CWD: environmentPrepared.CWD,
-		Input: jobRun.prompt,
-		Emit: func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) },
-		Stderr: stderr,
+		Runtime:   runtimeConfig,
+		Spec:      a.Spec,
+		Policy:    policy,
+		Gateway:   a.Gateway,
+		Env:       environmentPrepared.Env,
+		CWD:       environmentPrepared.CWD,
+		Input:     jobRun.prompt,
+		Emit:      func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) },
+		Stderr:    stderr,
 		StopGrace: time.Duration(w.cfg.StopGraceMS) * time.Millisecond,
 	})
 	if e != nil {
@@ -282,6 +283,13 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		}))
 	}
 	out := run.Outcome
+	metrics := telemetry.Attempt{UsageComplete: out.UsageComplete, Source: a.Spec.RuntimeProfile, Usage: out.Usage, Process: run.Metrics, NativeFinal: out.Final}
+	if e := w.emit(persistCtx, a, "attempt.metrics", config.JSON(metrics)); e != nil {
+		released := w.releaseEnvironment(persistCtx, a.AttemptId, environmentProvider, environmentPrepared.Ref)
+		clean := runtimeCleanupConfirmed(run.Cleanup) && environmentCleanupConfirmed(released.Cleanup)
+		complete(&pb.CompleteRequest{CleanupConfirmed: clean, ErrorCode: "STORAGE_UNAVAILABLE", ErrorMessage: "could not persist runtime metrics"})
+		return
+	}
 	success := run.Err == nil && run.ExitCode == 0 && runtimeCleanupConfirmed(run.Cleanup) &&
 		run.ProtocolErr == nil && out.Final && out.Success
 	code, msg := "", ""
@@ -375,7 +383,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		}
 		msg = qe.Error()
 	}
-	report := config.JSON(map[string]any{"task_id": a.TaskId, "attempt_id": a.AttemptId, "base_commit": a.Spec.Workspace.BaseCommit, "model": a.Spec.Model, "runtime_version": provider.Version(r), "environment_provider": environmentPrepared.Ref.Provider, "template_digest": a.GetJob().GetTemplateDigest(), "native_final": out.Final, "native_success": out.Success, "exit_code": run.ExitCode, "runtime_cleanup": string(run.Cleanup), "verification": verification, "result": string(redact([]byte(out.Result), secrets)), "stderr_truncated": stderr.truncated, "manifest_sha256": a.GetJob().GetInputManifestSha256()})
+	report := config.JSON(map[string]any{"metrics": metrics, "task_id": a.TaskId, "attempt_id": a.AttemptId, "base_commit": a.Spec.Workspace.BaseCommit, "model": a.Spec.Model, "runtime_version": provider.Version(r), "environment_provider": environmentPrepared.Ref.Provider, "template_digest": a.GetJob().GetTemplateDigest(), "native_final": out.Final, "native_success": out.Success, "exit_code": run.ExitCode, "runtime_cleanup": string(run.Cleanup), "verification": verification, "result": string(redact([]byte(out.Result), secrets)), "stderr_truncated": stderr.truncated, "manifest_sha256": a.GetJob().GetInputManifestSha256()})
 	files["report.json"] = report
 	files["changes.patch"] = redact(diff, secrets)
 	files["stderr.log"] = redact(stderr.Bytes(), secrets)

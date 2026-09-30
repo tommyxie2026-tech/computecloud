@@ -36,6 +36,31 @@ func TestNativeFinalAndProtocolBounds(t *testing.T) {
 	}
 }
 
+func TestNativeUsageAggregationAndUnknown(t *testing.T) {
+	p := Parser{Profile: "codex_exec", Emit: func(string, []byte) error { return nil }}
+	for _, raw := range []string{`{"type":"turn.completed","usage":{"input_tokens":3,"output_tokens":2,"cached_input_tokens":1}}`, `{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":4}}`} {
+		if err := p.Line([]byte(raw)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := p.Outcome()
+	if !out.UsageComplete || out.Usage.Input != 8 || out.Usage.Output != 6 || out.Usage.CachedInput != 1 {
+		t.Fatalf("%+v", out)
+	}
+	if err := p.Line([]byte(`{"type":"turn.completed","usage":{}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if p.Outcome().UsageComplete {
+		t.Fatal("unknown usage marked complete")
+	}
+	c := Parser{Profile: "claude_print", Emit: func(string, []byte) error { return nil }}
+	if err := c.Line([]byte(`{"type":"result","subtype":"success","usage":{"input_tokens":3,"output_tokens":4,"cache_read_input_tokens":5,"cache_creation_input_tokens":7}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if !c.Outcome().UsageComplete || c.Outcome().Usage.Input != 15 {
+		t.Fatalf("%+v", c.Outcome())
+	}
+}
 
 func TestRuntimeParserEmitsNormalizedSessionStarted(t *testing.T) {
 	for _, tc := range []struct {
@@ -70,7 +95,6 @@ func TestRuntimeParserEmitsNormalizedSessionStarted(t *testing.T) {
 		}
 	}
 }
-
 
 func TestGeminiStreamJSONParser(t *testing.T) {
 	var types []string

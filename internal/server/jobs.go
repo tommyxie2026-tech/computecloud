@@ -18,6 +18,7 @@ import (
 )
 
 type Job struct {
+	TraceID        string                    `json:"trace_id"`
 	ID             string                    `json:"job_id"`
 	State          string                    `json:"state"`
 	Mode           string                    `json:"mode"`
@@ -45,7 +46,7 @@ type Job struct {
 func readJob(ctx context.Context, q store.Query, id string) (*Job, error) {
 	j := &Job{ID: id, PollAfterMS: 2000, Counts: map[string]map[string]int{}, Blockers: map[string]int{}, Usage: map[string]any{"coverage": "unavailable", "input_tokens": nil, "output_tokens": nil}}
 	var raw, result []byte
-	e := q.QueryRowContext(ctx, `SELECT owner,project,state,mode,version,seq,created,updated,deadline,parallelism,stop_reason,error_code,spec,manifest_json,manifest_hash,result_json FROM jobs WHERE id=?`, id).Scan(&j.owner, &j.project, &j.State, &j.Mode, &j.Version, &j.LastSeq, &j.Created, &j.Updated, &j.Deadline, &j.parallelism, &j.StopReason, &j.ErrorCode, &raw, &j.manifest, &j.manifestHash, &result)
+	e := q.QueryRowContext(ctx, `SELECT owner,project,state,mode,version,seq,created,updated,deadline,parallelism,stop_reason,error_code,spec,manifest_json,manifest_hash,result_json,coalesce(trace_id,'') FROM jobs WHERE id=?`, id).Scan(&j.owner, &j.project, &j.State, &j.Mode, &j.Version, &j.LastSeq, &j.Created, &j.Updated, &j.Deadline, &j.parallelism, &j.StopReason, &j.ErrorCode, &raw, &j.manifest, &j.manifestHash, &result, &j.TraceID)
 	if e != nil {
 		return nil, e
 	}
@@ -53,7 +54,7 @@ func readJob(ctx context.Context, q store.Query, id string) (*Job, error) {
 		return nil, e
 	}
 	j.result = result
-	j.Links = map[string]string{"self": "/v1/jobs/" + id, "events": "/v1/jobs/" + id + "/events", "result": "/v1/jobs/" + id + "/result", "deadline": "/v1/jobs/" + id + "/deadline"}
+	j.Links = map[string]string{"self": "/v1/jobs/" + id, "events": "/v1/jobs/" + id + "/events", "result": "/v1/jobs/" + id + "/result", "deadline": "/v1/jobs/" + id + "/deadline", "trace": "/v1/jobs/" + id + "/trace"}
 	return j, nil
 }
 func insertStage(ctx context.Context, q store.Query, jobID, kind string, ordinal int, state string) (string, error) {
@@ -168,12 +169,21 @@ func (s *Server) SubmitJob(ctx context.Context, key string, b []byte) (*Job, err
 	requestHash := job.Hash(job.JSON(spec))
 	id := store.ID()
 	existing := false
+	traceID := traceFrom(ctx)
 	e = s.db.Tx(ctx, func(q store.Query) error {
-		var previous string
-		e := q.QueryRowContext(ctx, "SELECT id,request_hash FROM jobs WHERE owner=? AND project=? AND idem=?", p.Identity.Owner, spec.ProjectID, key).Scan(&id, &previous)
+		if traceID != "" {
+			if e := authorizeTrace(ctx, q, traceID, p.Identity.Owner, spec.ProjectID); e != nil {
+				return e
+			}
+		}
+		var previous, previousTrace string
+		e := q.QueryRowContext(ctx, "SELECT id,request_hash,coalesce(trace_id,'') FROM jobs WHERE owner=? AND project=? AND idem=?", p.Identity.Owner, spec.ProjectID, key).Scan(&id, &previous, &previousTrace)
 		if e == nil {
 			if previous != requestHash {
 				return status.Error(codes.AlreadyExists, "IDEMPOTENCY_CONFLICT")
+			}
+			if traceID != "" && traceID != previousTrace {
+				return status.Error(codes.AlreadyExists, "IDEMPOTENCY_TRACE_CONFLICT")
 			}
 			existing = true
 			return nil
@@ -211,6 +221,12 @@ func (s *Server) SubmitJob(ctx context.Context, key string, b []byte) (*Job, err
 		if e = s.checkQueueAdmission(ctx, q, spec.ProjectID, additional); e != nil {
 			return e
 		}
+		if traceID == "" {
+			traceID = "trc_" + store.ID()
+			if e := createTrace(ctx, q, traceID, p.Identity.Owner, spec.ProjectID, "job"); e != nil {
+				return e
+			}
+		}
 		now := store.Now()
 		deadline := now + spec.Limits.TimeoutSeconds*1000
 		parallel := 1
@@ -222,7 +238,7 @@ func (s *Server) SubmitJob(ctx context.Context, key string, b []byte) (*Job, err
 			Frozen   job.Frozen
 			Deadline int64
 		}{frozen, deadline}))
-		if _, e = q.ExecContext(ctx, `INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism) VALUES(?,?,?,?,?,?,?,?,'QUEUED',?,?,?,?)`, id, p.Identity.Owner, spec.ProjectID, key, requestHash, specHash, frozenBytes, spec.Mode, now, now, deadline, parallel); e != nil {
+		if _, e = q.ExecContext(ctx, `INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism,trace_id) VALUES(?,?,?,?,?,?,?,?,'QUEUED',?,?,?,?,?)`, id, p.Identity.Owner, spec.ProjectID, key, requestHash, specHash, frozenBytes, spec.Mode, now, now, deadline, parallel, traceID); e != nil {
 			return e
 		}
 		if spec.Mode == "single" {
@@ -420,6 +436,7 @@ func (s *Server) JobResult(ctx context.Context, id string) (json.RawMessage, err
 		return nil, dbErr(e)
 	}
 	result["usage"] = usage
+	result["trace_id"] = j.TraceID
 	return job.JSON(result), nil
 }
 
@@ -786,35 +803,6 @@ func (s *Server) jobAllowsExecution(ctx context.Context, q store.Query, task str
 	var n int
 	e := q.QueryRowContext(ctx, `SELECT count(*) FROM tasks t LEFT JOIN jobs j ON t.job_id=j.id WHERE t.id=? AND (t.job_id IS NULL OR (j.stop_reason='' AND j.state IN ('QUEUED','EXECUTING','MAPPING','REDUCING') AND j.deadline>?))`, task, store.Now()).Scan(&n)
 	return n == 1, e
-}
-func (s *Server) jobUsage(ctx context.Context, j *Job) (map[string]any, error) {
-	out := map[string]any{"coverage": "unavailable", "input_tokens": nil, "output_tokens": nil}
-	var n, unknown int
-	var in, output sql.NullInt64
-	e := s.db.SQL.QueryRowContext(ctx, "SELECT count(*),coalesce(sum(CASE WHEN usage_complete=0 THEN 1 ELSE 0 END),0),sum(input_tokens),sum(output_tokens) FROM gateway_requests WHERE job_id=?", j.ID).Scan(&n, &unknown, &in, &output)
-	if e != nil {
-		return nil, e
-	}
-	if n == 0 {
-		return out, nil
-	}
-	out["coverage"] = "partial"
-	out["unknown_requests"] = unknown
-	out["requests"] = n
-	if in.Valid {
-		out["input_tokens"] = in.Int64
-	}
-	if output.Valid {
-		out["output_tokens"] = output.Int64
-	}
-	all := true
-	for _, ex := range j.frozen.Spec.Executions() {
-		all = all && j.frozen.Routes[ex.CredentialRef] != ""
-	}
-	if all && unknown == 0 && terminal(j.State) {
-		out["coverage"] = "complete"
-	}
-	return out, nil
 }
 func taskJobReadScope(ctx context.Context, q store.Query, id string) error {
 	p, e := rpcutil.User(ctx)

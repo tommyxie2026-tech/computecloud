@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Linux CLI smoke test. Protocol fixtures only; no model account or API calls."""
+"""Linux/macOS CLI smoke test. Protocol fixtures only; no model account or API calls."""
 import argparse
+from process_utils import process_alive
 import hashlib
 import io
 import json
@@ -102,8 +103,7 @@ def main():
 
         def assert_child_stopped(current):
             pid = child_file(current).read_text().strip()
-            stat = Path("/proc") / pid / "stat"
-            assert not stat.exists() or ") Z " in stat.read_text(), f"child {pid} is alive"
+            assert not process_alive(int(pid)), f"child {pid} is alive"
 
         try:
             repo = root / "repository"

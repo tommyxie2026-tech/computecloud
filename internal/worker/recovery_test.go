@@ -5,8 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -64,8 +62,8 @@ func TestRecoveryStopsRecordedProcessAndQuarantinesUnknownSpawn(t *testing.T) {
 			t.Fatalf("unsafe recovery %s: %v", id, c)
 		}
 	}
-	if b, e := os.ReadFile("/proc/" + strconv.Itoa(cmd.Process.Pid) + "/stat"); e == nil && !strings.Contains(string(b), ") Z ") {
-		t.Fatalf("process survived recovery: %s", b)
+	if alive, err := process.Alive(cmd.Process.Pid); err != nil || alive {
+		t.Fatalf("process survived recovery or inspection failed: alive=%v err=%v", alive, err)
 	}
 }
 

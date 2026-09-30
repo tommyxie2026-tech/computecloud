@@ -14,14 +14,17 @@ import (
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/telemetry"
 )
 
 type Outcome struct {
-	Final   bool
-	Success bool
-	Result  string
-	Session string
-	Code    string
+	UsageComplete bool
+	Usage         *telemetry.Tokens
+	Final         bool
+	Success       bool
+	Result        string
+	Session       string
+	Code          string
 }
 
 type StreamParser interface {
@@ -251,9 +254,10 @@ func init() {
 }
 
 type Parser struct {
-	Profile string
-	outcome Outcome
-	Emit    func(string, []byte) error
+	usageUnknown bool
+	Profile      string
+	outcome      Outcome
+	Emit         func(string, []byte) error
 }
 
 func (p *Parser) Outcome() Outcome { return p.outcome }
@@ -323,6 +327,18 @@ func (p *Parser) Line(line []byte) error {
 		case "thread.started":
 			sessionStarted(str("thread_id"))
 		case "turn.completed":
+			if u := telemetry.ReadTokens(m["usage"]); u != nil {
+				if p.outcome.Usage == nil {
+					p.outcome.Usage = &telemetry.Tokens{}
+				}
+				p.outcome.Usage.Input += u.Input
+				p.outcome.Usage.Output += u.Output
+				p.outcome.Usage.CachedInput += u.CachedInput
+				p.outcome.UsageComplete = !p.usageUnknown
+			} else {
+				p.usageUnknown = true
+				p.outcome.UsageComplete = false
+			}
 			p.outcome.Final = true
 			p.outcome.Success = p.outcome.Code == ""
 			typ = "usage.updated"
@@ -354,6 +370,8 @@ func (p *Parser) Line(line []byte) error {
 		case "stream_event":
 			typ = "message.delta"
 		case "result":
+			p.outcome.Usage = telemetry.ReadTokens(m["usage"])
+			p.outcome.UsageComplete = p.outcome.Usage != nil
 			p.outcome.Final = true
 			p.outcome.Result = str("result")
 			p.outcome.Session = str("session_id")

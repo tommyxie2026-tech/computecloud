@@ -69,7 +69,7 @@ capacity: build
 	python3 scripts/capacity.py --binary bin/computecloud
 capacity-check: build
 	python3 -m unittest discover -s scripts -p 'test_*.py'
-	python3 scripts/capacity.py --binary bin/computecloud --workers 1,2 --slots 1 --jobs 4 --output dist/capacity-check-$$(date +%s%N).json
+	python3 scripts/capacity.py --binary bin/computecloud --workers 1,2 --slots 1 --jobs 4 --output dist/capacity-check-$$(python3 -c 'import time; print(time.time_ns())').json
 release-package:
 	GO=$(GO) scripts/package-release.sh $(VERSION) dist/release
 generate:

@@ -25,7 +25,7 @@ func (s *Server) mcpHandler() http.Handler {
 	delete(specSchema, "$defs")
 	delete(specSchema, "$schema")
 	str := map[string]any{"type": "string", "minLength": 1}
-	submitSchema := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"idempotency_key", "spec"}, "properties": map[string]any{"idempotency_key": str, "spec": specSchema}, "$defs": defs}
+	submitSchema := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"idempotency_key", "spec"}, "properties": map[string]any{"idempotency_key": str, "spec": specSchema, "trace_id": str}, "$defs": defs}
 	add := func(name, description string, schema any, handler func(context.Context, json.RawMessage) (any, error)) {
 		server.AddTool(&mcp.Tool{Name: name, Description: description, InputSchema: schema, OutputSchema: map[string]any{"type": "object"}}, func(ctx context.Context, r *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			out, e := handler(ctx, r.Params.Arguments)
@@ -44,19 +44,47 @@ func (s *Server) mcpHandler() http.Handler {
 		})
 	}
 	bad := func(e error) error { return &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: e.Error()} }
-	add("submit_job", "Submit an explicit remote Agent Job; returns immediately with a durable job_id. Reuse the same idempotency_key after a network failure.", submitSchema, func(ctx context.Context, raw json.RawMessage) (any, error) {
+	add("submit_job", "Submit an explicit remote Agent Job; returns immediately with a durable job_id. Reuse the same idempotency_key and trace_id after a network failure. Pass the server-provided conversation trace_id when available.", submitSchema, func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var in struct {
-			Key  string          `json:"idempotency_key"`
-			Spec json.RawMessage `json:"spec"`
+			Key   string          `json:"idempotency_key"`
+			Trace string          `json:"trace_id"`
+			Spec  json.RawMessage `json:"spec"`
 		}
 		if e := jsonutil.Decode(raw, &in); e != nil {
 			return nil, bad(e)
 		}
-		return s.SubmitJob(ctx, in.Key, in.Spec)
+		return s.SubmitJob(withTrace(ctx, in.Trace), in.Key, in.Spec)
 	})
 	schema := func(props map[string]any, required ...string) any {
-		return map[string]any{"type": "object", "additionalProperties": false, "properties": props, "required": required}
+		return map[string]any{"type": "object", "additionalProperties": false, "properties": props, "required": append([]string{}, required...)}
 	}
+	add("list_jobs", "List your authorized jobs newest first, including state, input summary and trace_id. Follow next_cursor when has_more is true.", schema(map[string]any{"before": str, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100}}), func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var in struct {
+			Before string `json:"before"`
+			Limit  int    `json:"limit"`
+		}
+		if e := jsonutil.Decode(raw, &in); e != nil {
+			return nil, bad(e)
+		}
+		if in.Limit == 0 {
+			in.Limit = 20
+		}
+		return s.ListJobs(ctx, in.Before, in.Limit)
+	})
+	add("get_trace", "Read a Job's linked model requests, attempt/Worker metrics, and separate controller/Worker token totals. Conversation controller usage may be shared by several jobs; do not count it once per job. Follow next_cursor for older requests.", schema(map[string]any{"job_id": str, "before": str, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100}}, "job_id"), func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var in struct {
+			ID     string `json:"job_id"`
+			Before string `json:"before"`
+			Limit  int    `json:"limit"`
+		}
+		if e := jsonutil.Decode(raw, &in); e != nil {
+			return nil, bad(e)
+		}
+		if in.Limit == 0 {
+			in.Limit = 20
+		}
+		return s.JobTrace(ctx, in.ID, in.Before, in.Limit)
+	})
 	add("get_job", "Read Job progress and bounded phase events; poll using poll_after_ms. Disconnecting does not cancel the Job.", schema(map[string]any{"job_id": str, "after_seq": map[string]any{"type": "string", "pattern": "^[0-9]+$"}}, "job_id"), func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var in struct {
 			ID    string `json:"job_id"`

@@ -14,7 +14,12 @@
 | [ADR-020：多架构最小容器镜像交付](adr/0020-multiarch-container-packaging.md) | 双 target image、体积预算、Runtime 不入基础 Worker、发布边界 | Accepted |
 | [ADR-021：Server–Worker Relay-assisted P2P 传输](adr/0021-relay-assisted-p2p-transport.md) | 直连优先、Relay 回退、内层 TLS 端到端、无状态转发与 P2P 边界 | 设计冻结，尚未实现 |
 | [Relay/P2P 传输实施计划](implementation/relay-p2p-transport-plan.md) | v0.4.x 实验性配对票据、Transport seam、回退、背压、安全负向测试与 CI Gate | v0.4.x Planned；设计已冻结 |
-| [Agent-aware Distributed Job Execution Platform 总体架构](design/agent-job-executor-architecture.md) | Job/Stage/Task/Attempt、Runtime/Tool 分层、Artifact/Workspace 生命周期与 Agent-aware Scheduler | 当前目标架构 |\n| [移动端 Control 部署指南](deployment/mobile-control.md) | Expo iOS/Android/Web、CI artifact、HTTPS、SecureStore、原生签名边界 | v0.4.6 foundation；无签名 IPA/APK |
+| [任务追踪与运行用量](observability/tracing.md) | Job Trace、模型请求与 Worker 用量 | schema 14 |
+| [Codex CLI 模型网关](deployment/codex-cli-gateway.md) | macOS CLI 模型桥接与协议边界 | 实验性 |
+| [v0.4.6 Ubuntu Server + MacBook Air Worker 容器化验证](deployment/v0.4.6-ubuntu-server-mac-air.md) | Ubuntu Server、Docker Desktop Worker、TLS、故障恢复与容量验证 | 验证文档 |
+| [dev 分支修改总览](implementation/dev-branch-change-summary.md) | macOS CLI 网关、Trace/用量、schema v14、跨平台进程监管与容器验证 | 当前分支说明 |
+| [Agent-aware Distributed Job Execution Platform 总体架构](design/agent-job-executor-architecture.md) | Job/Stage/Task/Attempt、Runtime/Tool 分层、Artifact/Workspace 生命周期与 Agent-aware Scheduler | 当前目标架构 |
+| [移动端 Control 部署指南](deployment/mobile-control.md) | Expo iOS/Android/Web、CI artifact、HTTPS、SecureStore、原生签名边界 | v0.4.6 foundation；无签名 IPA/APK |
 | [v0.4.6 稳定版发布记录](implementation/v0.4.6-release-status.md) | C2/UI-04a 稳定版范围、30/30 CI、multi-arch 产物、SHA256、兼容性与后续边界 | RELEASED |
 | [v0.4.5 后续发布计划](implementation/v0.4.5-follow-up-release-plan.md) | v0.4.5 后续 v0.4.6～v0.4.10 发布序列、Relay 分阶段门禁、升级/回滚与发布证据 | 当前发布规划 |
 | [Agent-aware 长期演进路线图](implementation/long-term-roadmap.md) | v0.2.x 到 v1.0：可靠性内核、Agent Runtime/Tool、Agent-aware Scheduler、治理与规模化 | 当前长期主路线 |

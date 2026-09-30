@@ -21,7 +21,6 @@ class CapacityTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
                 capacity.dimensions(value)
 
-    @unittest.skipUnless(Path("/proc/self/stat").exists(), "Linux /proc required")
     def test_process_sample(self):
         cpu, rss = capacity.process_sample(os.getpid())
         self.assertGreaterEqual(cpu, 0)
