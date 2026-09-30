@@ -50,7 +50,7 @@ def main():
         violations.append("Bearer authorization header missing")
     if "streamEvents(" not in sources or ".body.getReader()" not in sources:
         violations.append("authenticated fetch-based SSE transport missing")
-    for required in ["acquireWriteLease(", "renewWriteLease(", "releaseWriteLease(", "X-Control-Lease", "cancelJob(", "sendInput(", "decideApproval(", "resumeSession("]:
+    for required in ["acquireWriteLease(", "renewWriteLease(", "releaseWriteLease(", "X-Control-Lease", "cancelJob(", "sendInput(", "decideApproval(", "resumeSession(", "submitJob(", "Idempotency-Key", "manualRetry(", "Retry failed task"]:
         if required not in sources:
             violations.append("C2 write contract missing: "+required)
     if not (client/"dist"/"index.html").exists():
