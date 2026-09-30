@@ -84,6 +84,8 @@ export default function App() {
   const [error, setError] = useState("");
   const [writeLease, setWriteLease] = useState<ControlWriteLease | null>(null);
   const [sessionInput, setSessionInput] = useState("");
+  const [newJobSpec, setNewJobSpec] = useState("{}");
+  const [newJobKey, setNewJobKey] = useState(operationID("job"));
   const streamAbort = useRef<AbortController | null>(null);
   const holderID = useRef(operationID("device"));
 
@@ -239,6 +241,26 @@ export default function App() {
     setSnapshot(await api.jobSnapshot(selected));
   }, [api, selected]);
 
+  const submitNewJob = useCallback(async () => {
+    if (!api) return;
+    setBusy(true);
+    setError("");
+    try {
+      const spec = JSON.parse(newJobSpec) as unknown;
+      const created = await api.submitJob(spec, newJobKey);
+      setNewJobKey(operationID("job"));
+      const boot = bootstrap ?? await api.bootstrap();
+      if (!bootstrap) setBootstrap(boot);
+      await refreshCollections(api, boot.server_epoch);
+      await loadJob(created.job_id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [api, newJobSpec, newJobKey, bootstrap, refreshCollections, loadJob]);
+
+
   const cancelSelected = useCallback(async () => {
     if (!api || !selected || !writeLease) return;
     setBusy(true);
@@ -251,6 +273,21 @@ export default function App() {
       setBusy(false);
     }
   }, [api, selected, writeLease, refreshSelected]);
+
+  const retryTask = useCallback(async (task: JobSnapshot["tasks"][number]) => {
+    if (!api || !selected || !writeLease) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.manualRetry(selected, task, writeLease.lease_token, operationID("retry"));
+      await refreshSelected();
+      if (bootstrap) await refreshCollections(api, bootstrap.server_epoch);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [api, selected, writeLease, refreshSelected, refreshCollections, bootstrap]);
 
   const sendSessionInput = useCallback(async (session: SessionView) => {
     if (!api || !selected || !writeLease || !snapshot || !sessionInput.trim()) return;
@@ -329,7 +366,23 @@ export default function App() {
 
       <View style={[styles.body, compact && styles.bodyCompact]}>
         <View style={[styles.sidebar, compact && styles.sidebarCompact]}>
-          <Text style={styles.sectionTitle}>Jobs</Text>
+          <Text style={styles.sectionTitle}>New Job</Text>
+          <Text style={styles.muted}>Submit the canonical Job JSON. The Server validates project, Runtime, credential, template and policy.</Text>
+          <TextInput
+            multiline
+            value={newJobSpec}
+            onChangeText={setNewJobSpec}
+            style={[styles.input, styles.specInput]}
+            placeholder='{"schema_version":"v0.2", ...}'
+            placeholderTextColor="#66717f"
+          />
+          <Text style={styles.mono}>Idempotency-Key {newJobKey}</Text>
+          <View style={styles.actionRow}>
+            <Button title="Submit Job" onPress={submitNewJob} disabled={busy || !api || bootstrap?.read_only} />
+            <Button title="New key" onPress={() => setNewJobKey(operationID("job"))} disabled={busy} />
+          </View>
+
+          <Text style={[styles.sectionTitle, styles.topGap]}>Jobs</Text>
           <ScrollView style={styles.list}>
             {jobPage?.jobs.map((job: JobSummary) => (
               <Pressable key={job.job_id} onPress={() => loadJob(job.job_id)}
@@ -364,7 +417,7 @@ export default function App() {
         </View>
 
         <ScrollView style={styles.detail} contentContainerStyle={styles.detailContent}>
-          {!selected && <View style={styles.hero}><Text style={styles.heroTitle}>Observe durable Agent execution</Text><Text style={styles.heroText}>Select a Job to inspect Tasks, Attempts, Sessions, Approvals, Artifacts and the durable event stream. This C1 client is intentionally read-only.</Text></View>}
+          {!selected && <View style={styles.hero}><Text style={styles.heroTitle}>Operate durable Agent execution</Text><Text style={styles.heroText}>Submit a Job or select an existing Job to inspect and control its durable Tasks, Attempts, Sessions, Approvals, Artifacts and event stream.</Text></View>}
           {busy && selected && !snapshot && <ActivityIndicator />}
           {snapshot && (
             <>
@@ -394,8 +447,15 @@ export default function App() {
                     <View key={task.task_id} style={styles.item}>
                       <View style={styles.rowBetween}><Text style={styles.jobID}>{task.stage || "single"} · {task.partition_key}</Text><StatePill value={task.state} /></View>
                       <Text style={styles.mono}>task {task.task_id}</Text>
-                      <Text style={styles.mono}>attempt {task.attempt_id || "—"}</Text>
+                      <Text style={styles.mono}>attempt {task.attempt_id || "—"} · gen {task.generation || "0"}</Text>
                       <Text style={styles.muted}>{task.worker_id || "unassigned"} {task.scheduling_blocker ? `· ${task.scheduling_blocker}` : ""}</Text>
+                      {!!task.error_code && <Text style={styles.errorText}>{task.error_code}</Text>}
+                      {writeLease && snapshot.job.mode === "single" && snapshot.job.state === "FAILED" && task.state === "FAILED" && !!task.attempt_id && (
+                        <View style={styles.controlStack}>
+                          <Button title="Retry failed task" onPress={() => retryTask(task)} disabled={busy} />
+                          <Text style={styles.muted}>Server revalidates replay safety, cleanup proof, deadline, attempt budget and generation.</Text>
+                        </View>
+                      )}
                     </View>
                   ))}
                 </View>
@@ -464,7 +524,7 @@ export default function App() {
           )}
         </ScrollView>
       </View>
-      <Text style={styles.footer}>C2 Operate · Writes require a short-lived single-writer lease · Bearer and lease tokens stay memory-only.</Text>
+      <Text style={styles.footer}>C2 Operate · Existing Job writes require a short-lived single-writer lease · Job submit is idempotency-keyed · Bearer and lease tokens stay memory-only.</Text>
     </View>
   );
 }
@@ -479,6 +539,7 @@ const styles = StyleSheet.create({
   inputGroup: { flex: 1, minWidth: 180 },
   label: { color: "#aeb6c2", fontSize: 12, marginBottom: 6 },
   input: { color: "#f4f6f8", backgroundColor: "#15191f", borderWidth: 1, borderColor: "#303641", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  specInput: { minHeight: 110, marginTop: 8, textAlignVertical: "top" },
   button: { backgroundColor: "#e7ebf0", paddingHorizontal: 16, paddingVertical: 11, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   buttonPressed: { opacity: 0.82 },
   buttonDisabled: { opacity: 0.4 },
