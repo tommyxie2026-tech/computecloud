@@ -33,6 +33,8 @@ def main():
         ("npm_ci",["npm","ci","--ignore-scripts"]),
         ("typecheck",["npm","run","typecheck"]),
         ("expo_config",["npx","expo","config","--type","public","--json"]),
+        ("export_ios",["npx","expo","export","--platform","ios","--output-dir","dist-ios"]),
+        ("export_android",["npx","expo","export","--platform","android","--output-dir","dist-android"]),
     ]:
         result=run(cmd,client)
         steps.append({"name":name,"returncode":result["returncode"],"duration_ms":result["duration_ms"]})
@@ -103,6 +105,7 @@ def main():
         "native_secret_storage":"expo-secure-store",
         "web_secret_storage":"memory_only",
         "deep_link_scheme":"computecloud",
+        "native_bundle_exports":["ios","android"],
         "push_enabled":False,
         "pairing_enabled":False,
         "steps":steps,
