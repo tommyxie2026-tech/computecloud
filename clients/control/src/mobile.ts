@@ -79,3 +79,10 @@ export async function initialConnectURL(): Promise<string | null> {
   if (!isNativeMobile()) return null;
   return await Linking.getInitialURL();
 }
+
+
+export function subscribeConnectURLs(onURL: (value: string) => void): () => void {
+  if (!isNativeMobile()) return () => {};
+  const subscription = Linking.addEventListener("url", (event) => onURL(event.url));
+  return () => subscription.remove();
+}
