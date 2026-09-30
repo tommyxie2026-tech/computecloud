@@ -495,7 +495,10 @@ jobs:
         if: always()
         with:
           name: control-mobile-check-${{ github.run_id }}
-          path: dist/control-mobile-check
+          path: |
+            dist/control-mobile-check
+            clients/control/dist-ios
+            clients/control/dist-android
           if-no-files-found: error
           retention-days: 30
 
