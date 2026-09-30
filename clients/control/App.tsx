@@ -378,7 +378,7 @@ export default function App() {
           />
           <Text style={styles.mono}>Idempotency-Key {newJobKey}</Text>
           <View style={styles.actionRow}>
-            <Button title="Submit Job" onPress={submitNewJob} disabled={busy || !api || bootstrap?.read_only} />
+            <Button title="Submit Job" onPress={submitNewJob} disabled={busy || !api} />
             <Button title="New key" onPress={() => setNewJobKey(operationID("job"))} disabled={busy} />
           </View>
 
