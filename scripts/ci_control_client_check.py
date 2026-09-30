@@ -40,7 +40,7 @@ def main():
             raise SystemExit(1)
 
     sources="\n".join(p.read_text(encoding="utf-8") for p in [
-        client/"App.tsx", client/"src/api.ts", client/"src/types.ts"
+        client/"App.tsx", client/"src/api.ts", client/"src/types.ts", client/"src/mobile.ts"
     ])
     violations=[]
     for forbidden in ["localStorage", "sessionStorage", "EventSource(", "token=", "access_token="]:
@@ -62,7 +62,7 @@ def main():
         "status":status,
         "real_model_calls":False,
         "expo_web_export":True,
-        "bearer_token_persistence":"memory_only",
+        "bearer_token_persistence":"web_memory_only_native_secure_store",
         "write_operations":"lease_gated",
         "authenticated_sse":"fetch_stream",
         "steps":steps,
