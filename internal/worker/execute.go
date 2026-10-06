@@ -217,6 +217,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "WORKSPACE_ERROR", ErrorMessage: e.Error()})
 		return
 	}
+	environmentStarted := time.Now()
 	var environmentRef envreg.Ref
 	environmentPrepared, e := environmentProvider.Prepare(execCtx, envreg.PrepareRequest{
 		AttemptID:  a.AttemptId,
@@ -246,6 +247,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: environmentCleanupConfirmed(released.Cleanup), ErrorCode: "STORAGE_UNAVAILABLE", ErrorMessage: e.Error()})
 		return
 	}
+	w.recordEnvironmentSignal(envName, time.Since(environmentStarted).Milliseconds())
 	stderr := &capped{limit: 1 << 20}
 	prepared, e := provider.Prepare(adapter.PrepareRequest{
 		Runtime:   runtimeConfig,

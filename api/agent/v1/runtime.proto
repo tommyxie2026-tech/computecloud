@@ -47,10 +47,21 @@ message Runtime {
   map<string, string> template_digests = 9;
 }
 message WorkerHello { string worker_id = 1; string epoch = 2; int32 slots = 3; repeated Runtime runtimes = 4; }
-message WorkerStatus { string worker_id = 1; bool online = 2; int32 slots = 3; int32 active = 4; int64 last_seen_ms = 5; repeated Runtime runtimes = 6; }
+message WorkerStatus { string worker_id = 1; bool online = 2; int32 slots = 3; int32 active = 4; int64 last_seen_ms = 5; repeated Runtime runtimes = 6; ExecutionSignal readiness = 7; }
 message Workers { repeated WorkerStatus workers = 1; }
 message AttemptRef { string attempt_id = 1; int64 generation = 2; string lease_token = 3; }
-message Renew { repeated AttemptRef attempts = 1; }
+message ExecutionSignal {
+  int64 observed_at_ms = 1;
+  int64 measured_at_ms = 2;
+  repeated string runtime_ready = 3;
+  repeated string environment_ready = 4;
+  repeated string template_fingerprints = 5;
+  repeated string repository_refs = 6;
+  int64 workspace_prepare_p50_ms = 7;
+  int32 free_slots = 8;
+  int64 environment_startup_p50_ms = 9;
+}
+message Renew { repeated AttemptRef attempts = 1; ExecutionSignal readiness = 2; }
 message CommandAck {
   string command_id = 1;
   string state = 2;
