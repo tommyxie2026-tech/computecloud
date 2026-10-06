@@ -33,11 +33,12 @@ CREATE TABLE goal_evaluations (
  goal_id TEXT NOT NULL REFERENCES goals(id),
  graph_generation INTEGER NOT NULL,
  job_id TEXT NOT NULL REFERENCES jobs(id),
+ job_version INTEGER NOT NULL,
  evaluator TEXT NOT NULL,
  verdict TEXT NOT NULL CHECK(verdict IN ('SUCCEEDED','FAILED','CANCELED')),
  evidence_json BLOB NOT NULL,
  created INTEGER NOT NULL,
- PRIMARY KEY(goal_id,graph_generation)
+ PRIMARY KEY(goal_id,graph_generation,job_version)
 );
 CREATE TRIGGER goal_evaluations_immutable BEFORE UPDATE ON goal_evaluations
 BEGIN SELECT RAISE(ABORT,'goal evaluation immutable'); END;
