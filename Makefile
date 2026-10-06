@@ -98,3 +98,9 @@ ci-scheduler-readiness-flow: build
 .PHONY: ci-goal-execution
 ci-goal-execution:
 	$(GO) test -race ./internal/server ./internal/store ./internal/goal -run 'TestGoal|TestStageAndGeneration|TestStaleQueued|TestManualRetry|TestLongRunning' -count=1
+
+.PHONY: ci-goal-governance ci-replan-approval-negative
+ci-goal-governance:
+	$(GO) test -race ./internal/server ./internal/store ./internal/governance -run 'TestGoal' -count=1
+ci-replan-approval-negative:
+	$(GO) test -race ./internal/goal -count=1

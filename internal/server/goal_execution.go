@@ -126,6 +126,29 @@ func evaluateBoundJob(ctx context.Context, q store.Query, j *Job) error {
 	if err != nil {
 		return err
 	}
+	missingRows, err := q.QueryContext(ctx, `SELECT r.attempt_id FROM goal_attempt_reservations r LEFT JOIN goal_usage u ON u.attempt_id=r.attempt_id WHERE r.goal_id=? AND u.usage_id IS NULL`, goalID)
+	if err != nil {
+		return err
+	}
+	missing := []string{}
+	for missingRows.Next() {
+		var id string
+		if err = missingRows.Scan(&id); err != nil {
+			missingRows.Close()
+			return err
+		}
+		missing = append(missing, id)
+	}
+	err = missingRows.Err()
+	missingRows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range missing {
+		if err = recordGoalAttemptUsage(ctx, q, j, goalID, id); err != nil {
+			return err
+		}
+	}
 	var revision, generation int64
 	if err = q.QueryRowContext(ctx, `SELECT b.plan_revision,b.graph_generation FROM goal_job_bindings b JOIN goals g ON g.id=b.goal_id
  WHERE b.job_id=? AND b.plan_revision=g.active_plan_revision AND b.graph_generation=g.active_graph_generation`, j.ID).Scan(&revision, &generation); errors.Is(err, sql.ErrNoRows) {
@@ -219,7 +242,7 @@ func (s *Server) httpJobGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var id, state string
-	var revision, generation, used, maximum int64
+	var revision, generation, used, maximum, version int64
 	var graph []byte
 	err = s.db.Tx(r.Context(), func(q store.Query) error {
 		var e error
@@ -234,11 +257,16 @@ func (s *Server) httpJobGoal(w http.ResponseWriter, r *http.Request) {
 		if e = evaluateBoundJob(r.Context(), q, j); e != nil {
 			return e
 		}
-		return q.QueryRowContext(r.Context(), `SELECT g.state,g.active_plan_revision,g.active_graph_generation,g.consumed_attempts,g.max_total_attempts,p.graph_json FROM goals g JOIN goal_plans p ON p.goal_id=g.id AND p.revision=g.active_plan_revision WHERE g.id=?`, id).Scan(&state, &revision, &generation, &used, &maximum, &graph)
+		return q.QueryRowContext(r.Context(), `SELECT g.state,g.active_plan_revision,g.active_graph_generation,g.consumed_attempts,g.max_total_attempts,p.graph_json,g.version FROM goals g JOIN goal_plans p ON p.goal_id=g.id AND p.revision=g.active_plan_revision WHERE g.id=?`, id).Scan(&state, &revision, &generation, &used, &maximum, &graph, &version)
 	})
 	if err != nil {
 		httpError(w, dbErr(err))
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"goal_id": id, "state": state, "plan_revision": revision, "graph_generation": generation, "consumed_attempts": used, "max_total_attempts": maximum, "graph": json.RawMessage(graph), "synthetic": true, "automatic_replan_enabled": false})
+	governanceState, e := goalGovernanceProjection(r.Context(), s.db.SQL, id)
+	if e != nil {
+		httpError(w, dbErr(e))
+		return
+	}
+	jsonResponse(w, 200, map[string]any{"governance": governanceState, "goal_id": id, "state": state, "version": version, "plan_revision": revision, "graph_generation": generation, "consumed_attempts": used, "max_total_attempts": maximum, "graph": json.RawMessage(graph), "synthetic": true, "automatic_replan_enabled": false})
 }

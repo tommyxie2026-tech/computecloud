@@ -27,3 +27,23 @@ limits cannot opt into autonomous finite token/cost execution.
 This contract does not introduce policy DSL, broad RBAC, Planner implementation,
 or arbitrary Workflow Engine. RPG CLOSED requires actual publication, cancellation,
 usage enforcement and Control bridge integration plus negative/recovery gates.
+
+## Initial implementation boundary
+
+Schema v16 persists decisions, one-use permissions and nullable Attempt usage.
+`POST /v1/jobs/{job}/goal/decisions` uses the existing Control write lease and
+requires an explicitly configured `goal_actor_kind: human`, stable
+`goal_actor_id`, `goals:approve` and `jobs:read`; budget and constraint decisions
+also require `goals:budget` and `goals:constraints` respectively. Goal GET includes
+a bounded recent-decision projection. ABORT/REJECT atomically put the Job into
+its established STOPPING/cleanup path; they do not manufacture cleanup proof.
+
+No current Runtime adapter advertises enforceable token/cost hard limits. Setting
+a finite usage budget therefore fences future assignments with
+`GOAL_RUNTIME_BUDGET_UNSUPPORTED`; existing active Attempts still follow their
+already-frozen execution contracts. This is an opt-in accounting/governance
+foundation, not a runtime spend-control release. Unreported terminal Attempt usage
+is recorded as incomplete with null amounts. The Guard blocks unknown/exhausted
+accounting, but automatic re-plan publication and permission consumption are still
+pending. Evidence/constraint decisions are provenance only; frozen Jobs remain
+immutable. These limits keep RPG PARTIAL.

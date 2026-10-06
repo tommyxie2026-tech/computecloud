@@ -1,4 +1,5 @@
 import type {
+  GoalView,
   ArtifactView,
   ApprovalView,
   ControlBootstrap,
@@ -117,7 +118,9 @@ export class ControlAPI {
       this.json<{ artifacts: ArtifactView[] }>(`/v1/jobs/${id}/artifacts?limit=100`),
       this.json<{ events: JobEvent[] }>(`/v1/jobs/${id}/events?after_seq=0&limit=500`),
     ]);
+    const goal = job.links?.goal ? await this.json<GoalView>(`/v1/jobs/${id}/goal`) : undefined;
     return {
+      goal,
       job,
       tasks: tasks.tasks,
       sessions: sessions.sessions,

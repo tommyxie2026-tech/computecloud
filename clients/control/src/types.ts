@@ -141,7 +141,24 @@ export type JobEvent = {
   payload: unknown;
 };
 
+export type GoalView = {
+  goal_id: string;
+  state: string;
+  version: number;
+  plan_revision: number;
+  graph_generation: number;
+  consumed_attempts: number;
+  max_total_attempts: number;
+  automatic_replan_enabled: boolean;
+  governance?: {
+    usage_complete: boolean;
+    runtime_hard_budget_supported: boolean;
+    recent_decisions: Array<{ operation_id: string; actor: string; action: string; reason: string; resulting_version: number; created_at_ms: number }>;
+  };
+};
+
 export type JobSnapshot = {
+  goal?: GoalView;
   job: JobDetail;
   tasks: TaskView[];
   sessions: SessionView[];

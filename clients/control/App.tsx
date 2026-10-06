@@ -548,6 +548,23 @@ export default function App() {
                   {!snapshot.approvals.length && <Empty>No pending or historical approvals.</Empty>}
                 </View>
 
+                {snapshot.goal && <View style={styles.panel}>
+                  <Text style={styles.sectionTitle}>Goal review</Text>
+                  <StatePill value={snapshot.goal.state} />
+                  <Text style={styles.muted}>Attempts used: {snapshot.goal.consumed_attempts} / {snapshot.goal.max_total_attempts}</Text>
+                  <Text style={styles.muted}>Plan {snapshot.goal.plan_revision} · execution graph {snapshot.goal.graph_generation}</Text>
+                  <Text style={styles.muted}>{snapshot.goal.automatic_replan_enabled ? "Automatic re-planning enabled" : "Automatic re-planning is disabled"}</Text>
+                  {snapshot.goal.governance && <>
+                    <Text style={styles.muted}>{snapshot.goal.governance.usage_complete ? "Usage records complete" : "Usage is incomplete; unknown consumption is not zero"}</Text>
+                    {snapshot.goal.governance.recent_decisions.map((decision) => <View key={decision.operation_id} style={styles.item}>
+                      <Text style={styles.jobID}>{decision.action} · {decision.actor}</Text>
+                      <Text>{decision.reason}</Text>
+                      <Text style={styles.muted}>{formatTime(String(decision.created_at_ms))}</Text>
+                    </View>)}
+                    {!snapshot.goal.governance.recent_decisions.length && <Empty>No Goal governance decisions.</Empty>}
+                  </>}
+                </View>}
+
                 <View style={styles.panel}>
                   <Text style={styles.sectionTitle}>Artifacts</Text>
                   {snapshot.artifacts.map((artifact) => (
