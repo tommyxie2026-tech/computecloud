@@ -118,3 +118,11 @@ ci-relay-contract:
 	$(GO) test -race ./internal/relay -run 'TestRelayOpaque' -count=1
 ci-relay-security-negative:
 	$(GO) test -race ./internal/relay -run 'TestTicket|TestPair|TestRelayRejects' -count=1
+
+.PHONY: ci-relay-direct-fallback
+ci-relay-direct-fallback:
+	$(GO) test -race ./internal/rpcutil -run 'TestDirectFirst|TestTLS|TestConnector' -count=1
+
+.PHONY: ci-relay-restart-recovery
+ci-relay-restart-recovery:
+	$(GO) test -race ./internal/server -run 'TestRelayJobRestartRecovery|TestStageAndGeneration|TestStaleQueued' -count=1

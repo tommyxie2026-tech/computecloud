@@ -1,5 +1,6 @@
 # computecloud 3–5 人并行开发计划
 
+> 2026-10-06 执行更新：P0、缓存、readiness 观测、synthetic Goal 执行、治理审计与 Control 产物审阅已分批合入。RPG 完整闭环、生产验收、完整 Relay 与 Mobile Beta 尚未完成；当前证据与剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 为准。
 当前执行台账：[P0–P2 实施与验收](p0-p2-execution.md)（2026-10-06）。
 
 - 日期：2026-09-29

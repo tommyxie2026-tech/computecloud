@@ -15,6 +15,7 @@ import (
 
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
+	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/testutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/worker"
 )
@@ -26,7 +27,16 @@ type jobHarness struct {
 	http               *http.Client
 }
 
+type jobTestTransport struct {
+	ServerTLS, WorkerTLS config.TLS
+	Listener             net.Listener
+	Connector            func(string) rpcutil.Connector
+}
+
 func newJobHarness(t *testing.T, workers bool, options ...func(*config.Server)) *jobHarness {
+	return newJobHarnessWithTransport(t, workers, nil, options...)
+}
+func newJobHarnessWithTransport(t *testing.T, workers bool, transport *jobTestTransport, options ...func(*config.Server)) *jobHarness {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
 	t.Cleanup(cancel)
@@ -38,6 +48,9 @@ func newJobHarness(t *testing.T, workers bool, options ...func(*config.Server)) 
 	for i, tok := range wtokens {
 		cfg.Workers = append(cfg.Workers, config.Identity{TokenFile: tok, WorkerID: []string{"w1", "w2"}[i], Projects: []string{"project"}, Credentials: []string{"account"}})
 	}
+	if transport != nil {
+		cfg.TLS = transport.ServerTLS
+	}
 	for _, option := range options {
 		option(&cfg)
 	}
@@ -45,13 +58,24 @@ func newJobHarness(t *testing.T, workers bool, options ...func(*config.Server)) 
 	if e != nil {
 		t.Fatal(e)
 	}
-	l, e := net.Listen("tcp", "127.0.0.1:0")
+	var l net.Listener
+	if transport != nil {
+		l = transport.Listener
+	} else {
+		l, e = net.Listen("tcp", "127.0.0.1:0")
+	}
 	if e != nil {
 		t.Fatal(e)
 	}
 	sc, stop := context.WithCancel(ctx)
 	done := make(chan error, 1)
-	go func() { done <- s.Serve(sc, l) }()
+	go func() {
+		if transport != nil {
+			done <- s.ServeTunnel(sc, l)
+		} else {
+			done <- s.Serve(sc, l)
+		}
+	}()
 	t.Cleanup(func() {
 		stop()
 		if e := <-done; e != nil {
@@ -74,7 +98,13 @@ func newJobHarness(t *testing.T, workers bool, options ...func(*config.Server)) 
 			c.DataDir = t.TempDir()
 			c.TokenFile = tok
 			c.Address = l.Addr().String()
-			w, e := worker.New(c)
+			var w *worker.Worker
+			if transport != nil {
+				c.TLS = transport.WorkerTLS
+				w, e = worker.NewWithConnector(c, transport.Connector(c.ID))
+			} else {
+				w, e = worker.New(c)
+			}
 			if e != nil {
 				t.Fatal(e)
 			}
