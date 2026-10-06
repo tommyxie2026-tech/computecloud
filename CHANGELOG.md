@@ -1,5 +1,13 @@
 # 版本记录
 
+## 0.4.7-rc.1 — 限定范围集成预览（准备中）
+
+基于 v0.4.6 的累积候选：Prepared Workspace 缓存与并发命中、readiness 观测、synthetic Goal 执行/评估与 Control 决策审计、产物文本预览，以及实验性 Relay seam/TLS fixture/direct-first fallback。`direct` 仍是默认路径，Goal 自动 Re-plan 仍关闭。本候选版不宣称缓存 P50 达标、真实多机生产基线、生产 Relay 或签名 Mobile Beta。
+
+- Server schema 从 v13 升至 v16，Worker 保持 v6；必须排空执行、离线完整备份，回退只能恢复升级前快照。
+- 预发布镜像只使用版本/digest，不更新 GHCR `latest`。
+- 发布状态和验收证据见 [v0.4.7-rc.1 候选记录](docs/implementation/v0.4.7-rc.1-release-status.md)；当前条目不表示已发布。
+
 ## 0.4.6 — Post-0.4.5 Stabilization
 
 本版以 v0.4.5 为基线，稳定合入 C2 Job Submit / bounded Manual Retry 与 UI-04a Mobile Control Foundation；不引入 Relay 运行时代码或新的 SQLite migration。
@@ -7,7 +15,7 @@
 - C2 Job Submit：提交幂等、Job 查询与 bounded Manual Retry；retry generation fencing 与旧 Attempt 拒绝保持 fail closed。
 - UI-04a Mobile Foundation：安全连接 profile、iOS/Android identity 与 deep-link 处理；敏感任务正文不进入离线 profile，连接失败保持 fail closed。
 - CI：保留完整 main/package/release Gate，包含 manual-retry-negative、control-mobile-check、control-client-check 与 control-client-e2e；真实 Codex/Claude 额度不作为 CI 依赖。
-- 兼容性：Server schema v12、Worker schema v6；不新增 migration；现有 Runtime/Tool/Environment、Workspace、Control ledger 与 generation fencing 语义保持兼容。
+- 兼容性：v0.4.6 tag 的 Server schema v13、Worker schema v6；相对 v0.4.5 增加 Control write lease migration。现有 Runtime/Tool/Environment、Workspace、Control ledger 与 generation fencing 语义保持兼容。
 - 边界：Relay/P2P 仍为 v0.4.x 后续实验性计划，direct 默认；Goal Governance、Relay runtime、生产双机/NAT 验收不在本版完成声明内。
 
 发布门槛：完整 main CI、package、container image、SHA256SUMS、升级/回滚说明及 GitHub Release 全部成功后，才标记 v0.4.6 RELEASED。

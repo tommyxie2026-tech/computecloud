@@ -16,6 +16,12 @@ if [ -e "$output/SHA256SUMS" ]; then
   exit 2
 fi
 
+deployment="docs/deployment/production-v${version}.md"
+if [ ! -f "$deployment" ]; then
+  echo "release deployment guide missing: $deployment" >&2
+  exit 2
+fi
+
 mkdir -p "$output"
 staging=$(mktemp -d)
 cleanup() {
@@ -44,7 +50,7 @@ for arch in amd64 arm64; do
     esac
   fi
   cp README.md CHANGELOG.md "$root/"
-  cp docs/deployment/production-v0.4.6.md "$root/DEPLOYMENT.md"
+  cp "$deployment" "$root/DEPLOYMENT.md"
   cp docs/deployment/mobile-control.md "$root/MOBILE-DEPLOYMENT.md"
   cp docs/deployment/production-v0.2.md "$root/DEPLOYMENT-v0.2.md"
   cp docs/deployment/container-images.md "$root/CONTAINERS.md"
