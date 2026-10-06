@@ -614,6 +614,15 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 			if e = q.QueryRowContext(ctx, `SELECT count(*) FROM goals g JOIN goal_job_bindings b ON b.goal_id=g.id WHERE b.job_id=? AND b.plan_revision=g.active_plan_revision AND b.graph_generation=g.active_graph_generation AND g.state IN ('RUNNING','GRAPH_READY','REPLANNING') AND g.consumed_attempts<g.max_total_attempts AND (g.deadline=0 OR g.deadline>?) AND g.created+g.max_wall_time_ms>?`, j.ID, now, now).Scan(&allowed); e != nil {
 				return e
 			}
+			var finiteUsageBudget int
+			if e = q.QueryRowContext(ctx, `SELECT count(*) FROM goal_budget_policy p JOIN goal_job_bindings b ON b.goal_id=p.goal_id WHERE b.job_id=? AND (p.max_tokens IS NOT NULL OR p.max_cost_units IS NOT NULL)`, j.ID).Scan(&finiteUsageBudget); e != nil {
+				return e
+			}
+			if finiteUsageBudget != 0 {
+				// Current adapters do not enforce per-Attempt token/cost ceilings.
+				_, e = q.ExecContext(ctx, "UPDATE tasks SET blocker='GOAL_RUNTIME_BUDGET_UNSUPPORTED' WHERE id=?", id)
+				return e
+			}
 			if allowed != 1 {
 				_, e = q.ExecContext(ctx, "UPDATE tasks SET blocker='GOAL_EXECUTION_FENCED' WHERE id=?", id)
 				return e

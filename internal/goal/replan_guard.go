@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/tommyxie2026-tech/computecloud/internal/governance"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 )
 
@@ -61,8 +62,8 @@ const (
 	DecisionRepeatedFailure  = "REPEATED_FAILURE"
 	DecisionNoProgress       = "NO_PROGRESS"
 
-	replanCycleWindow      = 6
-	sameFailureMaxReplans  = 2
+	replanCycleWindow     = 6
+	sameFailureMaxReplans = 2
 )
 
 func Create(ctx context.Context, db *store.DB, in CreateGoal) error {
@@ -259,12 +260,19 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 			return err
 		}
 
+		usageErr := governance.CheckUsageTx(ctx, q, in.GoalID)
+		if usageErr != nil && usageErr.Error() != "GOAL_USAGE_UNKNOWN" && usageErr.Error() != "GOAL_USAGE_EXHAUSTED" {
+			return usageErr
+		}
 		switch {
 		case terminal(state):
 			requestState, code = "REJECTED", DecisionGoalTerminal
 			nextPlan, nextGraph = 0, 0
 		case activePlan != in.ExpectedPlanRevision || activeGraph != in.ExpectedGraphGeneration:
 			requestState, code = "REJECTED", DecisionStaleGeneration
+			nextPlan, nextGraph = 0, 0
+		case usageErr != nil:
+			requestState, code = "NEEDS_APPROVAL", usageErr.Error()
 			nextPlan, nextGraph = 0, 0
 		case usedAttempts >= maxAttempts:
 			requestState, code = "NEEDS_APPROVAL", DecisionAttemptExhausted
