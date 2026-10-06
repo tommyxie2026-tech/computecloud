@@ -199,3 +199,12 @@ export type ManualRetryReceipt = {
   state: string;
   existing?: boolean;
 };
+
+export type ArtifactReview = {
+  artifact_id: string;
+  sha256: string;
+  attempt_id: string;
+  generation: number;
+  current_generation: boolean;
+  members: Array<{ name: string; size: number; text: string | null; truncated: boolean }>;
+};

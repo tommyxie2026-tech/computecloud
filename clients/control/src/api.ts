@@ -1,5 +1,6 @@
 import type {
   GoalView,
+  ArtifactReview,
   ArtifactView,
   ApprovalView,
   ControlBootstrap,
@@ -128,6 +129,10 @@ export class ControlAPI {
       artifacts: artifacts.artifacts,
       events: events.events,
     };
+  }
+
+  artifactReview(jobID: string, artifactID: string): Promise<ArtifactReview> {
+    return this.json(`/v1/jobs/${encodeURIComponent(jobID)}/artifacts/${encodeURIComponent(artifactID)}/review`);
   }
 
   artifactURL(jobID: string, artifactID: string): string {

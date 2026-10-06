@@ -23,6 +23,7 @@ import type {
   ControlWriteLease,
   SessionView,
   ApprovalView,
+  ArtifactReview,
 } from "./src/types";
 
 const terminal = new Set(["SUCCEEDED", "FAILED", "CANCELED"]);
@@ -81,6 +82,7 @@ export default function App() {
   const [workers, setWorkers] = useState<WorkerPage | null>(null);
   const [selected, setSelected] = useState<string>("");
   const [snapshot, setSnapshot] = useState<JobSnapshot | null>(null);
+  const [artifactPreview, setArtifactPreview] = useState<{ client: ControlAPI; jobID: string; review: ArtifactReview } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [writeLease, setWriteLease] = useState<ControlWriteLease | null>(null);
@@ -376,12 +378,17 @@ export default function App() {
     }
   }, [api, selected, writeLease, snapshot, refreshSelected]);
 
-  const openArtifact = useCallback((artifactID: string) => {
+  const openArtifact = useCallback(async (artifactID: string) => {
     if (!api || !selected) return;
-    // Browser downloads still require Authorization; opening the raw URL cannot
-    // safely carry a bearer token. C1 therefore surfaces metadata only and
-    // leaves authenticated download to a later explicit client action.
-    setError(`Authenticated artifact download is not enabled in C1 (${artifactID}).`);
+    setBusy(true);
+    setError("");
+    setArtifactPreview(null);
+    try {
+      const review = await api.artifactReview(selected, artifactID);
+      setArtifactPreview({ client: api, jobID: selected, review });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Artifact review unavailable");
+    } finally { setBusy(false); }
   }, [api, selected]);
 
   return (
@@ -575,6 +582,18 @@ export default function App() {
                     </Pressable>
                   ))}
                   {!snapshot.artifacts.length && <Empty>No accepted artifacts.</Empty>}
+                  {artifactPreview?.client === api && artifactPreview?.jobID === selected && <View style={styles.stack}>
+                    <Text style={styles.sectionTitle}>Artifact preview</Text>
+                    <Text style={styles.mono}>Attempt {artifactPreview.review.attempt_id} · generation {artifactPreview.review.generation}</Text>
+                    <Text style={styles.muted}>{artifactPreview.review.current_generation ? "Current execution result when fetched" : "Historical execution result"}</Text>
+                    <Text selectable style={styles.mono}>SHA256 {artifactPreview.review.sha256}</Text>
+                    {artifactPreview.review.members.map((member) => <View key={member.name} style={styles.item}>
+                      <Text style={styles.jobID}>{member.name} · {member.size} bytes</Text>
+                      {member.text === null ? <Empty>Binary or unsupported preview format.</Empty> : <Text selectable style={styles.mono}>{member.text}</Text>}
+                      {member.truncated && <Text style={styles.muted}>Preview truncated.</Text>}
+                    </View>)}
+                    <Button title="Close preview" onPress={() => setArtifactPreview(null)} />
+                  </View>}
                 </View>
               </View>
 
