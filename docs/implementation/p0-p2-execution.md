@@ -8,7 +8,7 @@ real-environment acceptance. A role assignment is not proof of delivery.
 
 | Order | Scope | Status / acceptance |
 | --- | --- | --- |
-| P0 | Retry storage gate, deterministic process-stop fixture, schema documentation | Implementation ready; local and remote CI pending |
+| P0 | Retry storage gate, deterministic process-stop fixture, schema documentation | Implemented in PR #92; local vet/unit/race/smoke/task/retry/artifact/capacity PASS; remote full matrix pending |
 | P1-A | Workspace cache, bounded GC, warm materialization, metrics and benchmark | Pending; retain immutable templates and isolated Attempt ownership |
 | P1-B | Readiness advertisement, stale/unknown handling and explainability | Pending; existing capability/security filters and scheduling order stay authoritative |
 | P1-C | Production Baseline | External prerequisites requested: two independent Linux Workers, fixed real Runtime/MCP versions and account budgets, 24h+ window; #1/#9 remain open |
