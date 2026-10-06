@@ -65,7 +65,7 @@ func TestV13UpgradesBothHistoricalV7Schemas(t *testing.T) {
 				t.Fatal(err)
 			}
 			var renewed int
-			if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 14 {
+			if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 15 {
 				t.Fatalf("version=%d err=%v", version, err)
 			}
 			if err = db.SQL.QueryRow("SELECT last_renewed FROM attempts WHERE id='a'").Scan(&renewed); err != nil {
@@ -189,7 +189,7 @@ func TestV13UpgradesMainAndExperimentalV8(t *testing.T) {
 			}
 			defer db.Close()
 			var version int
-			if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 14 {
+			if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 15 {
 				t.Fatalf("version=%d err=%v", version, err)
 			}
 			for _, query := range []string{"SELECT count(*) FROM control_operations", "SELECT count(*) FROM replan_history", "SELECT count(*) FROM traces"} {
@@ -284,7 +284,7 @@ func TestV13UpgradesBothV12Variants(t *testing.T) {
 				}
 				defer db.Close()
 				var version int
-				if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 14 {
+				if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 15 {
 					t.Fatalf("version=%d err=%v", version, err)
 				}
 				var value string

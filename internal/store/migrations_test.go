@@ -43,7 +43,7 @@ func TestV1UpgradeBackupAndDrainGate(t *testing.T) {
 		t.Fatal(e)
 	}
 	db.SQL.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 14 {
+	if v != 15 {
 		t.Fatalf("version %d", v)
 	}
 	var state, stage string
@@ -108,7 +108,7 @@ func TestV4MultiAttemptAndStageSchema(t *testing.T) {
 	}
 	defer db.Close()
 	var v int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 14 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&v); e != nil || v != 15 {
 		t.Fatalf("version=%d err=%v", v, e)
 	}
 	// New schema must allow multiple historical attempts for one Task while
@@ -171,7 +171,7 @@ func TestV3ToV4PreservesJobAttemptArtifactAndGatewayReference(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 14 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 15 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	var stageID, stageState string
@@ -494,7 +494,7 @@ func TestV8ControlOperationLedger(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 14 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 15 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	_, e = db.SQL.Exec(`INSERT INTO control_operations(
@@ -535,7 +535,7 @@ func TestV9GoalReplanGuardSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 14 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 15 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO goals(id,owner,project,state,max_replans,max_total_attempts,max_wall_time_ms,created,updated) VALUES('g','o','p','GOAL_CREATED',2,4,60000,1,1)"); e != nil {
@@ -558,7 +558,7 @@ func TestV10GoalEvidenceAndPlanFingerprintSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 14 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 15 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO goals(id,owner,project,state,max_replans,max_total_attempts,max_wall_time_ms,created,updated) VALUES('g10','o','p','GOAL_CREATED',3,5,60000,1,1)"); e != nil {
@@ -636,7 +636,7 @@ func TestV11ReplanHistorySchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 14 {
+	if e = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); e != nil || version != 15 {
 		t.Fatalf("version=%d err=%v", version, e)
 	}
 	if _, e = db.SQL.Exec("INSERT INTO goals(id,owner,project,state,max_replans,max_total_attempts,max_wall_time_ms,created,updated) VALUES('g11','o','p','GOAL_CREATED',4,8,60000,1,1)"); e != nil {
@@ -662,7 +662,7 @@ func TestV12ApprovalLifecycleSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 14 {
+	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 15 {
 		t.Fatalf("version=%d err=%v", version, err)
 	}
 	if _, err = db.SQL.Exec("INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism) VALUES('j12','o','p','i','rh','sh','{}','single','EXECUTING',1,1,9999999999999,1)"); err != nil {
@@ -697,7 +697,7 @@ func TestV13ControlWriteLeaseSchema(t *testing.T) {
 	defer db.Close()
 
 	var version int
-	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 14 {
+	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 15 {
 		t.Fatalf("version=%d err=%v", version, err)
 	}
 	if _, err = db.SQL.Exec("INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism) VALUES('lease-job','o','p','i','rh','sh','{}','single','EXECUTING',1,1,9999999999999,1)"); err != nil {
