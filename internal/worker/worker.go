@@ -47,8 +47,18 @@ func enc(m proto.Message) []byte {
 	}
 	return b
 }
-func dec(b []byte, m proto.Message) error { return protojson.Unmarshal(b, m) }
-func New(c config.Worker) (*Worker, error) {
+func dec(b []byte, m proto.Message) error  { return protojson.Unmarshal(b, m) }
+func New(c config.Worker) (*Worker, error) { return newWithConnector(c, nil) }
+
+// NewWithConnector explicitly opts into an alternate byte transport. TLS and
+// credentials remain mandatory; ordinary configuration keeps direct dialing.
+func NewWithConnector(c config.Worker, connector rpcutil.Connector) (*Worker, error) {
+	if connector == nil {
+		return nil, errors.New("transport connector required")
+	}
+	return newWithConnector(c, connector)
+}
+func newWithConnector(c config.Worker, connector rpcutil.Connector) (*Worker, error) {
 	if e := c.Validate(); e != nil {
 		return nil, e
 	}
@@ -56,7 +66,12 @@ func New(c config.Worker) (*Worker, error) {
 	if e != nil {
 		return nil, e
 	}
-	conn, e := rpcutil.Dial(c.Address, token, c.TLS)
+	var conn *grpc.ClientConn
+	if connector == nil {
+		conn, e = rpcutil.Dial(c.Address, token, c.TLS)
+	} else {
+		conn, e = rpcutil.DialWithConnector(c.Address, token, c.TLS, connector)
+	}
 	if e != nil {
 		return nil, e
 	}

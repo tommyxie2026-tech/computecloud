@@ -32,3 +32,24 @@ RLY-1 connector/listener seam; callers must still use inner gRPC/TLS. Tests use 
 actual outer TLS broker and a second end-to-end TLS handshake through it, plus
 signature/expiry/replay/identity/quota/restart and cancellation checks. This is local
 fixture evidence; real NAT and unattended credential distribution remain unverified.
+
+## Direct-first connector
+
+`rpcutil.NewDirectFirstConnector` composes explicit direct and alternate byte
+connectors with a bounded direct timeout and one fallback attempt. Caller
+cancellation never falls back. TLS and bearer authentication remain above the
+connector, so certificate/identity errors never trigger a second transport path.
+Counters expose only bounded transport outcomes, with no business payloads.
+Every reconnect starts with direct again; no concurrent duplicate live streams
+are created by this state machine. Production ticket provisioning and Worker
+configuration remain separate; default `rpcutil.Dial` does not opt in.
+
+## Local Job recovery evidence
+
+The Server/dual Worker test exercises signed rendezvous, inner TLS and existing
+Worker identity through the byte connector. It interrupts a RUNNING four-second
+fixture Job by restarting the Relay, then verifies successful completion with
+exactly one durable Attempt and a subsequent map/reduce Job. Worker default `New`
+is unchanged; explicit `NewWithConnector` requires TLS. This validates local
+transport recovery; it does not supply unattended ticket distribution, production
+NAT evidence or control/event/bulk traffic priority.
