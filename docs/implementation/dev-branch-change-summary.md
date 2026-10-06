@@ -77,7 +77,7 @@ e660dea docs: add v0.4.6 Ubuntu and Mac Air container deployment
 
 迁移会检查审批、控制操作、liveness、事件去重、Trace、Gateway 和 Attempt metrics 等关键结构；发现部分迁移或损坏结构时回滚，不会直接把数据库标记为新版本。
 
-回退限制：已经升级到 schema v14 的数据目录不能直接由 v0.4.6 schema v12 二进制打开。回退必须恢复升级前完整 data directory，禁止手改 `PRAGMA user_version`。
+回退限制：已经升级到 schema v14 的数据目录不能直接由 v0.4.6 schema v13 二进制打开。回退必须恢复升级前完整 data directory，禁止手改 `PRAGMA user_version`。
 
 ## 4. 跨平台进程监管
 
@@ -150,5 +150,5 @@ Mac Air: Docker Desktop + Linux worker v0.4.6
 - Relay/P2P、Server HA、Push/pairing、企业 RBAC 和 Goal Governance 不在本分支交付范围。
 - Trace 用量不是供应商账单对账；未知数据必须保持 unknown。
 - fixture、单机容量和容器测试不能替代真实模型账号、独立主机网络和生产容量验收。
-- 当前分支 schema v14 与 v0.4.6 正式发布 schema v12 不兼容回退。
+- 当前分支 schema v14 与 v0.4.6 正式发布 schema v13 不兼容回退。
 

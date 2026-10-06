@@ -37,7 +37,7 @@ tar -xzf "computecloud_${version}_linux_${arch}.tar.gz"
 
 ## 3. 从旧版本升级
 
-目标 Server schema **v12**、Worker schema **v6**。v0.4.6 本身不增加 SQLite migration；从更早版本升级仍会执行已有 migration，必须先备份。
+目标 Server schema **v13**、Worker schema **v6**。从 v0.4.5 升级会执行 Control write lease migration；必须先排空任务并备份。main 的 v14 数据目录不能由 v0.4.6 打开；回退须恢复升级前完整备份，禁止修改 user_version。
 
 1. 停止投递新任务，完成/取消在途任务，确认没有 active Attempt。
 2. 停止全部 Worker 和 Server；不进行跨 schema 混合版本滚动升级。

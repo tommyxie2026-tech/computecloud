@@ -3,9 +3,11 @@ package process
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -14,11 +16,27 @@ import (
 func TestProcessStopEscalatesToKill(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	result := Run(ctx, "python3", []string{"-c", "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)"}, os.Environ(), "", nil, io.Discard, io.Discard, 50*time.Millisecond, func(int, string) error {
-		// Let the Python fixture install its SIGTERM handler before canceling.
-		time.Sleep(200 * time.Millisecond)
-		cancel()
-		return nil
+	ready := filepath.Join(t.TempDir(), "ready")
+	result := Run(ctx, "python3", []string{"-c", "import pathlib,signal,sys,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); pathlib.Path(sys.argv[1]).touch(); time.sleep(30)", ready}, os.Environ(), "", nil, io.Discard, io.Discard, 50*time.Millisecond, func(int, string) error {
+		// Cancel only after the child has installed its handler. Interpreter
+		// startup on a busy runner is not bounded by a fixed sleep.
+		deadline := time.NewTimer(10 * time.Second)
+		defer deadline.Stop()
+		tick := time.NewTicker(10 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			if _, err := os.Stat(ready); err == nil {
+				cancel()
+				return nil
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			select {
+			case <-deadline.C:
+				return fmt.Errorf("fixture did not install SIGTERM handler")
+			case <-tick.C:
+			}
+		}
 	})
 	if !result.TermSent || !result.KillSent || !result.Cleanup {
 		t.Fatalf("escalation evidence: %+v", result)
