@@ -35,10 +35,16 @@ The gate records measurements without masking unsuccessful correctness tests.
 
 ## Remaining acceptance
 
-- Linux and full integration CI; end-to-end ten Job benchmark and environment
-  conditions; dependency-heavy and concurrent throughput tuning.
+- Linux and full integration CI; dependency-heavy and concurrent throughput tuning.
 - Warm-slot replenishment currently adds synchronous preparation work; its full
   Job impact must be measured before recommending nonzero warm slots.
 - The global root lock can limit parallel throughput. Sharding must preserve GC
   exclusion and cannot skip immutable-template validation.
 - Readiness signal / scheduler observation is WS-C, separate from this patch.
+
+## Complete Job fixture acceptance
+
+Ten consecutive Jobs after single/MapReduce warmup: PASS; reuse 100%,
+Job P50 1016.976 ms / P95 1066.261 ms.
+One real Server process and two Worker processes on one Darwin arm64 host,
+no real model calls. This is not the independent-host production baseline.

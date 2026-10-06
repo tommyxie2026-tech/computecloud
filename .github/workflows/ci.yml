@@ -26,12 +26,14 @@ jobs:
         with:
           go-version: '1.27.1'
           cache: true
-      - run: make ci-prepared-workspace-cache ci-prepared-workspace-benchmark
+      - run: make ci-prepared-workspace-cache ci-prepared-workspace-benchmark ci-workspace-job-benchmark
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: workspace-cache-${{ github.run_id }}
-          path: dist/prepared-workspace-*/
+          path: |
+            dist/prepared-workspace-*/
+            dist/workspace-job-benchmark/
   verify-macos:
     runs-on: macos-latest
     timeout-minutes: 20

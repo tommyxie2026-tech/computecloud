@@ -2,6 +2,8 @@
 """CI end-to-end task flow using protocol fixtures; never calls a model provider."""
 
 import argparse
+import base64
+import platform
 from process_utils import process_alive
 from datetime import datetime, timezone
 import hashlib
@@ -67,6 +69,7 @@ def main():
     parser.add_argument("--binary", default="bin/computecloud")
     parser.add_argument("--output", default="dist/ci-task-flow/report.json")
     parser.add_argument("--timeout", type=int, default=45)
+    parser.add_argument("--workspace-benchmark", action="store_true")
     args = parser.parse_args()
     if args.timeout < 20 or args.timeout > 300:
         parser.error("timeout must be 20..300 seconds")
@@ -333,6 +336,37 @@ def main():
 
             record("map_reduce_job", map_reduce_flow)
 
+            if args.workspace_benchmark:
+                def workspace_benchmark():
+                    samples = []
+                    for index in range(10):
+                        started = time.monotonic()
+                        job_id = submit(f"workspace-benchmark-{index}", base_spec())
+                        current = wait_job(job_id)
+                        if current["state"] != "SUCCEEDED":
+                            raise AssertionError(f"workspace benchmark Job failed: {current}")
+                        task = job_tasks(job_id)[0]
+                        with sqlite3.connect(root / "server" / "state.db") as database:
+                            rows = database.execute("SELECT body FROM events WHERE task=? ORDER BY seq", (task["task_id"],)).fetchall()
+                        measured = []
+                        for (body,) in rows:
+                            event = json.loads(body)
+                            if event.get("type") == "workspace.prepared":
+                                measured.append(json.loads(base64.b64decode(event["payload_json"])))
+                        if len(measured) != 1:
+                            raise AssertionError("missing or duplicate accepted workspace measurement")
+                        samples.append(dict(measured[0], job_id=job_id, worker_id=task["worker_id"], job_ms=round((time.monotonic()-started)*1000, 3)))
+                    ratio = sum(item["cache_hit"] for item in samples) / len(samples)
+                    if ratio < 0.9:
+                        raise AssertionError(f"template reuse ratio {ratio} below 90%")
+                    if len({item["template_fingerprint"] for item in samples}) != 1:
+                        raise AssertionError("benchmark did not reuse one template identity")
+                    latency = sorted(item["job_ms"] for item in samples)
+                    return {"scope": "ten_complete_fixture_jobs_after_single_mapreduce_warmup", "real_model_calls": False,
+                            "os": platform.system(), "arch": platform.machine(), "samples": samples,
+                            "hit_ratio": ratio, "job_p50_ms": latency[5], "job_p95_ms": latency[9]}
+                record("workspace_ten_jobs", workspace_benchmark)
+
             def cancel_flow():
                 job_id = submit("ci-cancel", base_spec("slow fixture cancellation"))
                 running = wait_task(job_id, {"RUNNING"})
@@ -375,14 +409,14 @@ def main():
                     tasks = dict(database.execute("SELECT state,count(*) FROM tasks GROUP BY state"))
                 if integrity != "ok":
                     raise AssertionError("SQLite integrity check failed")
-                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": 2}
+                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": 12 if args.workspace_benchmark else 2}
                 if jobs != expected_jobs:
                     raise AssertionError(f"unexpected Job state totals: {jobs}")
                 return {"sqlite_integrity": integrity, "job_states": jobs, "task_states": tasks}
 
             record("shutdown_and_integrity", shutdown_and_integrity)
             report["summary"] = {"status": "PASSED", "steps_passed": len(report["steps"]),
-                                 "successful_jobs": 2, "canceled_jobs": 1, "failed_jobs": 1}
+                                 "successful_jobs": 12 if args.workspace_benchmark else 2, "canceled_jobs": 1, "failed_jobs": 1}
     except BaseException as error:
         failure = error
         report["summary"] = {"status": "FAILED", "error": f"{type(error).__name__}: {error}"}
