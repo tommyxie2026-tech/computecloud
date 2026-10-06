@@ -1,5 +1,7 @@
 # computecloud Agent-aware Distributed Job Execution Platform 长期路线图
 
+当前执行台账：[P0–P2 实施与验收](p0-p2-execution.md)（2026-10-06）。
+
 - 项目：computecloud
 - 日期：2026-09-29
 - 当前稳定发布基线：v0.4.6 Post-0.4.5 Stabilization；main 已包含 C2 Job Submit、bounded Manual Retry、UI-04a Mobile Control Foundation 与 v0.4.5 既有能力
@@ -10,7 +12,7 @@
 - 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
-- 当前实现依据：[v0.4.6 发布记录](v0.4.6-release-status.md)、[Prepared Workspace Core](prepared-workspace-core.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[本轮核对与实施台账](v0.4.5-roadmap-reconciliation.md)；Server v12 / Worker v6
+- 当前实现依据：[v0.4.6 发布记录](v0.4.6-release-status.md)、[Prepared Workspace Core](prepared-workspace-core.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[本轮核对与实施台账](v0.4.5-roadmap-reconciliation.md)；当前 main Server v14 / Worker v6；v0.4.6 tag Server v13
 - 当前实施跟踪：WS-A Core 已通过发布 CI；下一功能主线仍为 WS-B Cache / Warm Path 与 WS-C Readiness；Goal G0～G4 执行集成、WS-D RPG-4、WS-E Goal bridge、C1 Observe PWA 按实施台账独立验收；Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪，尚未完成
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
@@ -221,7 +223,7 @@ v0.4.x 的发布门槛是：`direct` 仍为默认模式，`direct_then_relay` �
 - ACP-5 Gemini Runtime 已合入 main；
 - C1 UI-01 collection contract 与 UI-02 Observe PWA 已合入 main；
 - C2 UI-03a single-writer lease + cancel/input/approval/resume 已合入 main；
-- C2 UI-03b Job Submit + bounded Manual Retry 正在实现/验收，首版 Retry 仅覆盖 single-mode frozen Job；
+- C2 UI-03b Job Submit + bounded Manual Retry 已合入 PR #79 并随 v0.4.6 发布，首版 Retry 仅覆盖 single-mode frozen Job；
 - Codex/Claude 的交互 capability 继续 fail-closed，只有 Runtime 原生 contract 通过后才广告。
 
 
@@ -233,7 +235,7 @@ Control 是既有 Agent Job Executor 的产品表面，不是第二个调度器�
 | --- | --- | --- | --- |
 | C0 Design Baseline | v0.3.2 | 调研、ADR-008、API/安全/UX 技术方案 | 当前完成 |
 | C1 Observe PWA | v0.4.x | Job/Task/Attempt/Worker/Artifact 只读投影、稳定分页、SSE、attention | **已完成**：UI-01/UI-02 已合入 main，独立 client check/E2E 通过 |
-| C2 Operate PWA | v0.4.x | 提交、取消、输入、审批、重试、Diff/测试审阅、短期单写者 lease | **进行中**：UI-03a 已合入；UI-03b submit + bounded manual retry 待 CI/merge；Diff/测试审阅继续后续切片 |
+| C2 Operate PWA | v0.4.x | 提交、取消、输入、审批、重试、Diff/测试审阅、短期单写者 lease | **进行中**：UI-03a 已合入；UI-03b submit + bounded manual retry 已随 v0.4.6 发布；Diff/测试审阅继续后续切片 |
 | C3 Mobile Beta | v0.5.x | Expo iOS/Android、QR 配对、Push、主机/运行时选择 | **进行中**：UI-04a SecureStore/device_id/deep-link foundation；UI-04b pairing 与 UI-04c push 后续 |
 | C4 Governed Remote | v0.6.x | OIDC/RBAC、设备策略、审计、企业 Lease 策略、可选 E2EE Relay；Server–Worker Relay-assisted P2P 传输 | 先完成 [ADR-021](../adr/0021-relay-assisted-p2p-transport.md) 的直连回退与威胁测试；Relay 不参与调度判断 |
 | C5 Production | v0.7.x/v1.0 | 弱网、规模、兼容矩阵、应用商店/企业分发、SLO | Scale & Resilience 门槛完成 |

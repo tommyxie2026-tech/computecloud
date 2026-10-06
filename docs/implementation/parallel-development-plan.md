@@ -1,8 +1,10 @@
 # computecloud 3–5 人并行开发计划
 
+当前执行台账：[P0–P2 实施与验收](p0-p2-execution.md)（2026-10-06）。
+
 - 日期：2026-09-29
 - 适用周期：未来 4–6 周
-- 当前稳定发布基线：v0.4.5 Prepared Workspace / Safe Control
+- 当前稳定发布基线：v0.4.6 Post-0.4.5 Stabilization
 - 当前 main 功能基线：v0.4.x Runtime / Tool / Environment Ecosystem
 - 当前产品主线：Prepared Workspace / Workspace Template
 - 并行旁路：RPG-4 FINAL / Goal Governance 收尾、Agent Control Approval
@@ -23,7 +25,7 @@ WS-E: PARTIAL — Runtime Approval/ACK merged; Goal bridge blocked on WS-D
 
 认领者必须先检查 main 最近提交，避免依据静态文档重复实现。
 
-本轮核对基线为发布提交 `607d1d4`；当前 Server v12 / Worker v6。后续完整任务与责任角色见[v0.4.5 实施台账](v0.4.5-roadmap-reconciliation.md)。角色分配不等于开发者已认领。Goal G0～G4 集成和客户端 C1 是原路线中缺少落地任务的切片，不隐式扩大 WS-D / WS-E 的代码 ownership；涉及公共 API / Store / Server 的变更须先独立 Contract / integration review。
+本轮核对基线为发布提交 `607d1d4`；当前 main Server v14 / Worker v6。后续完整任务与责任角色见[v0.4.5 实施台账](v0.4.5-roadmap-reconciliation.md)。角色分配不等于开发者已认领。Goal G0～G4 集成和客户端 C1 是原路线中缺少落地任务的切片，不隐式扩大 WS-D / WS-E 的代码 ownership；涉及公共 API / Store / Server 的变更须先独立 Contract / integration review。
 
 ## 1. 目标
 
@@ -788,7 +790,7 @@ C5 Control Approval envelope
 C6 schema target version
 ~~~
 
-截至 v0.4.5，C1/C2 已存在；C5 Runtime control/approval 已存在但不包含 Goal bridge。C3 readiness 与 C4 Goal Approval 尚待独立 Contract PR，不能视为已经冻结。C6 仅记录当前 Server v12 / Worker v6，不预占下一版本。这里 C1～C6 是共享契约编号，与客户端 C1～C5 里程碑不是同一组编号。
+截至 v0.4.5，C1/C2 已存在；C5 Runtime control/approval 已存在但不包含 Goal bridge。C3 readiness 与 C4 Goal Approval 尚待独立 Contract PR，不能视为已经冻结。C6 仅记录当前 main Server v14 / Worker v6，不预占下一版本。这里 C1～C6 是共享契约编号，与客户端 C1～C5 里程碑不是同一组编号。
 
 ## 8.1 Contract Change PR
 
