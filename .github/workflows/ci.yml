@@ -17,6 +17,16 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 jobs:
+  control-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - run: make ci-control-review
   goal-governance:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -615,7 +625,7 @@ jobs:
 
   package:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [goal-governance, goal-execution, scheduler-readiness, prepared-workspace-cache, verify-macos, verify, task-flow, retry-flow, manual-retry-negative, artifact-flow, workspace-flow, prepared-workspace-contract, prepared-workspace-recovery, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, agent-control-fencing, agent-control-negative, agent-control-dispatch, agent-control-approval, agent-control-resume, control-client-check, control-client-e2e, control-mobile-check, container-image]
+    needs: [control-review, goal-governance, goal-execution, scheduler-readiness, prepared-workspace-cache, verify-macos, verify, task-flow, retry-flow, manual-retry-negative, artifact-flow, workspace-flow, prepared-workspace-contract, prepared-workspace-recovery, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, agent-control-fencing, agent-control-negative, agent-control-dispatch, agent-control-approval, agent-control-resume, control-client-check, control-client-e2e, control-mobile-check, container-image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:

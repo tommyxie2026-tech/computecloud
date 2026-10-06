@@ -104,3 +104,7 @@ ci-goal-governance:
 	$(GO) test -race ./internal/server ./internal/store ./internal/governance -run 'TestGoal' -count=1
 ci-replan-approval-negative:
 	$(GO) test -race ./internal/goal -count=1
+
+.PHONY: ci-control-review
+ci-control-review:
+	$(GO) test -race ./internal/server -run 'TestArtifactReview' -count=1
