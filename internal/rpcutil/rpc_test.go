@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -91,6 +92,39 @@ func TestTLSAndTokenAuthentication(t *testing.T) {
 			}
 		})
 	}
+	t.Run("connector-inner-auth", func(t *testing.T) {
+		var calls atomic.Int32
+		connector := ConnectorFunc(func(ctx context.Context, address string) (net.Conn, error) {
+			calls.Add(1)
+			var d net.Dialer
+			return d.DialContext(ctx, "tcp", address)
+		})
+		for _, tc := range []struct {
+			token, ca string
+			want      codes.Code
+		}{{token, cert, codes.OK}, {"wrong-token", cert, codes.Unauthenticated}, {token, "", codes.Unavailable}} {
+			conn, e := DialWithConnector(listener.Addr().String(), tc.token, config.TLS{CAFile: tc.ca}, connector)
+			if e != nil {
+				t.Fatal(e)
+			}
+			_, e = hp.NewHealthClient(conn).Check(ctx, &hp.HealthCheckRequest{})
+			conn.Close()
+			if status.Code(e) != tc.want {
+				t.Fatalf("connector auth=%v want=%v", e, tc.want)
+			}
+		}
+		if calls.Load() < 3 {
+			t.Fatal("connector was not used")
+		}
+		if conn, e := DialWithConnector(listener.Addr().String(), token, config.TLS{InsecureLoopback: true}, connector); e == nil {
+			conn.Close()
+			t.Fatal("plaintext alternate path accepted")
+		}
+		if conn, e := DialWithConnector(listener.Addr().String(), token, config.TLS{}, nil); e == nil {
+			conn.Close()
+			t.Fatal("nil connector accepted")
+		}
+	})
 	for _, address := range []string{"0.0.0.0:7443", "10.1.1.1:7443", "localhost:7443"} {
 		if _, e := ServerTLS(address, config.TLS{InsecureLoopback: true}); e == nil {
 			t.Fatalf("plaintext accepted: %s", address)
@@ -99,5 +133,37 @@ func TestTLSAndTokenAuthentication(t *testing.T) {
 			conn.Close()
 			t.Fatalf("plaintext dial accepted: %s", address)
 		}
+	}
+}
+
+func TestConnectorCancellation(t *testing.T) {
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	connector := ConnectorFunc(func(ctx context.Context, _ string) (net.Conn, error) {
+		close(started)
+		<-ctx.Done()
+		close(finished)
+		return nil, ctx.Err()
+	})
+	conn, err := DialWithConnector("127.0.0.1:7443", "token", config.TLS{}, connector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err = hp.NewHealthClient(conn).Check(ctx, &hp.HealthCheckRequest{})
+	if status.Code(err) != codes.DeadlineExceeded {
+		t.Fatalf("cancellation=%v", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("connector not started")
+	}
+	conn.Close()
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("connector context leaked")
 	}
 }
