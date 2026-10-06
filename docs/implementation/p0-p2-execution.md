@@ -8,11 +8,11 @@ real-environment acceptance. A role assignment is not proof of delivery.
 
 | Order | Scope | Status / acceptance |
 | --- | --- | --- |
-| P0 | Retry storage gate, deterministic process-stop fixture, schema documentation | Implemented in PR #92; local vet/unit/race/smoke/task/retry/artifact/capacity PASS; remote full matrix pending |
-| P1-A | Workspace cache, bounded GC, warm materialization, metrics and benchmark | Pending; retain immutable templates and isolated Attempt ownership |
-| P1-B | Readiness advertisement, stale/unknown handling and explainability | Pending; existing capability/security filters and scheduling order stay authoritative |
+| P0 | Retry storage gate, deterministic process-stop fixture, schema documentation | Merged PR #92 (`ca14b1a`); full remote matrix and main CI 37435035493 PASS |
+| P1-A | Workspace cache, bounded GC, warm materialization, metrics and benchmark | Merged PR #93 (`2f9d9d5`); full remote matrix 37434895415 PASS; local P50 ratio target remains unmet; production performance acceptance pending |
+| P1-B | Readiness advertisement, stale/unknown handling and explainability | PR #94: observation-only readiness, TTL/unknown handling and explanations; fast remote CI PASS; full matrix pending |
 | P1-C | Production Baseline | External prerequisites requested: two independent Linux Workers, fixed real Runtime/MCP versions and account budgets, 24h+ window; #1/#9 remain open |
-| P1-D | Goal compatibility, persistence, execution/evaluation integration, RPG-4 and Control bridge | Pending; contract → migration → implementation → end-to-end recovery/negative gates; no RPG-5 |
+| P1-D | Goal compatibility, persistence, execution/evaluation integration, RPG-4 and Control bridge | Synthetic compatibility, atomic reservations and artifact evaluation implemented on this branch; governance/Control bridge/atomic re-plan publication still pending; no RPG-5 |
 | P2-A | Experimental relay | Pending; RLY-1 through RLY-5 in dependency order, direct default, real NAT/fault evidence required |
 | P2-B | Control review UX and Mobile follow-ups | Pending; pairing/push/signing require separate capability and deployment evidence |
 
@@ -20,7 +20,7 @@ real-environment acceptance. A role assignment is not proof of delivery.
 
 - v0.4.5: Server schema v12 / Worker v6 (historical evidence remains unchanged).
 - v0.4.6 tag: Server schema v13 / Worker v6; Control write lease migration.
-- Current main: Server schema v14 / Worker v6; tracing compatibility migration.
+- Current main before Goal merge: Server schema v14 / Worker v6; this Goal branch adds Server v15.
 - Never downgrade `PRAGMA user_version`. Drain execution and back up complete data
   directories before upgrade. Restore compatible pre-upgrade backups for rollback.
 - Latest main run 36688523493 failed retry-flow (expected 13, actual 14) and the

@@ -94,3 +94,7 @@ ci-scheduler-explainability:
 .PHONY: ci-scheduler-readiness-flow
 ci-scheduler-readiness-flow: build
 	python3 scripts/ci_task_flow.py --binary bin/computecloud --workspace-benchmark --readiness-check --output dist/scheduler-readiness-flow/report.json
+
+.PHONY: ci-goal-execution
+ci-goal-execution:
+	$(GO) test -race ./internal/server ./internal/store ./internal/goal -run 'TestGoal|TestStageAndGeneration|TestStaleQueued|TestManualRetry|TestLongRunning' -count=1

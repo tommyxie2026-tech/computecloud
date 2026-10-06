@@ -18,7 +18,7 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - 下一步 Relay：**RLY-1 Transport seam**；RLY-2～RLY-5 按独立 contract、security-negative、fallback、restart-recovery Gate 逐步实施
 - Goal-oriented Computing：计算模型与 Re-plan Guard RPG-1～RPG-3 持久化原语已实现；Goal/Plan/Graph/Evaluator 与实际执行路径的集成尚未完成
 - RPG：固定只做 RPG-1～RPG-4，RPG-4 完成后正式关闭，不继续 RPG-5
-- 当前 main Server schema：**v14**（v0.4.6 tag 为 v13）；Worker schema：**v6**
+- 当前分支 Server schema：**v15**（Goal 兼容执行迁移；合入前 main 为 v14）（v0.4.6 tag 为 v13）；Worker schema：**v6**
 - 下一轮任务与缺口：[v0.4.5 后续发布计划](docs/implementation/v0.4.5-follow-up-release-plan.md)；Relay RLY-1 及 Goal/生产验收仍按路线图独立推进；PWA、Goal 闭环与生产基线不能由本版发布状态推定完成
 - 发布状态以 [GitHub Actions](https://github.com/tommyxie2026-tech/computecloud/actions) 与 [GitHub Releases](https://github.com/tommyxie2026-tech/computecloud/releases) 为准；代码实现完成不等于已发布
 

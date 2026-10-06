@@ -470,6 +470,9 @@ func (s *Server) tick(ctx context.Context) error {
 	}
 	s.mu.Unlock()
 	sort.Slice(peers, func(i, j int) bool { return peers[i].hello.WorkerId < peers[j].hello.WorkerId })
+	if err := s.reconcileGoalBindings(ctx); err != nil {
+		return err
+	}
 	return s.scheduleQueued(ctx, peers)
 }
 func fits(p *session, t *pb.Task) bool {
@@ -601,10 +604,28 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		if e = q.QueryRowContext(ctx, "SELECT current_generation FROM tasks WHERE id=?", id).Scan(&currentGeneration); e != nil {
 			return e
 		}
+		if j != nil {
+			if _, e = ensureGoalBinding(ctx, q, j); e != nil {
+				return e
+			}
+		}
+		if j != nil {
+			var allowed int
+			if e = q.QueryRowContext(ctx, `SELECT count(*) FROM goals g JOIN goal_job_bindings b ON b.goal_id=g.id WHERE b.job_id=? AND b.plan_revision=g.active_plan_revision AND b.graph_generation=g.active_graph_generation AND g.state IN ('RUNNING','GRAPH_READY','REPLANNING') AND g.consumed_attempts<g.max_total_attempts AND (g.deadline=0 OR g.deadline>?) AND g.created+g.max_wall_time_ms>?`, j.ID, now, now).Scan(&allowed); e != nil {
+				return e
+			}
+			if allowed != 1 {
+				_, e = q.ExecContext(ctx, "UPDATE tasks SET blocker='GOAL_EXECUTION_FENCED' WHERE id=?", id)
+				return e
+			}
+		}
 		nextGeneration := currentGeneration + 1
 		a := &pb.Assignment{TaskId: id, AttemptId: store.ID(), Generation: nextGeneration, LeaseToken: store.ID() + store.ID(), LeaseTtlMs: int64(s.cfg.LeaseSeconds) * 1000, DeadlineMs: deadline, Spec: t.Spec, Job: jc}
 		now = store.Now()
 		if _, e = q.ExecContext(ctx, "INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until,last_renewed) VALUES(?,?,?,?,?,?,?,?)", a.AttemptId, id, chosen.hello.WorkerId, chosen.hello.Epoch, nextGeneration, a.LeaseToken, now+a.LeaseTtlMs, now); e != nil {
+			return e
+		}
+		if e = reserveGoalAttempt(ctx, q, j, a); e != nil {
 			return e
 		}
 		if e = s.bindGateway(ctx, q, a, j); e != nil {
