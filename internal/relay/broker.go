@@ -280,15 +280,8 @@ func Connect(ctx context.Context, address, token string, config *tls.Config) (ne
 		deadline = when
 	}
 	conn.SetDeadline(deadline)
-	stopped := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			conn.Close()
-		case <-stopped:
-		}
-	}()
-	defer close(stopped)
+	stopCancel := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stopCancel()
 	raw, _ := json.Marshal(map[string]string{"ticket": token})
 	if _, err = conn.Write(append(raw, '\n')); err != nil {
 		return nil, err
@@ -302,6 +295,9 @@ func Connect(ctx context.Context, address, token string, config *tls.Config) (ne
 	}
 	if err = ctx.Err(); err != nil {
 		return nil, err
+	}
+	if !stopCancel() {
+		return nil, ctx.Err()
 	}
 	conn.SetDeadline(time.Time{})
 	ok = true
