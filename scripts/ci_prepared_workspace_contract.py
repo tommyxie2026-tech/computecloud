@@ -65,7 +65,7 @@ def main():
     ]:
         if symbol not in prepared:
             violations.append("prepared workspace contract missing: " + symbol)
-    if "NewLocalPreparedProvider" not in worker or "MaterializeAttempt" not in worker:
+    if "NewLocalPreparedProvider" not in worker or "PrepareAttempt" not in worker:
         violations.append("Worker does not use Prepared Workspace provider")
     if "workspace.Prepare(ctx, root, a.AttemptId" in worker:
         violations.append("Worker still cold-clones directly into Attempt Workspace")

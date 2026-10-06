@@ -74,3 +74,13 @@ release-package:
 	GO=$(GO) scripts/package-release.sh $(VERSION) dist/release
 generate:
 	protoc -I . --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative api/agent/v1/runtime.proto
+
+.PHONY: ci-prepared-workspace-cache ci-prepared-workspace-benchmark
+ci-prepared-workspace-cache:
+	python3 scripts/ci_workspace_cache.py --output dist/prepared-workspace-cache/report.json
+ci-prepared-workspace-benchmark:
+	python3 scripts/ci_workspace_cache.py --benchmark --output dist/prepared-workspace-benchmark/report.json
+
+.PHONY: ci-workspace-job-benchmark
+ci-workspace-job-benchmark: build
+	python3 scripts/ci_task_flow.py --binary bin/computecloud --workspace-benchmark --output dist/workspace-job-benchmark/report.json
