@@ -71,6 +71,9 @@ func (s *Server) ExtendJobDeadline(ctx context.Context, id string, in ExtendDead
 		if _, err = q.ExecContext(ctx, "UPDATE tasks SET deadline=? WHERE job_id=? AND state NOT IN ('SUCCEEDED','FAILED','CANCELED') AND deadline<?", in.NewDeadlineMS, id, in.NewDeadlineMS); err != nil {
 			return err
 		}
+		if _, err = q.ExecContext(ctx, `UPDATE goals SET deadline=?,max_wall_time_ms=?-created,updated=?,version=version+1 WHERE id=(SELECT goal_id FROM goal_job_bindings WHERE job_id=?) AND state NOT IN ('SUCCEEDED','FAILED','CANCELED')`, in.NewDeadlineMS, in.NewDeadlineMS, now, id); err != nil {
+			return err
+		}
 		return appendJobEvent(ctx, q, id, "job.deadline_extended", map[string]any{
 			"from_deadline_ms": j.Deadline,
 			"to_deadline_ms":   in.NewDeadlineMS,

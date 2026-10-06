@@ -1,6 +1,6 @@
 # Goal execution and governance contract (GI-01)
 
-Status: proposed, 2026-10-06. Builds on ADR-017/018; Agent Job Executor scope.
+Status: stages 1–3 implemented on the Goal integration branch, 2026-10-06. Builds on ADR-017/018; Agent Job Executor scope.
 
 ## Compatibility and compilation
 
@@ -56,3 +56,22 @@ RPG CLOSED requires GI-01–04 plus governance/negative/recovery end-to-end gate
 
 Each stage has its own evidence. Incomplete stages leave RPG/Goal integration
 PARTIAL and do not enable automatic autonomy.
+
+## Stage 1–3 validation and limits
+
+Server schema v15 adds immutable Plan/evaluation records, Job bindings and unique
+Attempt reservations. Old Jobs are adopted in bounded batches without execution;
+the authorized Job Goal projection also adopts on demand. Single and existing
+map/reduce controller graphs execute through the same scheduler and release gates.
+Explicit bounded manual retry reopens the same Plan without resetting counters;
+explicit authorized deadline extension updates the synthetic Goal deadline.
+Evaluations are keyed by terminal Job version so a legitimate manual retry can
+produce a new result without overwriting the earlier verdict.
+
+`make ci-goal-execution` covers real fixture Worker single/map-reduce completion,
+idempotent submission/evaluation, transaction rollback, adoption across restart,
+stale graph fences, missing artifact proof, manual retry and deadline regression.
+The complete server/store/goal test suites pass locally. This is fixture evidence,
+not real Runtime/MCP or production acceptance. Runtime token/cost governance,
+human Goal approval and atomic external re-plan publication remain unimplemented;
+`automatic_replan_enabled` remains false and RPG integration remains PARTIAL.

@@ -14,6 +14,8 @@ func TestStageAndGenerationFencing(t *testing.T) {
 	defer s.Close()
 
 	spec := (&jobHarness{commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}).spec("single")
+	spec.Limits.MaxAttemptsPerTask = 2
+	spec.Execution.ReplaySafe = true
 	j, e := s.SubmitJob(uc, "generation-fencing", job.JSON(spec))
 	if e != nil {
 		t.Fatal(e)
@@ -127,6 +129,8 @@ func TestSecondActiveAttemptRejectedBySchema(t *testing.T) {
 	s, uc, _, peer := offlineJobServer(t)
 	defer s.Close()
 	spec := (&jobHarness{commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}).spec("single")
+	spec.Limits.MaxAttemptsPerTask = 2
+	spec.Execution.ReplaySafe = true
 	j, e := s.SubmitJob(uc, "active-attempt-unique", job.JSON(spec))
 	if e != nil {
 		t.Fatal(e)
@@ -148,12 +152,13 @@ func TestSecondActiveAttemptRejectedBySchema(t *testing.T) {
 	}
 }
 
-
 func TestStaleQueuedStartCommandIsFenced(t *testing.T) {
 	s, uc, _, peer := offlineJobServer(t)
 	defer s.Close()
 
 	spec := (&jobHarness{commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}).spec("single")
+	spec.Limits.MaxAttemptsPerTask = 2
+	spec.Execution.ReplaySafe = true
 	j, e := s.SubmitJob(uc, "command-fencing", job.JSON(spec))
 	if e != nil {
 		t.Fatal(e)

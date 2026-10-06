@@ -78,14 +78,14 @@ func (s *Server) ManualRetry(ctx context.Context, jobID string, in ManualRetryRe
 				return err
 			}
 			receipt = ManualRetryReceipt{
-				OperationID: in.OperationID,
-				JobID: jobID,
-				TaskID: in.TaskID,
-				AttemptID: in.ExpectedAttemptID,
-				Generation: in.ExpectedGeneration,
+				OperationID:    in.OperationID,
+				JobID:          jobID,
+				TaskID:         in.TaskID,
+				AttemptID:      in.ExpectedAttemptID,
+				Generation:     in.ExpectedGeneration,
 				NextGeneration: in.ExpectedGeneration + 1,
-				State: "ACCEPTED",
-				Existing: true,
+				State:          "ACCEPTED",
+				Existing:       true,
 			}
 			return nil
 		}
@@ -197,14 +197,19 @@ func (s *Server) ManualRetry(ctx context.Context, jobID string, in ManualRetryRe
 			return status.Error(codes.Aborted, "RESOURCE_VERSION_CONFLICT")
 		}
 
+		// Explicit bounded manual retry reopens execution of the same frozen plan.
+		// It does not reset Goal counters or create a Re-plan revision.
+		if _, err = q.ExecContext(ctx, `UPDATE goals SET state='RUNNING',version=version+1,updated=? WHERE id=(SELECT goal_id FROM goal_job_bindings WHERE job_id=?) AND state='FAILED'`, store.Now(), jobID); err != nil {
+			return err
+		}
 		if err = appendEvent(ctx, q, &pb.Event{
-			TaskId: in.TaskID,
-			AttemptId: attemptID,
+			TaskId:     in.TaskID,
+			AttemptId:  attemptID,
 			Generation: generation,
-			Type: "task.manual_retry_requested",
+			Type:       "task.manual_retry_requested",
 			PayloadJson: job.JSON(map[string]any{
-				"operation_id": in.OperationID,
-				"error_code": errorCode,
+				"operation_id":    in.OperationID,
+				"error_code":      errorCode,
 				"next_generation": generation + 1,
 			}),
 		}, nil); err != nil {
@@ -212,13 +217,13 @@ func (s *Server) ManualRetry(ctx context.Context, jobID string, in ManualRetryRe
 		}
 
 		receipt = ManualRetryReceipt{
-			OperationID: in.OperationID,
-			JobID: jobID,
-			TaskID: in.TaskID,
-			AttemptID: attemptID,
-			Generation: generation,
+			OperationID:    in.OperationID,
+			JobID:          jobID,
+			TaskID:         in.TaskID,
+			AttemptID:      attemptID,
+			Generation:     generation,
 			NextGeneration: generation + 1,
-			State: "ACCEPTED",
+			State:          "ACCEPTED",
 		}
 		return appendJobEvent(ctx, q, jobID, "job.task_manual_retry_requested", receipt, opKey, digest)
 	})

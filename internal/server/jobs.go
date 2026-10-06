@@ -54,7 +54,7 @@ func readJob(ctx context.Context, q store.Query, id string) (*Job, error) {
 		return nil, e
 	}
 	j.result = result
-	j.Links = map[string]string{"self": "/v1/jobs/" + id, "events": "/v1/jobs/" + id + "/events", "result": "/v1/jobs/" + id + "/result", "deadline": "/v1/jobs/" + id + "/deadline", "trace": "/v1/jobs/" + id + "/trace"}
+	j.Links = map[string]string{"self": "/v1/jobs/" + id, "events": "/v1/jobs/" + id + "/events", "result": "/v1/jobs/" + id + "/result", "deadline": "/v1/jobs/" + id + "/deadline", "trace": "/v1/jobs/" + id + "/trace", "goal": "/v1/jobs/" + id + "/goal"}
 	return j, nil
 }
 func insertStage(ctx context.Context, q store.Query, jobID, kind string, ordinal int, state string) (string, error) {
@@ -129,6 +129,11 @@ func jobState(ctx context.Context, q store.Query, j *Job, next, reason, code str
 	j.StopReason = reason
 	j.ErrorCode = code
 	j.Version++
+	if terminal(next) {
+		if e := evaluateBoundJob(ctx, q, j); e != nil {
+			return e
+		}
+	}
 	return appendJobEvent(ctx, q, j.ID, "job.state_changed", map[string]string{"from": old, "to": next, "reason": reason, "code": code}, "", "")
 }
 func (s *Server) jobAuthorized(ctx context.Context, id, scope string) (*Job, error) {
@@ -260,6 +265,13 @@ func (s *Server) SubmitJob(ctx context.Context, key string, b []byte) (*Job, err
 			}
 		}
 		if e != nil {
+			return e
+		}
+		createdJob, e := readJob(ctx, q, id)
+		if e != nil {
+			return e
+		}
+		if _, e = ensureGoalBinding(ctx, q, createdJob); e != nil {
 			return e
 		}
 		return appendJobEvent(ctx, q, id, "job.created", map[string]any{"mode": spec.Mode}, "", "")
