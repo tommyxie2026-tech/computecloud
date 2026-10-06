@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestCacheConcurrentMaterializationAndGC(t *testing.T) {
@@ -107,6 +109,45 @@ func TestCacheCancellationAndSymlinkRoot(t *testing.T) {
 	other, _ := NewLocalPreparedProvider(link)
 	if _, err = other.cacheLock(context.Background()); err == nil {
 		t.Fatal("symlink cache root accepted")
+	}
+}
+
+func TestCacheHitSharesValidationLockButBlocksGC(t *testing.T) {
+	repo, commit := preparedTestRepo(t)
+	root := filepath.Join(t.TempDir(), "cache")
+	attempts := filepath.Join(t.TempDir(), "attempts")
+	p, _ := NewLocalPreparedProvider(root)
+	tmpl := testTemplate(commit)
+	if _, _, err := p.PrepareAttempt(context.Background(), tmpl, repo, attempts, "initial"); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := p.cacheLockMode(context.Background(), unix.LOCK_SH)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	finished := make(chan error, 1)
+	go func() {
+		_, m, e := p.PrepareAttempt(ctx, tmpl, repo, attempts, "concurrent")
+		if e == nil && !m.CacheHit {
+			e = errors.New("expected cache hit")
+		}
+		finished <- e
+	}()
+	select {
+	case err := <-finished:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("cache hit waited on another shared validation lock")
+	}
+	gcCtx, gcCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer gcCancel()
+	if _, err := p.CollectCache(gcCtx, CachePolicy{time.Hour, 1, 1}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("GC entered while shared materialization lock held: %v", err)
 	}
 }
 

@@ -6,10 +6,13 @@ Owner: workspace / worker integration. No public Job or protobuf change, no migr
 ## API and ownership
 
 LocalPreparedProvider keeps its existing PreparedProvider interface. A new
-PrepareAttempt operation groups lookup, immutable template validation and
-materialization under one root-scoped filesystem lock. All mutations, inspection,
-and GC use that lock, including independent provider instances. Cancellation while
-waiting for a lock does not acquire or mutate the cache.
+PrepareAttempt groups lookup, immutable template validation and materialization
+under a root-scoped filesystem lock shared by independent provider instances.
+Existing template hits without warm slots hold a shared lock through validation,
+copy and access-record update; misses, warm-slot transfers, template mutations and
+GC use an exclusive lock. On lock-mode transition the template is looked up again.
+Each access update uses a unique temporary file and atomic rename. Cancellation
+while waiting for a lock does not acquire or mutate the cache.
 
 Writable Attempt files are independent copies or filesystem copy-on-write clones;
 hard links are forbidden. Copy-on-write failure falls back to copying. Template
@@ -38,7 +41,9 @@ Errors are surfaced; failure to meet the byte budget is observable.
 Worker emits workspace.prepared with template fingerprint, cache hit,
 prepare/materialize durations and materialization strategy (no local paths).
 A benchmark reports cold/warm P50/P95, sample count, OS/arch, fixture size and cache
-hit ratio; worker-level measurements remain distinct from ten end-to-end Job tests.
+hit ratio, plus ten simultaneous cache-hit Attempts with independent providers and
+their P50/P95/wall time. Worker-level measurements remain distinct from ten
+end-to-end Job tests.
 Performance ratios are reported, not represented as certified production SLOs.
 
 CI covers concurrent independent providers and GC, restart tombstones, corruption,
@@ -56,5 +61,6 @@ Readiness advertisement remains a separate slice.
   materialization; its cost must be included in end-to-end Job measurements.
 - GC deletes at most 16 template groups per pass and runs every 30 seconds.
 
-The cache lock serializes cache I/O on one Worker. This first implementation
-prioritizes GC correctness; parallel cache sharding needs separate evidence.
+Misses, warm-slot consumption and GC remain serialized on one Worker. Ordinary
+immutable-template hits can run concurrently; parallel cache sharding or bypassing
+digest validation still needs separate evidence.

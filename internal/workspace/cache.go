@@ -16,6 +16,10 @@ import (
 
 // cacheLock coordinates providers and GC without creating another execution ledger.
 func (p *LocalPreparedProvider) cacheLock(ctx context.Context) (func(), error) {
+	return p.cacheLockMode(ctx, unix.LOCK_EX)
+}
+
+func (p *LocalPreparedProvider) cacheLockMode(ctx context.Context, mode int) (func(), error) {
 	if err := os.MkdirAll(p.root, 0700); err != nil {
 		return nil, err
 	}
@@ -36,7 +40,7 @@ func (p *LocalPreparedProvider) cacheLock(ctx context.Context) (func(), error) {
 			f.Close()
 			return nil, err
 		}
-		err = unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB)
+		err = unix.Flock(fd, mode|unix.LOCK_NB)
 		if err == nil {
 			return func() { _ = unix.Flock(fd, unix.LOCK_UN); _ = f.Close() }, nil
 		}
@@ -64,6 +68,44 @@ type PrepareMetrics struct {
 func (p *LocalPreparedProvider) PrepareAttempt(ctx context.Context, tmpl WorkspaceTemplate, source, root, attempt string) (string, PrepareMetrics, error) {
 	started := time.Now()
 	m := PrepareMetrics{TemplateFingerprint: tmpl.Fingerprint(), Strategy: "copy-on-write-or-copy"}
+	// Existing templates without warm slots only need read access to immutable
+	// content. Hold a shared lock through digest validation and materialization
+	// so GC cannot delete the source, while independent Attempts may proceed.
+	unlock, err := p.cacheLockMode(ctx, unix.LOCK_SH)
+	if err != nil {
+		return "", m, err
+	}
+	path, err := p.templatePath(tmpl.Fingerprint())
+	if err != nil {
+		unlock()
+		return "", m, err
+	}
+	_, err = os.Lstat(path)
+	hit := err == nil
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		unlock()
+		return "", m, err
+	}
+	if hit {
+		warmRoot := filepath.Join(p.root, ".warm-"+tmpl.Fingerprint())
+		if _, warmErr := os.Lstat(warmRoot); warmErr == nil {
+			// Warm slot transfer mutates the pool and requires the exclusive lock.
+			unlock()
+			return p.prepareAttemptExclusive(ctx, tmpl, source, root, attempt, started, m)
+		} else if !errors.Is(warmErr, os.ErrNotExist) {
+			unlock()
+			return "", m, warmErr
+		}
+	} else {
+		unlock()
+		return p.prepareAttemptExclusive(ctx, tmpl, source, root, attempt, started, m)
+	}
+	target, metrics, err := p.prepareAttemptLocked(ctx, tmpl, source, root, attempt, started, m, hit)
+	unlock()
+	return target, metrics, err
+}
+
+func (p *LocalPreparedProvider) prepareAttemptExclusive(ctx context.Context, tmpl WorkspaceTemplate, source, root, attempt string, started time.Time, m PrepareMetrics) (string, PrepareMetrics, error) {
 	unlock, err := p.cacheLock(ctx)
 	if err != nil {
 		return "", m, err
@@ -74,7 +116,13 @@ func (p *LocalPreparedProvider) PrepareAttempt(ctx context.Context, tmpl Workspa
 		return "", m, err
 	}
 	_, err = os.Lstat(path)
-	hit := err == nil
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", m, err
+	}
+	return p.prepareAttemptLocked(ctx, tmpl, source, root, attempt, started, m, err == nil)
+}
+
+func (p *LocalPreparedProvider) prepareAttemptLocked(ctx context.Context, tmpl WorkspaceTemplate, source, root, attempt string, started time.Time, m PrepareMetrics, hit bool) (string, PrepareMetrics, error) {
 	ref, err := p.prepareTemplate(ctx, tmpl, source)
 	if err != nil {
 		return "", m, err
@@ -112,8 +160,17 @@ func (p *LocalPreparedProvider) touchTemplate(fingerprint string) error {
 	}
 	body, _ := json.Marshal(cacheAccess{LastUsed: time.Now().UnixMilli()})
 	// Access metadata lives outside the immutable template tree.
-	tmp := filepath.Join(p.root, ".access-"+fingerprint+".tmp")
-	if err = os.WriteFile(tmp, body, 0600); err != nil {
+	f, err := os.CreateTemp(p.root, ".access-"+fingerprint+"-")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if _, err = f.Write(body); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err = f.Close(); err != nil {
 		return err
 	}
 	return os.Rename(tmp, filepath.Join(p.root, ".access-"+fingerprint))

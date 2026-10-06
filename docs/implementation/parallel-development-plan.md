@@ -6,9 +6,9 @@
 - 日期：2026-09-29
 - 适用周期：未来 4–6 周
 - 当前稳定发布基线：v0.4.6 Post-0.4.5 Stabilization
-- 当前 main 功能基线：v0.4.x Runtime / Tool / Environment Ecosystem
-- 当前产品主线：Prepared Workspace / Workspace Template
-- 并行旁路：RPG-4 FINAL / Goal Governance 收尾、Agent Control Approval
+- 当前 main 功能基线：v0.4.x Runtime / Tool / Environment、Prepared Workspace、synthetic Goal、实验性 Relay（Server v16 / Worker v6）
+- 当前产品主线：Prepared Workspace 性能与生产验收；随后完成 Goal 安全闭环
+- 并行旁路：RPG-4 PARTIAL / Goal Governance 原子发布、Relay/Mobile 后续 Gate
 - 原则：**并行开发不等于架构拆服务；继续保持单 Go Server + SQLite，优先通过 package / contract / CI Gate 隔离并行工作。**
 
 ## 0. 当前认领状态
@@ -18,15 +18,15 @@ WS-A Prepared Workspace Core
 Owner: core implementation complete; follow-up ownership remains WS-A
 Status: DONE for v0.4.5 core scope; prepared-workspace-contract/recovery release CI PASS
 
-WS-B: PARTIAL — template reuse foundation exists; cache/warm/GC/benchmark pending
-WS-C: TODO — readiness contract/observer/explain/scoring pending
-WS-D: TODO — Goal governance pending; RPG primitives are not an execution loop
-WS-E: PARTIAL — Runtime Approval/ACK merged; Goal bridge blocked on WS-D
+WS-B: PARTIAL — cache/warm/GC/benchmark merged; representative performance and independent-host acceptance pending
+WS-C: PARTIAL — readiness contract/observer/explain merged; scheduling scoring intentionally disabled
+WS-D: PARTIAL — synthetic Goal execution/evaluation and governance merged; atomic Guard → Plan/Job publication, one-use approval consumption and enforceable Runtime caps pending
+WS-E: PARTIAL — Runtime Approval/ACK and Goal Control decision/audit bridge merged; Mobile pairing/push pending
 ~~~
 
 认领者必须先检查 main 最近提交，避免依据静态文档重复实现。
 
-本轮核对基线为发布提交 `607d1d4`；当前 main Server v14 / Worker v6。后续完整任务与责任角色见[v0.4.5 实施台账](v0.4.5-roadmap-reconciliation.md)。角色分配不等于开发者已认领。Goal G0～G4 集成和客户端 C1 是原路线中缺少落地任务的切片，不隐式扩大 WS-D / WS-E 的代码 ownership；涉及公共 API / Store / Server 的变更须先独立 Contract / integration review。
+本轮核对基线为 main `e2e16f1`；Server v16 / Worker v6（稳定 v0.4.6 tag 为 Server v13 / Worker v6）。后续完整任务与责任角色见[P0–P2 实施台账](p0-p2-execution.md)。角色分配不等于开发者已认领；以下历史任务拆分保留作设计背景，验收状态以本页顶部和实施台账为准。涉及公共 API / Store / Server 的变更须先独立 Contract / integration review。
 
 ## 1. 目标
 
@@ -791,7 +791,7 @@ C5 Control Approval envelope
 C6 schema target version
 ~~~
 
-截至 v0.4.5，C1/C2 已存在；C5 Runtime control/approval 已存在但不包含 Goal bridge。C3 readiness 与 C4 Goal Approval 尚待独立 Contract PR，不能视为已经冻结。C6 仅记录当前 main Server v14 / Worker v6，不预占下一版本。这里 C1～C6 是共享契约编号，与客户端 C1～C5 里程碑不是同一组编号。
+截至当前 main，C1/C2、C3 readiness 观测、C4 Goal 决策审计桥接和 C5 Runtime control/approval 已合入；C3 readiness scoring 与 C4 自动 Re-plan 发布仍未开放。C6 记录当前 main Server v16 / Worker v6，不预占下一版本。这里 C1～C6 是共享契约编号，与客户端 C1～C5 里程碑不是同一组编号。
 
 ## 8.1 Contract Change PR
 
