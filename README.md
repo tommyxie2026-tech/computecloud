@@ -10,16 +10,16 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 
 - 稳定发布基线：**[v0.4.6 Post-0.4.5 Stabilization](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.6)**
 - v0.4.6 已通过完整 CI、package、multi-arch container 与 release；发布范围和升级步骤见 [v0.4.6 部署指南](docs/deployment/production-v0.4.6.md)，验收证据见 [v0.4.6 发布记录](docs/implementation/v0.4.6-release-status.md)
-- main 功能基线：**v0.4.x Runtime / Tool / Environment Ecosystem**
+- main 功能基线：**v0.4.x Runtime / Tool / Environment + Prepared Workspace、synthetic Goal 与实验性 Relay**（尚未发布为新的稳定版本）
 - 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
-- 当前功能主线：**Prepared Workspace / Workspace Template**
-- Relay/P2P 当前进度：**设计已纳入 v0.4.x，代码实现尚未开始**；v0.4.x 只交付实验性 Transport foundation，`direct` 仍为默认路径
+- 当前功能主线：**Prepared Workspace 缓存性能与生产验收**；随后完成 Goal 安全闭环，Relay 与 Mobile 继续按独立 Gate 推进
+- Relay/P2P 当前进度：Transport seam、实验性 TLS Relay fixture、direct-first fallback 与 Worker 双 Job 恢复 Gate 已合入；`direct` 仍为默认路径，票据自动分发、显式配置接线、真实 NAT/长任务验收未完成
 - Relay 设计与实施计划：[ADR-021](docs/adr/0021-relay-assisted-p2p-transport.md) / [v0.4.x Relay 传输计划](docs/implementation/relay-p2p-transport-plan.md)
-- 下一步 Relay：**RLY-1 Transport seam**；RLY-2～RLY-5 按独立 contract、security-negative、fallback、restart-recovery Gate 逐步实施
-- Goal-oriented Computing：计算模型与 Re-plan Guard RPG-1～RPG-3 持久化原语已实现；Goal/Plan/Graph/Evaluator 与实际执行路径的集成尚未完成
-- RPG：固定只做 RPG-1～RPG-4，RPG-4 完成后正式关闭，不继续 RPG-5
+- 下一步 Relay：完成无人值守票据分发与 Worker/Server 显式 opt-in 接线，再做流量优先级、运维和真实网络验收
+- Goal-oriented Computing：Legacy Job 的 synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 证据评估和 Control 治理审计已接入执行路径；自动 Re-plan 仍关闭
+- RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费和可强制的 Runtime token/cost 上限未完成，RPG-4 仍为 PARTIAL；完成后关闭，不新增 RPG-5
 - 当前 main Server schema：**v16**（Goal 执行与治理迁移）（v0.4.6 tag 为 v13）；Worker schema：**v6**
-- 下一轮任务与缺口：[v0.4.5 后续发布计划](docs/implementation/v0.4.5-follow-up-release-plan.md)；Relay RLY-1 及 Goal/生产验收仍按路线图独立推进；PWA、Goal 闭环与生产基线不能由本版发布状态推定完成
+- 下一轮任务与缺口：[P0–P2 实施台账](docs/implementation/p0-p2-execution.md)；优先验证缓存目标与独立主机生产基线，再完成 Goal 安全闭环，最后推进 Relay/Mobile 未完成的交付 Gate
 - 发布状态以 [GitHub Actions](https://github.com/tommyxie2026-tech/computecloud/actions) 与 [GitHub Releases](https://github.com/tommyxie2026-tech/computecloud/releases) 为准；代码实现完成不等于已发布
 
 当前演进关系：
@@ -48,7 +48,7 @@ Goal -> Plan -> Execution Graph -> Scheduler -> Worker
 
 ### Re-plan Guard 当前进度
 
-以下 RPG-1～3 状态指 Guard 原语及其测试，不表示 Guard 已接入 Server 的 Attempt 创建与自动 Re-plan 执行闭环。
+以下 RPG-1～3 状态指 Guard 原语及其测试。Server 已对 synthetic Goal 的 Attempt 创建进行原子预算预留，但 Guard 尚未接入新 Plan/Job 发布闭环。
 
 ~~~text
 RPG-1  ✅ Bound
@@ -179,9 +179,9 @@ AND ProgressNotStalled
 
 因此 Re-plan 是 **bounded autonomy**，而不是无限自治。
 
-## 当前主线：Prepared Workspace
+## 当前主线：Prepared Workspace 验收
 
-下一功能主线是 **Prepared Workspace / Workspace Template**，目标是降低 Agent Job 在远程 Worker 上的重复准备成本，同时保持 Workspace 可恢复、可审计。
+Prepared Workspace / Workspace Template 与缓存、warm pool、有界 GC 和观测已合入 main。当前重点是用代表性工作负载复核准备时延、并发影响和独立主机上的完整 Job 效果，同时保持 Workspace 可恢复、可审计。现有单机 provider fixture 的缓存 P50 尚未达到原定 cold P50 的 40% 目标，不视为性能验收完成。
 
 主要方向：
 
@@ -199,7 +199,7 @@ startup latency
 
 它属于 Agent Job 执行性能与恢复能力，不发展成通用 IDE / Dev Environment 产品。
 
-RPG-4 会作为旁路收尾完成 Approval / Budget Governance，但不会改变上述主线优先级。
+Goal Governance 决策与审计已接入 Control；RPG-4 仍需原子发布和 Runtime 预算强制能力，不能由已有审批记录推定闭环完成。
 
 ## 构建与试跑
 
