@@ -112,3 +112,9 @@ ci-control-review:
 .PHONY: ci-transport-seam
 ci-transport-seam:
 	$(GO) test -race ./internal/rpcutil ./internal/server -run 'TestTLS|TestConnector|TestTransport|TestStageAndGeneration|TestStaleQueued' -count=1
+
+.PHONY: ci-relay-contract ci-relay-security-negative
+ci-relay-contract:
+	$(GO) test -race ./internal/relay -run 'TestRelayOpaque' -count=1
+ci-relay-security-negative:
+	$(GO) test -race ./internal/relay -run 'TestTicket|TestPair|TestRelayRejects' -count=1
