@@ -1,7 +1,7 @@
 # Relay-assisted P2P 传输实施计划
 
 - 对齐 ADR：[ADR-021：Server–Worker Relay-assisted P2P 传输](../adr/0021-relay-assisted-p2p-transport.md)
-- 状态：v0.4.x Planned；设计已冻结，运行时代码尚未交付
+- 状态：v0.4.x Experimental foundation；RLY-1 已实现于传输分支，RLY-2～5 仍待实现/验收
 - 产品边界：Agent-aware Distributed Job Execution Platform / Agent Job Executor
 
 ## 0. Version Placement
@@ -17,7 +17,7 @@ v0.4.x 的 Relay 仍是实验性、显式 opt-in 能力。没有真实双机/NAT
 ## 当前进度
 
 - RLY-0 设计、ADR-021、路线图归属：已完成并进入 `main`。
-- RLY-1 Transport seam：下一实现切片，尚未开始。
+- RLY-1 Transport seam：`DialWithConnector` 与 `ServeTunnel` 已实现于传输分支；直接路径保持原 gRPC dial 行为，替代路径强制内层 TLS。
 - RLY-2～RLY-5：待 RLY-1 后按独立 contract、security-negative、fallback、restart-recovery Gate 实施。
 - Schema：无 SQLite migration；Relay 不保存 Job/Task/Attempt，不成为第二事实源。
 
@@ -213,3 +213,15 @@ main CI 与手动 Gate 可定位
 部署和回退文档完成
 ~~~
 
+
+## RLY-1 validation boundary
+
+`Dial` keeps existing gRPC resolution, proxy, TLS and token behavior. Only explicit
+`DialWithConnector` replaces byte transport; certificate verification and bearer
+identity stay inside gRPC against the original Server authority. `ServeTunnel`
+reuses the existing listener/Server lifecycle but rejects plaintext configuration.
+TLS/token negative tests exercise both default and substituted byte paths.
+
+No Relay address/config mode is enabled by this seam. Pairing tickets, forwarding,
+fallback, quotas/backpressure and real NAT/fault/recovery acceptance remain RLY-2–5.
+The seam must not be presented as a working or production-certified Relay.

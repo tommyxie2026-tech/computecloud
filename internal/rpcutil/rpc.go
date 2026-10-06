@@ -151,6 +151,9 @@ func (c tokenCred) GetRequestMetadata(context.Context, ...string) (map[string]st
 }
 func (c tokenCred) RequireTransportSecurity() bool { return c.secure }
 func Dial(address, token string, t config.TLS) (*grpc.ClientConn, error) {
+	return dial(address, token, t)
+}
+func dial(address, token string, t config.TLS, extra ...grpc.DialOption) (*grpc.ClientConn, error) {
 	var transport credentials.TransportCredentials
 	if t.InsecureLoopback {
 		if !Loopback(address) {
@@ -172,5 +175,7 @@ func Dial(address, token string, t config.TLS) (*grpc.ClientConn, error) {
 		}
 		transport = credentials.NewTLS(tc)
 	}
-	return grpc.NewClient(address, grpc.WithTransportCredentials(transport), grpc.WithPerRPCCredentials(tokenCred{token: token, secure: !t.InsecureLoopback}), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(8<<20), grpc.MaxCallSendMsgSize(8<<20)))
+	options := []grpc.DialOption{grpc.WithTransportCredentials(transport), grpc.WithPerRPCCredentials(tokenCred{token: token, secure: !t.InsecureLoopback}), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(8<<20), grpc.MaxCallSendMsgSize(8<<20))}
+	options = append(options, extra...)
+	return grpc.NewClient(address, options...)
 }

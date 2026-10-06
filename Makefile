@@ -108,3 +108,7 @@ ci-replan-approval-negative:
 .PHONY: ci-control-review
 ci-control-review:
 	$(GO) test -race ./internal/server -run 'TestArtifactReview' -count=1
+
+.PHONY: ci-transport-seam
+ci-transport-seam:
+	$(GO) test -race ./internal/rpcutil ./internal/server -run 'TestTLS|TestConnector|TestTransport|TestStageAndGeneration|TestStaleQueued' -count=1

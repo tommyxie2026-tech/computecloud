@@ -87,6 +87,15 @@ func (s *Server) Close() error {
 	}
 	return s.db.Close()
 }
+
+// ServeTunnel consumes a byte-forwarding listener while preserving inner TLS
+// and all existing identity, connection replacement and execution fencing.
+func (s *Server) ServeTunnel(ctx context.Context, l net.Listener) error {
+	if s.cfg.TLS.InsecureLoopback {
+		return errors.New("alternate transport requires inner TLS")
+	}
+	return s.Serve(ctx, l)
+}
 func (s *Server) Serve(ctx context.Context, l net.Listener) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
