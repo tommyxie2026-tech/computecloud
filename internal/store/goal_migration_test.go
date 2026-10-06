@@ -13,7 +13,7 @@ func TestGoalV15MigrationRestartAndImmutableRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	// An empty v14 database is reconstructed by removing only this migration's tables.
-	if _, err = db.SQL.Exec(`DROP TABLE goal_attempt_reservations;DROP TABLE goal_evaluations;DROP TABLE goal_plans;DROP TABLE goal_job_bindings;PRAGMA user_version=14`); err != nil {
+	if _, err = db.SQL.Exec(`DROP TABLE goal_replan_permissions;DROP TABLE goal_governance_decisions;DROP TABLE goal_usage;DROP TABLE goal_budget_policy;DROP TABLE goal_attempt_reservations;DROP TABLE goal_evaluations;DROP TABLE goal_plans;DROP TABLE goal_job_bindings;PRAGMA user_version=14`); err != nil {
 		t.Fatal(err)
 	}
 	if err = db.Close(); err != nil {
@@ -24,7 +24,7 @@ func TestGoalV15MigrationRestartAndImmutableRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 15 {
+	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 16 {
 		t.Fatalf("version=%d %v", version, err)
 	}
 	for _, name := range []string{"goal_job_bindings", "goal_plans", "goal_attempt_reservations", "goal_evaluations"} {
