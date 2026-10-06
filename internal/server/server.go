@@ -13,6 +13,7 @@ import (
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/readiness"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"google.golang.org/grpc"
@@ -21,10 +22,12 @@ import (
 )
 
 type session struct {
-	hello    *pb.WorkerHello
-	identity config.Identity
-	frames   chan *pb.ServerFrame
-	cancel   context.CancelFunc
+	readiness         *pb.ExecutionSignal
+	readinessReceived int64
+	hello             *pb.WorkerHello
+	identity          config.Identity
+	frames            chan *pb.ServerFrame
+	cancel            context.CancelFunc
 }
 type Server struct {
 	pb.UnimplementedRuntimeServiceServer
@@ -324,6 +327,14 @@ func (s *Server) receive(ctx context.Context, p *session, f *pb.WorkerFrame) err
 	if r == nil {
 		return status.Error(codes.InvalidArgument, "expected renew or ACK")
 	}
+	s.mu.Lock()
+	if s.peers[p.hello.WorkerId] != p {
+		s.mu.Unlock()
+		return status.Error(codes.FailedPrecondition, "STALE_CONNECTION")
+	}
+	p.readinessReceived = store.Now()
+	p.readiness = readiness.Fresh(r.Readiness, p.readinessReceived, p.readinessReceived)
+	s.mu.Unlock()
 	if len(r.Attempts) > 64 {
 		return status.Error(codes.ResourceExhausted, "too many attempts")
 	}
@@ -530,6 +541,12 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		blocker := "NO_READY_WORKER"
 		var chosen *session
 		load := int(^uint(0) >> 1)
+		observations := make([]candidateObservation, 0, 32)
+		observe := func(p *session, reason string) {
+			if len(observations) < 32 {
+				observations = append(observations, s.observeCandidate(p, t, reason))
+			}
+		}
 		if creds >= s.cfg.Credentials[t.Spec.CredentialRef] {
 			blocker = "CREDENTIAL_CONCURRENCY_EXHAUSTED"
 		} else if projects >= s.cfg.MaxProjectTasks {
@@ -544,10 +561,12 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 					return e
 				}
 				if store.Now()-seen > int64(s.cfg.LeaseSeconds)*1000 {
+					observe(p, "STALE_WORKER")
 					continue
 				}
 				sawReadyWorker = true
 				if !fits(p, t) || (jc != nil && !fitsJob(p, t, jc)) {
+					observe(p, "TEMPLATE_OR_CAPABILITY_MISMATCH")
 					continue
 				}
 				sawCompatibleWorker = true
@@ -555,8 +574,10 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 					return e
 				}
 				if active >= int(p.hello.Slots) {
+					observe(p, "WORKER_CAPACITY_EXHAUSTED")
 					continue
 				}
+				observe(p, "ELIGIBLE")
 				if active < load {
 					chosen = p
 					load = active
@@ -606,6 +627,9 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 			if e = jobState(ctx, q, j, next, "", ""); e != nil {
 				return e
 			}
+		}
+		if e = appendEvent(ctx, q, &pb.Event{TaskId: id, AttemptId: a.AttemptId, Generation: a.Generation, Type: "scheduler.observation", PayloadJson: config.JSON(map[string]any{"selected_worker": chosen.hello.WorkerId, "selected": s.observeCandidate(chosen, t, "ELIGIBLE"), "candidates": observations, "candidates_truncated": len(peers) > 32, "scoring_enabled": false})}, nil); e != nil {
+			return e
 		}
 		return saveCommand(ctx, q, chosen.hello.WorkerId, "start", a)
 	})
@@ -706,6 +730,9 @@ func (s *Server) ListWorkers(ctx context.Context, _ *pb.Empty) (*pb.Workers, err
 		w.Runtimes = h.Runtimes
 		s.mu.Lock()
 		w.Online = s.peers[w.WorkerId] != nil
+		if peer := s.peers[w.WorkerId]; peer != nil {
+			w.Readiness = readiness.Fresh(peer.readiness, peer.readinessReceived, store.Now())
+		}
 		s.mu.Unlock()
 		w.Online = w.Online && store.Now()-w.LastSeenMs < int64(s.cfg.LeaseSeconds)*1000
 		out.Workers = append(out.Workers, w)

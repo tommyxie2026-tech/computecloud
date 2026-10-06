@@ -84,3 +84,13 @@ ci-prepared-workspace-benchmark:
 .PHONY: ci-workspace-job-benchmark
 ci-workspace-job-benchmark: build
 	python3 scripts/ci_task_flow.py --binary bin/computecloud --workspace-benchmark --output dist/workspace-job-benchmark/report.json
+
+.PHONY: ci-scheduler-readiness-contract ci-scheduler-explainability
+ci-scheduler-readiness-contract:
+	$(GO) test -race ./internal/readiness ./internal/worker -run 'TestSignal|TestReadiness' -count=1
+ci-scheduler-explainability:
+	$(GO) test -race ./internal/server -run 'TestReadiness|TestFair|TestScheduler' -count=1
+
+.PHONY: ci-scheduler-readiness-flow
+ci-scheduler-readiness-flow: build
+	python3 scripts/ci_task_flow.py --binary bin/computecloud --workspace-benchmark --readiness-check --output dist/scheduler-readiness-flow/report.json

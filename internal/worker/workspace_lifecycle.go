@@ -194,6 +194,7 @@ func (w *Worker) prepareWorkspace(ctx context.Context, a *pb.Assignment) (string
 	} else if n != 1 {
 		return "", errors.New("workspace READY transition lost ownership")
 	}
+	w.recordPreparation(tmpl, measurement)
 	if w.cfg.WorkspaceWarmSlots > 0 {
 		ref := workspace.PreparedWorkspaceRef{TemplateID: tmpl.TemplateID, Provider: preparedProvider.Describe().Name, ImmutableRef: tmpl.Fingerprint()}
 		if err := preparedProvider.Prewarm(ctx, tmpl, ref, w.cfg.WorkspaceWarmSlots); err != nil {

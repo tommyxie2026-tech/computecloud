@@ -28,14 +28,16 @@ type active struct {
 	until   time.Time
 }
 type Worker struct {
-	cfg    config.Worker
-	db     *store.DB
-	client pb.RuntimeServiceClient
-	conn   *grpc.ClientConn
-	mu     sync.Mutex
-	runs   map[string]*active
-	wg     sync.WaitGroup
-	hello  *pb.WorkerHello
+	preparations []preparationSample
+	environments []environmentSample
+	cfg          config.Worker
+	db           *store.DB
+	client       pb.RuntimeServiceClient
+	conn         *grpc.ClientConn
+	mu           sync.Mutex
+	runs         map[string]*active
+	wg           sync.WaitGroup
+	hello        *pb.WorkerHello
 }
 
 func enc(m proto.Message) []byte {
@@ -117,14 +119,14 @@ func (w *Worker) probe(ctx context.Context) error {
 			}
 		}
 		h.Runtimes = append(h.Runtimes, &pb.Runtime{
-			Profile: profile,
-			Version: r.Version,
-			Models: r.Models,
-			Credentials: r.Credentials,
-			Capabilities: advertisedRuntimeCapabilities(provider),
-			Repositories: keys(w.cfg.Repositories),
-			Policies: keys(w.cfg.Policies),
-			Verifiers: keys(w.cfg.Verifiers),
+			Profile:         profile,
+			Version:         r.Version,
+			Models:          r.Models,
+			Credentials:     r.Credentials,
+			Capabilities:    advertisedRuntimeCapabilities(provider),
+			Repositories:    keys(w.cfg.Repositories),
+			Policies:        keys(w.cfg.Policies),
+			Verifiers:       keys(w.cfg.Verifiers),
 			TemplateDigests: digests,
 		})
 	}
@@ -199,7 +201,7 @@ func (w *Worker) connect(parent context.Context) error {
 		for {
 			refs, e := w.refs(ctx)
 			if e == nil {
-				e = send(&pb.WorkerFrame{Body: &pb.WorkerFrame_Renew{Renew: &pb.Renew{Attempts: refs}}})
+				e = send(&pb.WorkerFrame{Body: &pb.WorkerFrame_Renew{Renew: &pb.Renew{Attempts: refs, Readiness: w.executionSignal()}}})
 			}
 			if e != nil {
 				cancel()

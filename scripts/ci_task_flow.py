@@ -70,6 +70,7 @@ def main():
     parser.add_argument("--output", default="dist/ci-task-flow/report.json")
     parser.add_argument("--timeout", type=int, default=45)
     parser.add_argument("--workspace-benchmark", action="store_true")
+    parser.add_argument("--readiness-check", action="store_true")
     args = parser.parse_args()
     if args.timeout < 20 or args.timeout > 300:
         parser.error("timeout must be 20..300 seconds")
@@ -366,6 +367,26 @@ def main():
                             "os": platform.system(), "arch": platform.machine(), "samples": samples,
                             "hit_ratio": ratio, "job_p50_ms": latency[5], "job_p95_ms": latency[9]}
                 record("workspace_ten_jobs", workspace_benchmark)
+            if args.readiness_check:
+                def readiness_check():
+                    def signaled_workers():
+                        items = json.loads(cli("workers")).get("workers", [])
+                        return items if any(w.get("readiness") for w in items) else None
+                    workers = wait_for(signaled_workers)
+                    observed = [w["worker_id"] for w in workers if w.get("readiness")]
+                    with sqlite3.connect(root / "server" / "state.db") as database:
+                        rows = database.execute("SELECT body FROM events ORDER BY rowid").fetchall()
+                    evidence = []
+                    for (body,) in rows:
+                        event = json.loads(body)
+                        if event.get("type") == "scheduler.observation":
+                            evidence.append(json.loads(base64.b64decode(event["payload_json"])))
+                    if not evidence or any(item["scoring_enabled"] for item in evidence):
+                        raise AssertionError("missing observation or unexpectedly enabled scoring")
+                    if args.workspace_benchmark and not any(item["selected"]["signal_state"] == "FRESH" for item in evidence):
+                        raise AssertionError("fresh Worker hints never reached scheduler observation")
+                    return {"workers_with_signals": observed, "dispatch_observations": len(evidence), "scoring_enabled": False}
+                record("readiness_delivery", readiness_check)
 
             def cancel_flow():
                 job_id = submit("ci-cancel", base_spec("slow fixture cancellation"))
