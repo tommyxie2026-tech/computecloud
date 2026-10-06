@@ -6,8 +6,8 @@ Product: Agent-aware Distributed Job Execution Platform / Agent Job Executor.
 This ledger separates implementation, automated validation, merge/release, and
 real-environment acceptance. A role assignment is not proof of delivery.
 
-The next scoped preview is being prepared as `v0.4.7-rc.1`; its release gates
-and limitations are tracked in [the candidate record](v0.4.7-rc.1-release-status.md).
+The scoped preview `v0.4.7-rc.1` was published as a prerelease; its release gates
+and limitations are tracked in [the release record](v0.4.7-rc.1-release-status.md).
 
 | Order | Scope | Status / acceptance |
 | --- | --- | --- |
@@ -56,5 +56,5 @@ RPG closure may be inferred from fixture tests or a prepared deployment guide.
    configure Apple/Android signing and validate on real devices.
 
 These are outstanding implementation/acceptance items, not completed merely by
-merging the foundations. No new stable release or production certification was
-created in this execution pass.
+merging the foundations. The scoped prerelease does not create a new stable
+release or production certification.

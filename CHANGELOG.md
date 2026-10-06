@@ -1,12 +1,12 @@
 # 版本记录
 
-## 0.4.7-rc.1 — 限定范围集成预览（准备中）
+## 0.4.7-rc.1 — 限定范围集成预览（prerelease 已发布）
 
 基于 v0.4.6 的累积候选：Prepared Workspace 缓存与并发命中、readiness 观测、synthetic Goal 执行/评估与 Control 决策审计、产物文本预览，以及实验性 Relay seam/TLS fixture/direct-first fallback。`direct` 仍是默认路径，Goal 自动 Re-plan 仍关闭。本候选版不宣称缓存 P50 达标、真实多机生产基线、生产 Relay 或签名 Mobile Beta。
 
 - Server schema 从 v13 升至 v16，Worker 保持 v6；必须排空执行、离线完整备份，回退只能恢复升级前快照。
 - 预发布镜像只使用版本/digest，不更新 GHCR `latest`。
-- 发布状态和验收证据见 [v0.4.7-rc.1 候选记录](docs/implementation/v0.4.7-rc.1-release-status.md)；当前条目不表示已发布。
+- 发布状态和验收证据见 [v0.4.7-rc.1 发布记录](docs/implementation/v0.4.7-rc.1-release-status.md)；它不表示生产认证或正式稳定版。
 
 ## 0.4.6 — Post-0.4.5 Stabilization
 
