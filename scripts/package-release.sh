@@ -16,7 +16,8 @@ if [ -e "$output/SHA256SUMS" ]; then
   exit 2
 fi
 
-deployment="docs/deployment/production-v${version}.md"
+deployment_version=${version%-dev.*}
+deployment="docs/deployment/production-v${deployment_version}.md"
 if [ ! -f "$deployment" ]; then
   echo "release deployment guide missing: $deployment" >&2
   exit 2
