@@ -17,14 +17,14 @@ import (
 const templateManifestName = ".computecloud-template.json"
 
 type WorkspaceTemplate struct {
-	TemplateID            string `json:"template_id"`
-	RepositoryRef         string `json:"repository_ref"`
-	BaseCommit            string `json:"base_commit"`
-	DependencyFingerprint string `json:"dependency_fingerprint,omitempty"`
+	TemplateID             string `json:"template_id"`
+	RepositoryRef          string `json:"repository_ref"`
+	BaseCommit             string `json:"base_commit"`
+	DependencyFingerprint  string `json:"dependency_fingerprint,omitempty"`
 	EnvironmentFingerprint string `json:"environment_fingerprint,omitempty"`
-	RuntimeFingerprint    string `json:"runtime_fingerprint,omitempty"`
-	ToolFingerprint       string `json:"tool_fingerprint,omitempty"`
-	Version               int    `json:"version"`
+	RuntimeFingerprint     string `json:"runtime_fingerprint,omitempty"`
+	ToolFingerprint        string `json:"tool_fingerprint,omitempty"`
+	Version                int    `json:"version"`
 }
 
 func (t WorkspaceTemplate) Validate() error {
@@ -120,7 +120,7 @@ func (p *LocalPreparedProvider) templatePath(fingerprint string) (string, error)
 	return filepath.Join(p.root, fingerprint), nil
 }
 
-func (p *LocalPreparedProvider) PrepareTemplate(ctx context.Context, tmpl WorkspaceTemplate, source string) (PreparedWorkspaceRef, error) {
+func (p *LocalPreparedProvider) prepareTemplate(ctx context.Context, tmpl WorkspaceTemplate, source string) (PreparedWorkspaceRef, error) {
 	if err := tmpl.Validate(); err != nil {
 		return PreparedWorkspaceRef{}, err
 	}
@@ -137,11 +137,11 @@ func (p *LocalPreparedProvider) PrepareTemplate(ctx context.Context, tmpl Worksp
 	}
 	if _, err = os.Stat(finalPath); err == nil {
 		ref := PreparedWorkspaceRef{
-			TemplateID: tmpl.TemplateID,
-			Provider: p.Describe().Name,
+			TemplateID:   tmpl.TemplateID,
+			Provider:     p.Describe().Name,
 			ImmutableRef: fingerprint,
 		}
-		result, inspectErr := p.InspectTemplate(ctx, tmpl, ref)
+		result, inspectErr := p.inspectTemplate(ctx, tmpl, ref)
 		if inspectErr != nil {
 			return PreparedWorkspaceRef{}, inspectErr
 		}
@@ -172,10 +172,10 @@ func (p *LocalPreparedProvider) PrepareTemplate(ctx context.Context, tmpl Worksp
 	}
 	preparedAt := timeNowUnixMilli()
 	manifest := templateManifest{
-		Template: tmpl,
-		Fingerprint: fingerprint,
+		Template:      tmpl,
+		Fingerprint:   fingerprint,
 		ContentDigest: digest,
-		PreparedAt: preparedAt,
+		PreparedAt:    preparedAt,
 	}
 	body, err := json.Marshal(manifest)
 	if err != nil {
@@ -187,7 +187,7 @@ func (p *LocalPreparedProvider) PrepareTemplate(ctx context.Context, tmpl Worksp
 	if err = os.Rename(stagePath, finalPath); err != nil {
 		if _, statErr := os.Stat(finalPath); statErr == nil {
 			ref := PreparedWorkspaceRef{TemplateID: tmpl.TemplateID, Provider: p.Describe().Name, ImmutableRef: fingerprint}
-			result, inspectErr := p.InspectTemplate(ctx, tmpl, ref)
+			result, inspectErr := p.inspectTemplate(ctx, tmpl, ref)
 			if inspectErr == nil && result.Valid {
 				ref.PreparedAt = result.PreparedAt
 				return ref, nil
@@ -201,14 +201,14 @@ func (p *LocalPreparedProvider) PrepareTemplate(ctx context.Context, tmpl Worksp
 		return PreparedWorkspaceRef{}, err
 	}
 	return PreparedWorkspaceRef{
-		TemplateID: tmpl.TemplateID,
-		Provider: p.Describe().Name,
+		TemplateID:   tmpl.TemplateID,
+		Provider:     p.Describe().Name,
 		ImmutableRef: fingerprint,
-		PreparedAt: preparedAt,
+		PreparedAt:   preparedAt,
 	}, nil
 }
 
-func (p *LocalPreparedProvider) InspectTemplate(ctx context.Context, tmpl WorkspaceTemplate, ref PreparedWorkspaceRef) (InspectResult, error) {
+func (p *LocalPreparedProvider) inspectTemplate(ctx context.Context, tmpl WorkspaceTemplate, ref PreparedWorkspaceRef) (InspectResult, error) {
 	if err := tmpl.Validate(); err != nil {
 		return InspectResult{}, err
 	}
@@ -218,6 +218,16 @@ func (p *LocalPreparedProvider) InspectTemplate(ctx context.Context, tmpl Worksp
 	path, err := p.templatePath(ref.ImmutableRef)
 	if err != nil {
 		return InspectResult{}, err
+	}
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return InspectResult{Valid: false, Reason: "template missing"}, nil
+	}
+	if err != nil {
+		return InspectResult{}, err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return InspectResult{Valid: false, Reason: "template is not a directory"}, nil
 	}
 	body, err := os.ReadFile(filepath.Join(path, templateManifestName))
 	if errors.Is(err, os.ErrNotExist) {
@@ -243,14 +253,19 @@ func (p *LocalPreparedProvider) InspectTemplate(ctx context.Context, tmpl Worksp
 	return InspectResult{Valid: true, PreparedAt: manifest.PreparedAt}, nil
 }
 
-func (p *LocalPreparedProvider) MaterializeAttempt(ctx context.Context, tmpl WorkspaceTemplate, ref PreparedWorkspaceRef, attemptRoot, attemptID string) (string, error) {
-	result, err := p.InspectTemplate(ctx, tmpl, ref)
+func (p *LocalPreparedProvider) materializeAttempt(ctx context.Context, tmpl WorkspaceTemplate, ref PreparedWorkspaceRef, attemptRoot, attemptID string) (string, error) {
+	result, err := p.inspectTemplate(ctx, tmpl, ref)
 	if err != nil {
 		return "", err
 	}
 	if !result.Valid {
 		return "", fmt.Errorf("cannot materialize invalid prepared workspace: %s", result.Reason)
 	}
+	return p.materializeValidated(ctx, ref, attemptRoot, attemptID)
+}
+
+// Called only while holding the root lock after successful template validation.
+func (p *LocalPreparedProvider) materializeValidated(ctx context.Context, ref PreparedWorkspaceRef, attemptRoot, attemptID string) (string, error) {
 	source, err := p.templatePath(ref.ImmutableRef)
 	if err != nil {
 		return "", err
@@ -264,6 +279,11 @@ func (p *LocalPreparedProvider) MaterializeAttempt(ctx context.Context, tmpl Wor
 	}
 	if _, err = os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
 		return "", errors.New("attempt workspace already exists")
+	}
+	if hit, err := p.takeWarm(ctx, ref, target); err != nil {
+		return "", err
+	} else if hit {
+		return target, nil
 	}
 	if err = copyWritableTree(ctx, source, target); err != nil {
 		_ = os.RemoveAll(target)
@@ -428,6 +448,9 @@ func copyWritableTree(ctx context.Context, source, target string) error {
 		if !entry.Type().IsRegular() {
 			return nil
 		}
+		if err := cloneFile(path, dst, info.Mode().Perm()|0600); err == nil {
+			return nil
+		}
 		src, err := os.Open(path)
 		if err != nil {
 			return err
@@ -452,4 +475,33 @@ func copyWritableTree(ctx context.Context, source, target string) error {
 
 var timeNowUnixMilli = func() int64 {
 	return time.Now().UnixMilli()
+}
+
+func (p *LocalPreparedProvider) PrepareTemplate(ctx context.Context, tmpl WorkspaceTemplate, source string) (PreparedWorkspaceRef, error) {
+	unlock, err := p.cacheLock(ctx)
+	if err != nil {
+		return PreparedWorkspaceRef{}, err
+	}
+	defer unlock()
+	ref, err := p.prepareTemplate(ctx, tmpl, source)
+	if err == nil {
+		err = p.touchTemplate(ref.ImmutableRef)
+	}
+	return ref, err
+}
+func (p *LocalPreparedProvider) InspectTemplate(ctx context.Context, tmpl WorkspaceTemplate, ref PreparedWorkspaceRef) (InspectResult, error) {
+	unlock, err := p.cacheLock(ctx)
+	if err != nil {
+		return InspectResult{}, err
+	}
+	defer unlock()
+	return p.inspectTemplate(ctx, tmpl, ref)
+}
+func (p *LocalPreparedProvider) MaterializeAttempt(ctx context.Context, tmpl WorkspaceTemplate, ref PreparedWorkspaceRef, root, attempt string) (string, error) {
+	unlock, err := p.cacheLock(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	return p.materializeAttempt(ctx, tmpl, ref, root, attempt)
 }

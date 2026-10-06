@@ -1,0 +1,44 @@
+# WS-B cache implementation evidence
+
+Status: implemented locally; not yet merged or released. 2026-10-06.
+Contract: [workspace-cache-contract.md](workspace-cache-contract.md).
+
+## Implemented
+
+- Root-scoped, cancellation-aware file lock across independent provider instances.
+- Single validation under the prepare/materialize lock; content tampering fails closed.
+- Darwin clonefile / Linux reflink with independent-copy fallback; no writable hardlinks.
+- Atomic deletion tombstones, restart cleanup, LRU retention / byte budget,
+  per-pass deletion limit, and separate Attempt lifecycle ownership.
+- Optional 0–2 warm slots, digest validation before ownership transfer, independent
+  writable copies, warm-slot cleanup with template GC.
+- Durable workspace.prepared event: fingerprint, hit/miss, prepare/materialize
+  duration, strategy; no local paths or credentials.
+- Dedicated cache/benchmark CI job included in package dependencies.
+
+## Local evidence
+
+macOS arm64, Go 1.26.0, deterministic fixtures, no real model calls:
+
+- workspace/worker/config race tests PASS.
+- Existing prepared-workspace contract and recovery gates PASS.
+- go vet ./... PASS.
+- Provider benchmark: 128 tracked dependency files, 2 MiB payload; 10 cold samples,
+  10 cached preparations with 9 hits (90%), 9 warm latency samples.
+- Observed cold P50/P95: 80.388 / 83.400 ms.
+- Observed cached P50/P95: 43.239 / 45.533 ms.
+
+These are one-machine provider results, not ten complete Jobs, production SLOs,
+or signed mobile / real Runtime evidence. Cached P50 remains above the original
+40%-of-cold aspirational target; P95 is below its 60% target in this sample.
+The gate records measurements without masking unsuccessful correctness tests.
+
+## Remaining acceptance
+
+- Linux and full integration CI; end-to-end ten Job benchmark and environment
+  conditions; dependency-heavy and concurrent throughput tuning.
+- Warm-slot replenishment currently adds synchronous preparation work; its full
+  Job impact must be measured before recommending nonzero warm slots.
+- The global root lock can limit parallel throughput. Sharding must preserve GC
+  exclusion and cannot skip immutable-template validation.
+- Readiness signal / scheduler observation is WS-C, separate from this patch.

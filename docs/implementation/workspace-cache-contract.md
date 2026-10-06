@@ -43,5 +43,18 @@ Performance ratios are reported, not represented as certified production SLOs.
 
 CI covers concurrent independent providers and GC, restart tombstones, corruption,
 unknown metadata, cancellation, writable isolation, and worker event delivery.
-Optional warm pools and readiness advertisement remain independent subsequent
-slices; this contract does not pretend to deliver them.
+Optional warm pools contain at most two independently copied, read-only slots per template.
+A slot is digest-checked, moved to the new Attempt path, then made writable.
+Corrupted slots fail closed. Warm slots share template GC and its byte budget.
+Readiness advertisement remains a separate slice.
+
+## Worker settings
+
+- workspace_cache_max_bytes: default 10 GiB; GC budget, not a hard disk quota.
+- workspace_cache_retention_ms: default 7 days; maximum 365 days.
+- workspace_warm_slots: 0 (default), 1 or 2. Replenishment is synchronous after
+  materialization; its cost must be included in end-to-end Job measurements.
+- GC deletes at most 16 template groups per pass and runs every 30 seconds.
+
+The cache lock serializes cache I/O on one Worker. This first implementation
+prioritizes GC correctness; parallel cache sharding needs separate evidence.

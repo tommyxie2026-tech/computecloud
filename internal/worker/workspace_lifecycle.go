@@ -12,10 +12,12 @@ import (
 	"time"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
+	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	envreg "github.com/tommyxie2026-tech/computecloud/internal/environment"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	toolreg "github.com/tommyxie2026-tech/computecloud/internal/tool"
 	"github.com/tommyxie2026-tech/computecloud/internal/workspace"
+	"log/slog"
 )
 
 const workspaceGCInterval = 30 * time.Second
@@ -81,7 +83,7 @@ func (w *Worker) preparedTemplateForAssignment(a *pb.Assignment, repoRef, base s
 		toolFingerprint = store.Hash([]byte(strings.Join(tools, "\n")))
 	}
 	return workspace.WorkspaceTemplate{
-		TemplateID:             "repo-" + store.Hash([]byte(repoRef+"\x00"+base))[:16],
+		TemplateID:             "repo-" + store.Hash([]byte(repoRef + "\x00" + base))[:16],
 		RepositoryRef:          repoRef,
 		BaseCommit:             base,
 		EnvironmentFingerprint: store.Hash([]byte(envIdentity)),
@@ -162,16 +164,16 @@ func (w *Worker) prepareWorkspace(ctx context.Context, a *pb.Assignment) (string
 		_ = w.deleteWorkspace(ctx, a.AttemptId, "prepared workspace provider unavailable")
 		return "", err
 	}
-	preparedRef, err := preparedProvider.PrepareTemplate(ctx, tmpl, source)
-	if err != nil {
-		_ = w.deleteWorkspace(ctx, a.AttemptId, "prepared workspace template failed")
-		return "", err
-	}
-	cwd, err := preparedProvider.MaterializeAttempt(ctx, tmpl, preparedRef, root, a.AttemptId)
+	cwd, measurement, err := preparedProvider.PrepareAttempt(ctx, tmpl, source, root, a.AttemptId)
 	if err != nil {
 		_ = w.deleteWorkspace(ctx, a.AttemptId, "workspace materialization failed")
 		return "", err
 	}
+	if err = w.emit(ctx, a, "workspace.prepared", config.JSON(measurement)); err != nil {
+		_ = w.deleteWorkspace(context.Background(), a.AttemptId, "workspace measurement persistence failed")
+		return "", err
+	}
+
 	size, quotaErr := workspace.CheckQuota(cwd, w.cfg.WorkspaceMaxBytes)
 	if quotaErr != nil {
 		_ = w.db.Tx(context.Background(), func(q store.Query) error {
@@ -191,6 +193,12 @@ func (w *Worker) prepareWorkspace(ctx context.Context, a *pb.Assignment) (string
 		return "", err
 	} else if n != 1 {
 		return "", errors.New("workspace READY transition lost ownership")
+	}
+	if w.cfg.WorkspaceWarmSlots > 0 {
+		ref := workspace.PreparedWorkspaceRef{TemplateID: tmpl.TemplateID, Provider: preparedProvider.Describe().Name, ImmutableRef: tmpl.Fingerprint()}
+		if err := preparedProvider.Prewarm(ctx, tmpl, ref, w.cfg.WorkspaceWarmSlots); err != nil {
+			slog.Warn("workspace prewarm failed", "error", err)
+		}
 	}
 	if cwd != target {
 		return "", errors.New("workspace path mismatch")
@@ -406,6 +414,25 @@ func (w *Worker) reconcileWorkspaceLifecycle(ctx context.Context) error {
 			return err
 		}
 	}
+	provider, err := workspace.NewLocalPreparedProvider(w.preparedWorkspaceRoot())
+	if err != nil {
+		return err
+	}
+	retention := 7 * 24 * time.Hour
+	if w.cfg.WorkspaceCacheRetentionMS > 0 {
+		retention = time.Duration(w.cfg.WorkspaceCacheRetentionMS) * time.Millisecond
+	}
+	budget := int64(10 << 30)
+	if w.cfg.WorkspaceCacheMaxBytes > 0 {
+		budget = w.cfg.WorkspaceCacheMaxBytes
+	}
+	result, err := provider.CollectCache(ctx, workspace.CachePolicy{Retention: retention, MaxBytes: budget, MaxDeletes: 16})
+	if err != nil {
+		return err
+	}
+	if result.Deleted > 0 || result.OverBudget {
+		slog.Info("workspace template cache", "deleted", result.Deleted, "bytes", result.Bytes, "over_budget", result.OverBudget)
+	}
 	return nil
 }
 
@@ -418,8 +445,7 @@ func (w *Worker) workspaceLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := w.reconcileWorkspaceLifecycle(ctx); err != nil && ctx.Err() == nil {
-				// The regular Worker logger reports this from the caller's loop.
-				// Keep lifecycle reconciliation retryable and non-fatal.
+				slog.Warn("workspace reconciliation failed", "error", err)
 			}
 		}
 	}

@@ -65,19 +65,22 @@ type Policy struct {
 	AllowedEnvironments  []string `yaml:"allowed_environments" json:"AllowedEnvironments,omitempty"`
 }
 type Worker struct {
-	ID           string                `yaml:"id"`
-	Address      string                `yaml:"server_address"`
-	DataDir      string                `yaml:"data_dir"`
-	TokenFile    string                `yaml:"token_file"`
-	TLS          TLS                   `yaml:"tls"`
-	Slots        int                   `yaml:"slots"`
-	Runtimes     map[string]Runtime    `yaml:"runtimes"`
-	Repositories map[string]string     `yaml:"repositories"`
-	Policies     map[string]Policy     `yaml:"policies"`
-	Verifiers            map[string][][]string `yaml:"verifiers"`
-	StopGraceMS          int                   `yaml:"stop_grace_ms"`
-	WorkspaceRetentionMS int                   `yaml:"workspace_retention_ms"`
-	WorkspaceMaxBytes    int64                 `yaml:"workspace_max_bytes"`
+	ID                        string                `yaml:"id"`
+	Address                   string                `yaml:"server_address"`
+	DataDir                   string                `yaml:"data_dir"`
+	TokenFile                 string                `yaml:"token_file"`
+	TLS                       TLS                   `yaml:"tls"`
+	Slots                     int                   `yaml:"slots"`
+	Runtimes                  map[string]Runtime    `yaml:"runtimes"`
+	Repositories              map[string]string     `yaml:"repositories"`
+	Policies                  map[string]Policy     `yaml:"policies"`
+	Verifiers                 map[string][][]string `yaml:"verifiers"`
+	StopGraceMS               int                   `yaml:"stop_grace_ms"`
+	WorkspaceRetentionMS      int                   `yaml:"workspace_retention_ms"`
+	WorkspaceMaxBytes         int64                 `yaml:"workspace_max_bytes"`
+	WorkspaceWarmSlots        int                   `yaml:"workspace_warm_slots"`
+	WorkspaceCacheMaxBytes    int64                 `yaml:"workspace_cache_max_bytes"`
+	WorkspaceCacheRetentionMS int64                 `yaml:"workspace_cache_retention_ms"`
 }
 type Client struct {
 	Address   string `yaml:"address"`
@@ -211,6 +214,9 @@ func (c Worker) Validate() error {
 	}
 	if c.WorkspaceRetentionMS < 0 || c.WorkspaceMaxBytes < 0 {
 		return errors.New("worker workspace retention/quota must be non-negative")
+	}
+	if c.WorkspaceWarmSlots < 0 || c.WorkspaceWarmSlots > 2 || c.WorkspaceCacheMaxBytes < 0 || c.WorkspaceCacheRetentionMS < 0 || c.WorkspaceCacheRetentionMS > 365*24*60*60*1000 {
+		return errors.New("invalid workspace cache policy")
 	}
 	for ref, path := range c.Repositories {
 		if ref == "" || !filepath.IsAbs(path) {
