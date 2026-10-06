@@ -178,6 +178,7 @@ func TestRelayOpaqueInnerTLSAndShutdown(t *testing.T) {
 		t.Fatal(lhs.err)
 	}
 	defer lhs.conn.Close()
+	callCancel() // Dial cancellation after success must not tear down the live stream.
 	innerServer := tls.Server(lhs.conn, serverTLS)
 	innerClient := tls.Client(right, clientTLS)
 	payload := []byte("opaque inner TLS: Worker bearer remains inside this channel")
@@ -202,7 +203,9 @@ func TestRelayOpaqueInnerTLSAndShutdown(t *testing.T) {
 	if err = <-echoed; err != nil {
 		t.Fatal(err)
 	}
-	if conn, e := Connect(callCtx, listener.Addr().String(), workerTicket, clientTLS); e == nil {
+	replayCtx, replayCancel := context.WithTimeout(ctx, time.Second)
+	defer replayCancel()
+	if conn, e := Connect(replayCtx, listener.Addr().String(), workerTicket, clientTLS); e == nil {
 		conn.Close()
 		t.Fatal("used ticket replay succeeded")
 	}
