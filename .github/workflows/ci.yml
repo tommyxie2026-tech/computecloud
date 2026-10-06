@@ -755,7 +755,9 @@ jobs:
             if [[ "$RELEASE" == "true" ]]; then
               echo "$server:$VERSION"
               echo "$server:$RELEASE_TAG"
-              echo "$server:latest"
+              if [[ "$VERSION" != *-* ]]; then
+                echo "$server:latest"
+              fi
             else
               echo "$server:edge"
               echo "$server:sha-$short_sha"
@@ -765,7 +767,9 @@ jobs:
             if [[ "$RELEASE" == "true" ]]; then
               echo "$worker:$VERSION"
               echo "$worker:$RELEASE_TAG"
-              echo "$worker:latest"
+              if [[ "$VERSION" != *-* ]]; then
+                echo "$worker:latest"
+              fi
             else
               echo "$worker:edge"
               echo "$worker:sha-$short_sha"
