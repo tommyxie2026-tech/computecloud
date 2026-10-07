@@ -124,3 +124,38 @@ func TestServerGoalReplanRejectsMismatchAndRollsBack(t *testing.T) {
 		t.Fatalf("retry after rollback failed: %v", err)
 	}
 }
+
+func TestServerGoalReplanPublishesExistingMapGraph(t *testing.T) {
+	s, ctx, _, _ := offlineJobServer(t)
+	defer s.Close()
+	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("report_merge_v1")
+	prior, err := s.SubmitJob(ctx, "goal-map-original", job.JSON(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goalID := "goal_" + prior.ID
+	if _, err := s.db.SQL.Exec("UPDATE goals SET max_replans=1,max_total_attempts=8 WHERE id=?", goalID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.Tx(ctx, func(q store.Query) error { return jobState(ctx, q, prior, "FAILED", "", "TEST_FAILURE") }); err != nil {
+		t.Fatal(err)
+	}
+	proposal := replanProposal(goalID, fmt.Sprintf("%s:%d", prior.ID, prior.Version), spec)
+	created, decision, err := s.PublishGoalReplan(ctx, prior.ID, proposal, "", job.JSON(spec))
+	if err != nil || !decision.Allowed {
+		t.Fatalf("map publication=%+v err=%v", decision, err)
+	}
+	var stages, tasks, graphNodes int
+	if err := s.db.SQL.QueryRow("SELECT count(*) FROM stages WHERE job_id=?", created.ID).Scan(&stages); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.SQL.QueryRow("SELECT count(*) FROM tasks WHERE job_id=?", created.ID).Scan(&tasks); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.SQL.QueryRow("SELECT json_array_length(graph_json) FROM goal_plans WHERE goal_id=? AND revision=2", goalID).Scan(&graphNodes); err != nil {
+		t.Fatal(err)
+	}
+	if stages != 2 || tasks != len(spec.Map.Partitions) || graphNodes != len(spec.Map.Partitions)+1 {
+		t.Fatalf("map graph stages=%d tasks=%d nodes=%d", stages, tasks, graphNodes)
+	}
+}
