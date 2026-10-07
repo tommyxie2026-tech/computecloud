@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -411,7 +412,36 @@ func freezeTree(root string) error {
 }
 
 func copyWritableTree(ctx context.Context, source, target string) error {
-	return filepath.WalkDir(source, func(path string, entry os.DirEntry, walkErr error) error {
+	type fileCopy struct {
+		source, target string
+		mode           os.FileMode
+	}
+	files := make(chan fileCopy, 32)
+	var workers sync.WaitGroup
+	var firstErr error
+	var errMu sync.Mutex
+	for i := 0; i < 8; i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for item := range files {
+				errMu.Lock()
+				skip := firstErr != nil
+				errMu.Unlock()
+				if skip {
+					continue
+				}
+				if err := copyWritableFile(ctx, item.source, item.target, item.mode); err != nil {
+					errMu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					errMu.Unlock()
+				}
+			}
+		}()
+	}
+	walkErr := filepath.WalkDir(source, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -448,29 +478,47 @@ func copyWritableTree(ctx context.Context, source, target string) error {
 		if !entry.Type().IsRegular() {
 			return nil
 		}
-		if err := cloneFile(path, dst, info.Mode().Perm()|0600); err == nil {
+		select {
+		case files <- fileCopy{path, dst, info.Mode().Perm() | 0600}:
 			return nil
+		case <-ctx.Done():
+			return ctx.Err()
 		}
-		src, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm()|0600)
-		if err != nil {
-			_ = src.Close()
-			return err
-		}
-		_, copyErr := io.Copy(out, src)
-		srcCloseErr := src.Close()
-		outCloseErr := out.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		if srcCloseErr != nil {
-			return srcCloseErr
-		}
-		return outCloseErr
 	})
+	close(files)
+	workers.Wait()
+	if walkErr != nil {
+		return walkErr
+	}
+	return firstErr
+}
+
+func copyWritableFile(ctx context.Context, path, dst string, mode os.FileMode) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := cloneFile(path, dst, mode); err == nil {
+		return nil
+	}
+	src, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+	if err != nil {
+		_ = src.Close()
+		return err
+	}
+	_, copyErr := io.Copy(out, src)
+	srcCloseErr := src.Close()
+	outCloseErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if srcCloseErr != nil {
+		return srcCloseErr
+	}
+	return outCloseErr
 }
 
 var timeNowUnixMilli = func() int64 {
