@@ -176,6 +176,42 @@ func TestAutonomousGuardPublicationSharesTransaction(t *testing.T) {
 	}
 }
 
+func TestGuardPublicationReplayRequiresCommittedPlanJobBinding(t *testing.T) {
+	db := newGoalDB(t)
+	ctx := context.Background()
+	createTestGoal(t, db, "g", Budget{MaxReplans: 2, MaxTotalAttempts: 4, MaxWallTime: time.Hour})
+	in := request("r1", "e1", 1, 1, "fact-a", "strategy-a")
+	called := 0
+	publish := func(ctx context.Context, q store.Query, d ReplanDecision) error {
+		called++
+		now := store.Now()
+		frozen := []byte(`{"spec":"frozen"}`)
+		if _, err := q.ExecContext(ctx, `INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism)
+ VALUES('replan-job','owner','project','replan-e1','request','spec',?,'single','QUEUED',?,?,?,1)`, frozen, now, now, now+60000); err != nil {
+			return err
+		}
+		if _, err := q.ExecContext(ctx, `INSERT INTO goal_job_bindings(job_id,goal_id,plan_revision,graph_generation) VALUES('replan-job','g',?,?)`, d.NextPlanRevision, d.NextGraphGeneration); err != nil {
+			return err
+		}
+		_, err := q.ExecContext(ctx, `INSERT INTO goal_plans(goal_id,revision,graph_generation,job_id,frozen_spec,graph_json,created)
+ VALUES('g',?,?,'replan-job',?,'[]',?)`, d.NextPlanRevision, d.NextGraphGeneration, frozen, now)
+		return err
+	}
+	if _, err := GuardAndPublishReplan(ctx, db, in, "", publish); err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := GuardAndPublishReplan(ctx, db, in, "", publish)
+	if err != nil || !replayed.Existing || !replayed.Allowed || called != 1 {
+		t.Fatalf("verified replay=%+v err=%v callback count=%d", replayed, err, called)
+	}
+	if _, err := db.SQL.Exec(`UPDATE jobs SET spec='{"spec":"changed"}' WHERE id='replan-job'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GuardAndPublishReplan(ctx, db, in, "", publish); err == nil || err.Error() != "REPLAN_PUBLICATION_REPLAY_UNVERIFIED" {
+		t.Fatalf("mismatched frozen Job accepted: %v", err)
+	}
+}
+
 func TestGuardReplanIsIdempotentPerEvaluation(t *testing.T) {
 	db := newGoalDB(t)
 	createTestGoal(t, db, "g", Budget{MaxReplans: 2, MaxTotalAttempts: 4, MaxWallTime: time.Hour})

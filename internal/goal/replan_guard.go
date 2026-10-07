@@ -134,7 +134,7 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 // GuardAndPublishReplan runs the Guard, optional one-use approval consumption,
 // and caller publication in one SQLite transaction. Publication must create the
 // immutable Plan and Job for the returned revision. Existing allowed decisions
-// fail closed until the Server can prove that a prior publication committed.
+// are returned only when the committed Plan/Job binding proves publication.
 // It must not launch work before this transaction commits.
 func GuardAndPublishReplan(ctx context.Context, db *store.DB, in ReplanRequest, approvalOperationID string, publish func(context.Context, store.Query, ReplanDecision) error) (ReplanDecision, error) {
 	if publish == nil {
@@ -190,7 +190,13 @@ func guardReplan(ctx context.Context, db *store.DB, in ReplanRequest, approvalOp
 			out.NextPlanRevision = existingPlan
 			out.NextGraphGeneration = existingGraph
 			if out.Allowed && publish != nil {
-				return fmt.Errorf("REPLAN_PUBLICATION_REPLAY_UNVERIFIED")
+				verified, e := publishedReplanExists(ctx, q, in.GoalID, existingPlan, existingGraph)
+				if e != nil {
+					return e
+				}
+				if !verified {
+					return fmt.Errorf("REPLAN_PUBLICATION_REPLAY_UNVERIFIED")
+				}
 			}
 			return nil
 		}
@@ -400,6 +406,19 @@ func guardReplan(ctx context.Context, db *store.DB, in ReplanRequest, approvalOp
 		return nil
 	})
 	return out, err
+}
+
+// The immutable Plan, its bound Job and the Job's frozen spec must agree. A
+// Guard-only ALLOW record is deliberately insufficient proof of publication.
+func publishedReplanExists(ctx context.Context, q store.Query, goalID string, revision, generation int64) (bool, error) {
+	var count int
+	err := q.QueryRowContext(ctx, `SELECT count(*) FROM goal_plans p
+ JOIN goal_job_bindings b ON b.goal_id=p.goal_id AND b.plan_revision=p.revision
+  AND b.graph_generation=p.graph_generation AND b.job_id=p.job_id
+ JOIN jobs j ON j.id=p.job_id AND j.spec=p.frozen_spec
+ WHERE p.goal_id=? AND p.revision=? AND p.graph_generation=?
+  AND length(p.graph_json)>0`, goalID, revision, generation).Scan(&count)
+	return count == 1, err
 }
 
 func terminal(state string) bool {
