@@ -32,6 +32,11 @@ var runIDRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$`)
 var imageDigestRE = regexp.MustCompile(`@sha256:[0-9a-f]{64}$`)
 var runProcess = process.Run
 var containerCleanup = func(s *Server, id string) bool { return s.cleanupContainer(id) }
+var dockerReady = func(s *Server) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, s.cfg.DockerExecutable, "info", "--format", "{{.ServerVersion}}").Run() == nil
+}
 
 type Config struct {
 	TokenFile        string
@@ -134,6 +139,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.health(w, r)
 		return
 	}
+	const environmentPrefix = "/v1/environments/"
+	if strings.HasPrefix(r.URL.Path, environmentPrefix) {
+		id := strings.TrimPrefix(r.URL.Path, environmentPrefix)
+		if !runIDRE.MatchString(id) {
+			http.Error(w, "invalid environment ID", http.StatusBadRequest)
+			return
+		}
+		s.environment(w, r, id)
+		return
+	}
 	const prefix = "/v1/runs/"
 	if !strings.HasPrefix(r.URL.Path, prefix) {
 		http.NotFound(w, r)
@@ -182,7 +197,98 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown profile", http.StatusNotFound)
 		return
 	}
-	respond(w, http.StatusOK, map[string]string{"profile": name, "version": version})
+	if !dockerReady(s) {
+		http.Error(w, "Docker unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	respond(w, http.StatusOK, map[string]string{"profile": name, "version": version, "isolation": "container"})
+}
+
+type environmentStatus struct {
+	State   string `json:"state"`
+	Cleanup string `json:"cleanup"`
+}
+
+func (s *Server) environment(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodGet && r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		// Fence a late PUT before checking Docker. The marker remains durable
+		// across controller restarts, so a stopped Attempt can never replay.
+		s.mu.Lock()
+		item := s.runs[id]
+		marker, err := os.OpenFile(s.marker(id), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err == nil {
+			_, err = marker.WriteString("environment released\n")
+			if err == nil {
+				err = marker.Sync()
+			}
+			if closeErr := marker.Close(); err == nil {
+				err = closeErr
+			}
+			if err == nil {
+				directory, openErr := os.Open(s.cfg.StateDir)
+				if openErr != nil {
+					err = openErr
+				} else {
+					err = directory.Sync()
+					_ = directory.Close()
+				}
+			}
+		} else if errors.Is(err, os.ErrExist) {
+			err = nil
+		}
+		s.mu.Unlock()
+		if err != nil {
+			respond(w, http.StatusServiceUnavailable, environmentStatus{State: "UNKNOWN", Cleanup: "UNKNOWN"})
+			return
+		}
+		if item != nil {
+			item.cancel()
+			select {
+			case <-item.done:
+			case <-r.Context().Done():
+				respond(w, http.StatusServiceUnavailable, environmentStatus{State: "UNKNOWN", Cleanup: "UNKNOWN"})
+				return
+			}
+		}
+		if !containerCleanup(s, id) {
+			respond(w, http.StatusServiceUnavailable, environmentStatus{State: "UNKNOWN", Cleanup: "UNKNOWN"})
+			return
+		}
+		respond(w, http.StatusOK, environmentStatus{State: "RELEASED", Cleanup: "CONFIRMED"})
+		return
+	}
+	s.mu.Lock()
+	item := s.runs[id]
+	s.mu.Unlock()
+	if item != nil {
+		select {
+		case <-item.done:
+		default:
+			respond(w, http.StatusOK, environmentStatus{State: "ACTIVE", Cleanup: "PENDING"})
+			return
+		}
+	}
+	exists, err := s.containerExists(id)
+	if err != nil {
+		respond(w, http.StatusServiceUnavailable, environmentStatus{State: "UNKNOWN", Cleanup: "UNKNOWN"})
+		return
+	}
+	if exists {
+		respond(w, http.StatusOK, environmentStatus{State: "ACTIVE", Cleanup: "PENDING"})
+		return
+	}
+	if _, err := os.Stat(s.marker(id)); err == nil {
+		respond(w, http.StatusOK, environmentStatus{State: "RELEASED", Cleanup: "CONFIRMED"})
+		return
+	} else if !errors.Is(err, os.ErrNotExist) {
+		respond(w, http.StatusServiceUnavailable, environmentStatus{State: "UNKNOWN", Cleanup: "UNKNOWN"})
+		return
+	}
+	respond(w, http.StatusOK, environmentStatus{State: "PREPARED", Cleanup: "PENDING"})
 }
 
 func (s *Server) validWorkspace(cwd string) bool {

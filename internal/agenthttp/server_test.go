@@ -55,7 +55,9 @@ func TestRunLifecycleIdempotencyAndRestartFence(t *testing.T) {
 	server, cfg := testServer(t)
 	original := runProcess
 	cleanupOriginal := containerCleanup
+	dockerReadyOriginal := dockerReady
 	containerCleanup = func(*Server, string) bool { return true }
+	dockerReady = func(*Server) bool { return true }
 	canonicalWorkspace, err := filepath.EvalSymlinks(cfg.WorkspaceRoot)
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +83,7 @@ func TestRunLifecycleIdempotencyAndRestartFence(t *testing.T) {
 		_, _ = stdout.Write([]byte("{\"type\":\"turn.completed\",\"usage\":{}}\n"))
 		return process.Result{Cleanup: true, ExitCode: 0}
 	}
-	t.Cleanup(func() { runProcess = original; containerCleanup = cleanupOriginal })
+	t.Cleanup(func() { runProcess = original; containerCleanup = cleanupOriginal; dockerReady = dockerReadyOriginal })
 	if got := call(t, server, http.MethodGet, "/v1/health?profile=codex_http", nil, false).Code; got != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated health status=%d", got)
 	}
@@ -172,5 +174,47 @@ func TestRunRejectsPathAndVersionEscapes(t *testing.T) {
 	input.CWD = cfg.WorkspaceRoot
 	if got := call(t, server, http.MethodPut, "/v1/runs/other", input, true).Code; got != http.StatusBadRequest {
 		t.Fatalf("accepted identity mismatch: %d", got)
+	}
+}
+
+func TestEnvironmentReleaseFencesLateRun(t *testing.T) {
+	server, cfg := testServer(t)
+	previous := containerCleanup
+	containerCleanup = func(*Server, string) bool { return true }
+	t.Cleanup(func() { containerCleanup = previous })
+	response := call(t, server, http.MethodDelete, "/v1/environments/attempt-late", nil, true)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"cleanup":"CONFIRMED"`) {
+		t.Fatalf("environment release=%d %s", response.Code, response.Body.String())
+	}
+	input := request{AttemptID: "attempt-late", Generation: 1, Profile: "codex_http", Version: cfg.CodexVersion,
+		Args: []string{"exec", "--json"}, CWD: cfg.WorkspaceRoot, Input: "prompt"}
+	if got := call(t, server, http.MethodPut, "/v1/runs/attempt-late", input, true).Code; got != http.StatusConflict {
+		t.Fatalf("late run replay status=%d", got)
+	}
+	restarted, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := call(t, restarted, http.MethodPut, "/v1/runs/attempt-late", input, true).Code; got != http.StatusConflict {
+		t.Fatalf("late run after restart status=%d", got)
+	}
+}
+
+func TestEnvironmentDockerUnavailableKeepsUnknownAndFencesReplay(t *testing.T) {
+	server, cfg := testServer(t)
+	server.cfg.DockerExecutable = filepath.Join(cfg.StateDir, "missing-docker")
+	if got := call(t, server, http.MethodGet, "/v1/health?profile=codex_http", nil, true).Code; got != http.StatusServiceUnavailable {
+		t.Fatalf("health without Docker status=%d", got)
+	}
+	if got := call(t, server, http.MethodGet, "/v1/environments/no-docker", nil, true).Code; got != http.StatusServiceUnavailable {
+		t.Fatalf("inspect without Docker status=%d", got)
+	}
+	if got := call(t, server, http.MethodDelete, "/v1/environments/no-docker", nil, true).Code; got != http.StatusServiceUnavailable {
+		t.Fatalf("cleanup without Docker status=%d", got)
+	}
+	input := request{AttemptID: "no-docker", Generation: 1, Profile: "codex_http", Version: cfg.CodexVersion,
+		Args: []string{"exec", "--json"}, CWD: cfg.WorkspaceRoot, Input: "prompt"}
+	if got := call(t, server, http.MethodPut, "/v1/runs/no-docker", input, true).Code; got != http.StatusConflict {
+		t.Fatalf("replay after unknown cleanup status=%d", got)
 	}
 }

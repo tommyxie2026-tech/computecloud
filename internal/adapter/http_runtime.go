@@ -68,7 +68,7 @@ func (p httpRuntimeProvider) Capabilities() CapabilitySet {
 	return CapabilitySet{
 		Runtime:     []string{"event_stream", "cancel", "remote_api"},
 		Tools:       []string{"job_io_v1", "artifact_inputs_v1"},
-		Environment: []string{"process"},
+		Environment: []string{"process", "container"},
 		Legacy:      []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1"},
 	}
 }
@@ -142,15 +142,16 @@ func httpRequest(ctx context.Context, r config.Runtime, method, path string, in,
 
 func (p httpRuntimeProvider) Probe(ctx context.Context, r config.Runtime) error {
 	var health struct {
-		Profile string `json:"profile"`
-		Version string `json:"version"`
+		Profile   string `json:"profile"`
+		Version   string `json:"version"`
+		Isolation string `json:"isolation"`
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := httpRequest(probeCtx, r, http.MethodGet, "/v1/health?profile="+url.QueryEscape(p.profile), nil, &health); err != nil {
 		return err
 	}
-	if health.Profile != p.profile || health.Version != r.Version {
+	if health.Profile != p.profile || health.Version != r.Version || health.Isolation != "container" {
 		return fmt.Errorf("HTTP runtime identity mismatch: got %q %q", health.Profile, health.Version)
 	}
 	return nil
