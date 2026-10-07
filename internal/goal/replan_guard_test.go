@@ -2,9 +2,11 @@ package goal
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/tommyxie2026-tech/computecloud/internal/governance"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 )
 
@@ -34,8 +36,8 @@ func plan(strategy string) PlanCanonical {
 	return PlanCanonical{
 		Strategy: strategy, StrategyClass: strategy, DependencySignature: "scan>implement>test",
 		RequiredCapabilities: []string{"runtime:codex", "tool:git"},
-		KeyAssumptions: []string{"repository accessible"},
-		EvaluationStrategy: "tests", SideEffectClass: "workspace",
+		KeyAssumptions:       []string{"repository accessible"},
+		EvaluationStrategy:   "tests", SideEffectClass: "workspace",
 	}
 }
 
@@ -46,19 +48,19 @@ func request(id, eval string, planRev, graphGen int64, evidenceFact, strategy st
 		ReasonCode: "ASSUMPTION_INVALIDATED",
 		Evidence: ReplanEvidence{
 			FailureClass: FailureInvalidAssumption,
-			Evidence: []Evidence{{Type: "test_failure", ArtifactID: "artifact-" + eval, Fact: evidenceFact}},
+			Evidence:     []Evidence{{Type: "test_failure", ArtifactID: "artifact-" + eval, Fact: evidenceFact}},
 		},
 		ProposedPlan: plan(strategy),
 		StrategyDelta: StrategyDelta{
 			ChangedDimensions: []string{"strategy"},
-			Summary: "change execution strategy",
+			Summary:           "change execution strategy",
 		},
 		Progress: ProgressSnapshot{
-			AcceptedChecks: 1,
-			FailedChecks: 1,
-			UnknownChecks: 1,
+			AcceptedChecks:      1,
+			FailedChecks:        1,
+			UnknownChecks:       1,
 			ResolvedAssumptions: 1,
-			UnresolvedBlockers: 1,
+			UnresolvedBlockers:  1,
 		},
 	}
 }
@@ -80,6 +82,97 @@ func TestGuardReplanAllowsAndAdvancesGeneration(t *testing.T) {
 	}
 	if planRev != 2 || graph != 2 || replans != 1 {
 		t.Fatalf("goal state plan=%d graph=%d replans=%d", planRev, graph, replans)
+	}
+}
+
+func TestGuardPublicationConsumesApprovalAtomically(t *testing.T) {
+	db := newGoalDB(t)
+	ctx := context.Background()
+	createTestGoal(t, db, "g", Budget{MaxReplans: 2, MaxTotalAttempts: 4, MaxWallTime: time.Hour})
+	if _, err := db.SQL.Exec("UPDATE goals SET state='NEEDS_APPROVAL' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+	actor := governance.Actor{ID: "human-1", Kind: "human", Owner: "owner", Projects: []string{"project"}, Scopes: []string{"goals:approve"}}
+	approval := governance.Request{OperationID: "approval-1", ExpectedVersion: 1, PlanRevision: 1, GraphGeneration: 1, Action: "APPROVE_NEXT_REPLAN", Reason: "reviewed evidence"}
+	if err := db.Tx(ctx, func(q store.Query) error {
+		_, err := governance.DecideTx(ctx, q, actor, "g", approval)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec("CREATE TABLE publication_fixture(revision INTEGER PRIMARY KEY, generation INTEGER NOT NULL)"); err != nil {
+		t.Fatal(err)
+	}
+	in := request("r1", "e1", 1, 1, "fact-a", "strategy-a")
+	publish := func(ctx context.Context, q store.Query, decision ReplanDecision) error {
+		_, err := q.ExecContext(ctx, "INSERT OR IGNORE INTO publication_fixture VALUES(?,?)", decision.NextPlanRevision, decision.NextGraphGeneration)
+		return err
+	}
+	if _, err := GuardAndPublishReplan(ctx, db, in, "", publish); err == nil || err.Error() != "INVALID_REPLAN_PERMISSION" {
+		t.Fatalf("pending approval was bypassed: %v", err)
+	}
+	crash := errors.New("publish failed")
+	if _, err := GuardAndPublishReplan(ctx, db, in, "approval-1", func(ctx context.Context, q store.Query, d ReplanDecision) error {
+		if err := publish(ctx, q, d); err != nil {
+			return err
+		}
+		return crash
+	}); !errors.Is(err, crash) {
+		t.Fatalf("publication failure: %v", err)
+	}
+	var requests, published, consumed int
+	if err := db.SQL.QueryRow("SELECT count(*) FROM replan_requests WHERE goal_id='g'").Scan(&requests); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQL.QueryRow("SELECT count(*) FROM publication_fixture").Scan(&published); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQL.QueryRow("SELECT consumed FROM goal_replan_permissions WHERE goal_id='g' AND operation_id='approval-1'").Scan(&consumed); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 0 || published != 0 || consumed != 0 {
+		t.Fatalf("failed publication left partial state: requests=%d published=%d consumed=%d", requests, published, consumed)
+	}
+	first, err := GuardAndPublishReplan(ctx, db, in, "approval-1", publish)
+	if err != nil || !first.Allowed || first.NextPlanRevision != 2 {
+		t.Fatalf("publication=%+v err=%v", first, err)
+	}
+	_, err = GuardAndPublishReplan(ctx, db, in, "approval-1", publish)
+	if err == nil || err.Error() != "REPLAN_PUBLICATION_REPLAY_UNVERIFIED" {
+		t.Fatalf("unverified publication replay accepted: %v", err)
+	}
+	if err := db.SQL.QueryRow("SELECT count(*) FROM publication_fixture").Scan(&published); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQL.QueryRow("SELECT consumed FROM goal_replan_permissions WHERE goal_id='g' AND operation_id='approval-1'").Scan(&consumed); err != nil {
+		t.Fatal(err)
+	}
+	if published != 1 || consumed != 1 {
+		t.Fatalf("publication replay duplicated work: published=%d consumed=%d", published, consumed)
+	}
+}
+
+func TestAutonomousGuardPublicationSharesTransaction(t *testing.T) {
+	db := newGoalDB(t)
+	ctx := context.Background()
+	createTestGoal(t, db, "g", Budget{MaxReplans: 2, MaxTotalAttempts: 4, MaxWallTime: time.Hour})
+	in := request("r1", "e1", 1, 1, "fact-a", "strategy-a")
+	if _, err := GuardAndPublishReplan(ctx, db, in, "", nil); err == nil {
+		t.Fatal("missing publication callback accepted")
+	}
+	if _, err := db.SQL.Exec("CREATE TABLE publication_fixture(revision INTEGER PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	decision, err := GuardAndPublishReplan(ctx, db, in, "", func(ctx context.Context, q store.Query, d ReplanDecision) error {
+		_, err := q.ExecContext(ctx, "INSERT INTO publication_fixture VALUES(?)", d.NextPlanRevision)
+		return err
+	})
+	if err != nil || !decision.Allowed || decision.NextPlanRevision != 2 {
+		t.Fatalf("autonomous publication=%+v err=%v", decision, err)
+	}
+	var n int
+	if err := db.SQL.QueryRow("SELECT count(*) FROM publication_fixture WHERE revision=2").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("publication missing: count=%d err=%v", n, err)
 	}
 }
 
@@ -257,7 +350,6 @@ func TestPlanFingerprintCanonicalizesSetFields(t *testing.T) {
 		t.Fatal("plan fingerprint depends on capability order")
 	}
 }
-
 
 func TestGuardReplanDetectsStrategyCycle(t *testing.T) {
 	db := newGoalDB(t)
