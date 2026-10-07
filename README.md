@@ -18,7 +18,7 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - Relay/P2P 当前进度：Transport seam、实验性 TLS Relay fixture、direct-first fallback 与 Worker 双 Job 恢复 Gate 已合入；`direct` 仍为默认路径，票据自动分发、显式配置接线、真实 NAT/长任务验收未完成
 - Relay 设计与实施计划：[ADR-021](docs/adr/0021-relay-assisted-p2p-transport.md) / [v0.4.x Relay 传输计划](docs/implementation/relay-p2p-transport-plan.md)
 - 下一步 Relay：完成无人值守票据分发与 Worker/Server 显式 opt-in 接线，再做流量优先级、运维和真实网络验收
-- Goal-oriented Computing：Legacy Job 的 synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 证据评估和 Control 治理审计已接入执行路径；自动 Re-plan 仍关闭
+- Goal-oriented Computing：Legacy Job 的 synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 证据评估和 Control 治理审计已接入执行路径；内部显式提议可原子发布新 Plan/Job，自动 Re-plan 仍关闭
 - RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费和可强制的 Runtime token/cost 上限未完成，RPG-4 仍为 PARTIAL；完成后关闭，不新增 RPG-5
 - 当前 main Server schema：**v16**（Goal 执行与治理迁移）（v0.4.6 tag 为 v13）；Worker schema：**v6**
 - 下一轮任务与缺口：[0.4.x 收尾计划](docs/implementation/v0.4-closeout-plan.md)；先推进代码与 CI，最后使用独立主机完成真实生产基线和缓存验收

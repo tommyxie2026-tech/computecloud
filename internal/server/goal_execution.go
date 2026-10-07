@@ -194,7 +194,17 @@ func evaluateBoundJob(ctx context.Context, q store.Query, j *Job) error {
 	if _, err = q.ExecContext(ctx, "INSERT INTO goal_evaluations VALUES(?,?,?,?,'job-artifact-v1',?,?,?)", goalID, generation, j.ID, j.Version, verdict, body, store.Now()); err != nil {
 		return err
 	}
-	_, err = q.ExecContext(ctx, `UPDATE goals SET state=?,version=version+1,updated=? WHERE id=? AND active_plan_revision=? AND active_graph_generation=? AND state NOT IN ('SUCCEEDED','FAILED','CANCELED')`, verdict, store.Now(), goalID, revision, generation)
+	goalState := verdict
+	if verdict == "FAILED" {
+		var maxReplans int
+		if err = q.QueryRowContext(ctx, "SELECT max_replans FROM goals WHERE id=?", goalID).Scan(&maxReplans); err != nil {
+			return err
+		}
+		if maxReplans > 0 {
+			goalState = "REPLAN_GUARDING"
+		}
+	}
+	_, err = q.ExecContext(ctx, `UPDATE goals SET state=?,version=version+1,updated=? WHERE id=? AND active_plan_revision=? AND active_graph_generation=? AND state NOT IN ('SUCCEEDED','FAILED','CANCELED')`, goalState, store.Now(), goalID, revision, generation)
 	return err
 }
 

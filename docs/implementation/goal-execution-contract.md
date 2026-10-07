@@ -42,8 +42,10 @@ unknown usage is never converted to zero. Budget/constraint increases require
 explicit authorization. Planner/Evaluator do not carry approval authority.
 
 Re-plan Guard approval, next immutable Plan/Graph and bound Job publication must
-commit atomically or use a durable recoverable proposal protocol. Merely calling
-GuardReplan before SubmitJob is insufficient and must not be advertised as closed.
+commit atomically or use a durable recoverable proposal protocol. The staged
+internal Server publication path uses one transaction and rejects unsupported
+finite Runtime token/cost budgets. Merely calling GuardReplan before SubmitJob
+is insufficient and must not be advertised as closed.
 RPG CLOSED requires GI-01–04 plus governance/negative/recovery end-to-end gates.
 
 ## Staged delivery
@@ -72,6 +74,6 @@ produce a new result without overwriting the earlier verdict.
 idempotent submission/evaluation, transaction rollback, adoption across restart,
 stale graph fences, missing artifact proof, manual retry and deadline regression.
 The complete server/store/goal test suites pass locally. This is fixture evidence,
-not real Runtime/MCP or production acceptance. Runtime token/cost governance,
-human Goal approval and atomic external re-plan publication remain unimplemented;
+not real Runtime/MCP or production acceptance. Runtime token/cost enforcement
+and a governed external re-plan proposal API remain unimplemented;
 `automatic_replan_enabled` remains false and RPG integration remains PARTIAL.

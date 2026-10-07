@@ -42,6 +42,22 @@ func plan(strategy string) PlanCanonical {
 	}
 }
 
+func TestPlanFingerprintBindsConcreteJobSpec(t *testing.T) {
+	a := plan("strategy")
+	b := a
+	b.JobSpecHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := b.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if a.Fingerprint() == b.Fingerprint() {
+		t.Fatal("concrete Job spec did not change Plan fingerprint")
+	}
+	b.JobSpecHash = "invalid"
+	if err := b.Validate(); err == nil {
+		t.Fatal("invalid Job spec hash accepted")
+	}
+}
+
 func request(id, eval string, planRev, graphGen int64, evidenceFact, strategy string) ReplanRequest {
 	return ReplanRequest{
 		ID: id, GoalID: "g", EvaluationID: eval,
