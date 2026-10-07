@@ -70,6 +70,8 @@ def main() -> int:
     (out / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps(report, sort_keys=True))
     if not passed:
+        failed = {name: results.get(name, "missing") for name in EXPECTED.values() if results.get(name) != "pass"}
+        print(f"::error title=Certification simulation failed::cases={json.dumps(failed, sort_keys=True)} cache_p50_ratio={ratio} cache_gate={cache_gate} go_exit={run.returncode}")
         print(run.stdout[-12000:])
     return 0 if passed else 1
 
