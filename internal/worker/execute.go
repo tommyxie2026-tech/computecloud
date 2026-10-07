@@ -150,6 +150,10 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE", ErrorMessage: "environment provider unavailable"})
 		return
 	}
+	if !envreg.RuntimeBoundarySupported(envName, provider.Transport()) {
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "ENVIRONMENT_ISOLATION_UNSUPPORTED", ErrorMessage: "runtime transport cannot execute inside the requested environment"})
+		return
+	}
 	runtimeConfig := r
 	if a.Gateway != nil {
 		// Model Gateway credentials are Provider-owned. Do not inject the

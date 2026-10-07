@@ -87,6 +87,13 @@ func advertisedRuntimeCapabilities(provider adapter.Provider) []string {
 	caps := provider.Capabilities()
 	caps.Tools = toolreg.InstalledCompatible(caps.Tools)
 	caps.Environment = envreg.InstalledCompatible(caps.Environment)
+	compatible := caps.Environment[:0]
+	for _, name := range caps.Environment {
+		if envreg.RuntimeBoundarySupported(name, provider.Transport()) {
+			compatible = append(compatible, name)
+		}
+	}
+	caps.Environment = compatible
 	out := caps.Advertised()
 	if desc, ok, err := adapter.ControlDescriptorFor(provider); ok && err == nil {
 		for _, capability := range desc.Capabilities {

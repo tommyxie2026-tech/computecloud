@@ -62,18 +62,22 @@ func (fixtureEnvironmentProvider) Release(_ context.Context, ref envreg.Ref) (en
 }
 
 type environmentRemoteParser struct{}
+
 func (environmentRemoteParser) Line([]byte) error { return nil }
 func (environmentRemoteParser) Outcome() adapter.Outcome {
 	return adapter.Outcome{Final: true, Success: true, Result: "environment fixture ok"}
 }
 
 type environmentRemoteProvider struct{}
-func (environmentRemoteProvider) Profile() string { return "environment_remote_fixture" }
-func (environmentRemoteProvider) Version(r config.Runtime) string { return r.Version }
-func (environmentRemoteProvider) Transport() string { return "remote_api" }
-func (environmentRemoteProvider) Probe(context.Context, config.Runtime) error { return nil }
+
+func (environmentRemoteProvider) Profile() string                                    { return "environment_remote_fixture" }
+func (environmentRemoteProvider) Version(r config.Runtime) string                    { return r.Version }
+func (environmentRemoteProvider) Transport() string                                  { return "remote_api" }
+func (environmentRemoteProvider) Probe(context.Context, config.Runtime) error        { return nil }
 func (environmentRemoteProvider) Args(*pb.TaskSpec, config.Policy) ([]string, error) { return nil, nil }
-func (environmentRemoteProvider) Parser(func(string, []byte) error) adapter.StreamParser { return environmentRemoteParser{} }
+func (environmentRemoteProvider) Parser(func(string, []byte) error) adapter.StreamParser {
+	return environmentRemoteParser{}
+}
 func (environmentRemoteProvider) Prepare(req adapter.PrepareRequest) (adapter.PreparedExecution, error) {
 	found := false
 	for _, item := range req.Env {
@@ -86,13 +90,13 @@ func (environmentRemoteProvider) Prepare(req adapter.PrepareRequest) (adapter.Pr
 		return adapter.PreparedExecution{}, errors.New("environment-prepared env missing")
 	}
 	return adapter.PreparedExecution{
-		Profile: "environment_remote_fixture",
-		Runtime: req.Runtime,
-		Env: append([]string(nil), req.Env...),
-		CWD: req.CWD,
-		Input: req.Input,
-		Emit: req.Emit,
-		Stderr: req.Stderr,
+		Profile:   "environment_remote_fixture",
+		Runtime:   req.Runtime,
+		Env:       append([]string(nil), req.Env...),
+		CWD:       req.CWD,
+		Input:     req.Input,
+		Emit:      req.Emit,
+		Stderr:    req.Stderr,
 		StopGrace: req.StopGrace,
 	}, nil
 }
@@ -116,11 +120,19 @@ func (environmentRemoteProvider) Stop(context.Context, config.Runtime, adapter.E
 }
 func (environmentRemoteProvider) Capabilities() adapter.CapabilitySet {
 	return adapter.CapabilitySet{
-		Runtime: []string{"remote_api"},
+		Runtime:     []string{"remote_api"},
 		Environment: []string{fixtureEnvironmentName},
 	}
 }
 func (environmentRemoteProvider) SupportsGateway() bool { return false }
+
+type environmentLocalMisclaimProvider struct{ environmentRemoteProvider }
+
+func (environmentLocalMisclaimProvider) Profile() string   { return "environment_local_misclaim_fixture" }
+func (environmentLocalMisclaimProvider) Transport() string { return "local_cli" }
+func (environmentLocalMisclaimProvider) Capabilities() adapter.CapabilitySet {
+	return adapter.CapabilitySet{Runtime: []string{"local_cli"}, Environment: []string{fixtureEnvironmentName}}
+}
 
 var registerEnvironmentFixtures sync.Once
 
@@ -158,13 +170,13 @@ func environmentAssignment(t *testing.T, attempt string, cleanupUnknown bool) (*
 	w := &Worker{
 		db: db,
 		cfg: config.Worker{
-			DataDir: dir,
-			StopGraceMS: 50,
+			DataDir:              dir,
+			StopGraceMS:          50,
 			WorkspaceRetentionMS: 1000,
 			Runtimes: map[string]config.Runtime{
 				"environment_remote_fixture": {
-					Version: "fixture-v1",
-					Models: []string{"fixture-model"},
+					Version:     "fixture-v1",
+					Models:      []string{"fixture-model"},
 					Credentials: []string{"fixture-credential"},
 				},
 			},
@@ -176,19 +188,19 @@ func environmentAssignment(t *testing.T, attempt string, cleanupUnknown bool) (*
 		},
 	}
 	a := &pb.Assignment{
-		TaskId: "task-" + attempt,
-		AttemptId: attempt,
+		TaskId:     "task-" + attempt,
+		AttemptId:  attempt,
 		Generation: 1,
 		LeaseToken: "token",
 		Spec: &pb.TaskSpec{
-			RuntimeProfile: "environment_remote_fixture",
-			Model: "fixture-model",
-			CredentialRef: "fixture-credential",
-			PolicyRef: "policy",
-			AcceptanceProfile: "accept",
+			RuntimeProfile:       "environment_remote_fixture",
+			Model:                "fixture-model",
+			CredentialRef:        "fixture-credential",
+			PolicyRef:            "policy",
+			AcceptanceProfile:    "accept",
 			RequiredCapabilities: []string{"environment:" + fixtureEnvironmentName},
-			Workspace: &pb.Workspace{RepositoryRef: "repo", BaseCommit: commit},
-			Input: &pb.Input{Text: "environment fixture"},
+			Workspace:            &pb.Workspace{RepositoryRef: "repo", BaseCommit: commit},
+			Input:                &pb.Input{Text: "environment fixture"},
 		},
 	}
 	if _, err = db.SQL.Exec("INSERT INTO runs(id,assignment,state) VALUES(?,?,?)", a.AttemptId, enc(a), "ACCEPTED"); err != nil {
@@ -230,6 +242,40 @@ func TestEnvironmentProviderWrapsRuntimeExecution(t *testing.T) {
 	}
 }
 
+func TestLocalCLIRejectsClaimedRemoteEnvironmentBeforeStart(t *testing.T) {
+	ensureEnvironmentExecutionFixtures(t)
+	provider := environmentLocalMisclaimProvider{}
+	if _, ok := adapter.Lookup(provider.Profile()); !ok {
+		if err := adapter.Register(provider); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, capability := range advertisedRuntimeCapabilities(provider) {
+		if capability == "environment:"+fixtureEnvironmentName {
+			t.Fatal("host CLI advertised remote isolation")
+		}
+	}
+	w, a, closeFn := environmentAssignment(t, "local-misclaim", false)
+	defer closeFn()
+	a.Spec.RuntimeProfile = provider.Profile()
+	w.cfg.Runtimes[provider.Profile()] = config.Runtime{Version: "fixture-v1", Models: []string{"fixture-model"}, Credentials: []string{"fixture-credential"}}
+	if _, err := w.db.SQL.Exec("UPDATE runs SET assignment=? WHERE id=?", enc(a), a.AttemptId); err != nil {
+		t.Fatal(err)
+	}
+	w.execute(context.Background(), a)
+	var raw, runtimeRef []byte
+	if err := w.db.SQL.QueryRow("SELECT completion,runtime_ref FROM runs WHERE id=?", a.AttemptId).Scan(&raw, &runtimeRef); err != nil {
+		t.Fatal(err)
+	}
+	done := new(pb.CompleteRequest)
+	if err := dec(raw, done); err != nil {
+		t.Fatal(err)
+	}
+	if done.Success || done.ErrorCode != "ENVIRONMENT_ISOLATION_UNSUPPORTED" || len(runtimeRef) != 0 {
+		t.Fatalf("host execution escaped isolation fence: completion=%+v runtime_ref=%q", done, runtimeRef)
+	}
+}
+
 func TestEnvironmentCleanupUnknownFailsClosed(t *testing.T) {
 	w, a, closeFn := environmentAssignment(t, "attempt", true)
 	defer closeFn()
@@ -262,8 +308,8 @@ func TestEnvironmentCleanupUnknownFailsClosed(t *testing.T) {
 
 func TestRecoveryRequiresEnvironmentCleanupProof(t *testing.T) {
 	ensureEnvironmentExecutionFixtures(t)
-	for _, tc := range []struct{
-		id string
+	for _, tc := range []struct {
+		id    string
 		clean bool
 	}{
 		{"recovery-clean", true},
@@ -277,8 +323,8 @@ func TestRecoveryRequiresEnvironmentCleanupProof(t *testing.T) {
 		w := &Worker{
 			db: db,
 			cfg: config.Worker{
-				DataDir: dir,
-				StopGraceMS: 50,
+				DataDir:              dir,
+				StopGraceMS:          50,
 				WorkspaceRetentionMS: 1000,
 				Runtimes: map[string]config.Runtime{
 					"environment_remote_fixture": {Version: "fixture-v1"},
@@ -286,12 +332,12 @@ func TestRecoveryRequiresEnvironmentCleanupProof(t *testing.T) {
 			},
 		}
 		a := &pb.Assignment{
-			TaskId: "task-" + tc.id,
-			AttemptId: tc.id,
+			TaskId:     "task-" + tc.id,
+			AttemptId:  tc.id,
 			Generation: 1,
 			LeaseToken: "token",
 			Spec: &pb.TaskSpec{
-				RuntimeProfile: "environment_remote_fixture",
+				RuntimeProfile:       "environment_remote_fixture",
 				RequiredCapabilities: []string{"environment:" + fixtureEnvironmentName},
 			},
 		}
