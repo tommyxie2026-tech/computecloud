@@ -10,6 +10,7 @@
 
 | 文档 | 内容 | 状态 |
 | --- | --- | --- |
+| [自托管 Agent HTTP Runtime](implementation/agent-http-runtime.md) | Codex/Claude 固定版本、Unix HTTP 契约、OCI 服务镜像与尚待完成的每 Attempt 隔离 | ECO-02 代码切片；真实验收未完成 |
 | [多架构容器镜像部署与发布](deployment/container-images.md) | Server scratch、Worker Debian slim、amd64/arm64、size gate、GHCR/SBOM/provenance | 当前容器部署依据 |
 | [ADR-020：多架构最小容器镜像交付](adr/0020-multiarch-container-packaging.md) | 双 target image、体积预算、Runtime 不入基础 Worker、发布边界 | Accepted |
 | [ADR-021：Server–Worker Relay-assisted P2P 传输](adr/0021-relay-assisted-p2p-transport.md) | 直连优先、Relay 回退、内层 TLS 端到端、无状态转发与 P2P 边界 | 设计冻结，尚未实现 |
