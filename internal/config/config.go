@@ -52,6 +52,8 @@ type Server struct {
 }
 type Runtime struct {
 	Executable    string                       `yaml:"executable"`
+	Endpoint      string                       `yaml:"endpoint"`
+	TokenFile     string                       `yaml:"token_file"`
 	Version       string                       `yaml:"version"`
 	Models        []string                     `yaml:"models"`
 	Credentials   []string                     `yaml:"credentials"`
@@ -145,6 +147,7 @@ func Load(path string) (Config, error) {
 		if strings.ContainsRune(v.Executable, '/') {
 			v.Executable = abs(v.Executable)
 		}
+		v.TokenFile = abs(v.TokenFile)
 		for ref, env := range v.CredentialEnv {
 			for key, file := range env {
 				env[key] = abs(file)

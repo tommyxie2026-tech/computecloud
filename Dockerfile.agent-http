@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1.7
+ARG GO_IMAGE=golang:1.27.1-alpine
+ARG NODE_IMAGE=node:22-bookworm-slim
+
+FROM ${GO_IMAGE} AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /out/computecloud-agent-http ./cmd/computecloud-agent-http
+
+FROM ${NODE_IMAGE}
+ARG CODEX_VERSION=0.160.1
+ARG CLAUDE_VERSION=2.1.292
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates docker.io git openssh-client \
+ && rm -rf /var/lib/apt/lists/* \
+ && npm install -g "@openai/codex@${CODEX_VERSION}" "@anthropic-ai/claude-code@${CLAUDE_VERSION}" \
+ && npm cache clean --force \
+ && mkdir -p /run/computecloud-agent /var/lib/computecloud-agent/runs /workspace \
+ && chown -R 65532:65532 /run/computecloud-agent /var/lib/computecloud-agent /workspace
+COPY --from=build --chown=65532:65532 /out/computecloud-agent-http /usr/local/bin/computecloud-agent-http
+USER 65532:65532
+ENV HOME=/var/lib/computecloud-agent DISABLE_AUTOUPDATER=1
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/computecloud-agent-http"]

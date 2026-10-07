@@ -17,9 +17,9 @@ func (fixtureParser) Outcome() Outcome  { return Outcome{Final: true, Success: t
 
 type fixtureProvider struct{ profile string }
 
-func (f fixtureProvider) Profile() string { return f.profile }
-func (f fixtureProvider) Version(r config.Runtime) string { return r.Version }
-func (f fixtureProvider) Transport() string { return "remote_api" }
+func (f fixtureProvider) Profile() string                             { return f.profile }
+func (f fixtureProvider) Version(r config.Runtime) string             { return r.Version }
+func (f fixtureProvider) Transport() string                           { return "remote_api" }
 func (f fixtureProvider) Probe(context.Context, config.Runtime) error { return nil }
 func (f fixtureProvider) Args(*pb.TaskSpec, config.Policy) ([]string, error) {
 	return []string{"fixture"}, nil
@@ -53,7 +53,7 @@ func (f fixtureProvider) Capabilities() CapabilitySet {
 func (f fixtureProvider) SupportsGateway() bool { return false }
 
 func TestRuntimeV2BuiltinsAndCapabilityNamespaces(t *testing.T) {
-	wantProfiles := []string{"claude_print", "codex_exec", "gemini_cli"}
+	wantProfiles := []string{"claude_http", "claude_print", "codex_exec", "codex_http", "gemini_cli"}
 	got := Profiles()
 	if !reflect.DeepEqual(got, wantProfiles) {
 		t.Fatalf("profiles=%v want=%v", got, wantProfiles)
@@ -156,19 +156,28 @@ func TestRuntimeV2CompatibilityArgs(t *testing.T) {
 	}
 }
 
-
 type invalidCapabilityProvider struct{}
 
-func (invalidCapabilityProvider) Profile() string { return "invalid_capability_fixture" }
-func (invalidCapabilityProvider) Version(r config.Runtime) string { return r.Version }
-func (invalidCapabilityProvider) Transport() string { return "remote_api" }
-func (invalidCapabilityProvider) Probe(context.Context, config.Runtime) error { return nil }
+func (invalidCapabilityProvider) Profile() string                                    { return "invalid_capability_fixture" }
+func (invalidCapabilityProvider) Version(r config.Runtime) string                    { return r.Version }
+func (invalidCapabilityProvider) Transport() string                                  { return "remote_api" }
+func (invalidCapabilityProvider) Probe(context.Context, config.Runtime) error        { return nil }
 func (invalidCapabilityProvider) Args(*pb.TaskSpec, config.Policy) ([]string, error) { return nil, nil }
-func (invalidCapabilityProvider) Parser(func(string, []byte) error) StreamParser { return fixtureParser{} }
-func (invalidCapabilityProvider) Prepare(req PrepareRequest) (PreparedExecution, error) { return PreparedExecution{Profile: "invalid_capability_fixture", Runtime: req.Runtime}, nil }
-func (invalidCapabilityProvider) Start(context.Context, PreparedExecution, func(ExecutionRef) error) StartResult { return StartResult{} }
-func (invalidCapabilityProvider) Inspect(context.Context, config.Runtime, ExecutionRef) (Inspection, error) { return Inspection{State: RuntimeUnknown, Cleanup: CleanupUnknown}, nil }
-func (invalidCapabilityProvider) Stop(context.Context, config.Runtime, ExecutionRef, time.Duration) (StopResult, error) { return StopResult{State: RuntimeUnknown, Cleanup: CleanupUnknown}, nil }
+func (invalidCapabilityProvider) Parser(func(string, []byte) error) StreamParser {
+	return fixtureParser{}
+}
+func (invalidCapabilityProvider) Prepare(req PrepareRequest) (PreparedExecution, error) {
+	return PreparedExecution{Profile: "invalid_capability_fixture", Runtime: req.Runtime}, nil
+}
+func (invalidCapabilityProvider) Start(context.Context, PreparedExecution, func(ExecutionRef) error) StartResult {
+	return StartResult{}
+}
+func (invalidCapabilityProvider) Inspect(context.Context, config.Runtime, ExecutionRef) (Inspection, error) {
+	return Inspection{State: RuntimeUnknown, Cleanup: CleanupUnknown}, nil
+}
+func (invalidCapabilityProvider) Stop(context.Context, config.Runtime, ExecutionRef, time.Duration) (StopResult, error) {
+	return StopResult{State: RuntimeUnknown, Cleanup: CleanupUnknown}, nil
+}
 func (invalidCapabilityProvider) Capabilities() CapabilitySet {
 	return CapabilitySet{Runtime: []string{"runtime:already-qualified"}}
 }
@@ -179,7 +188,6 @@ func TestRuntimeV2RejectsMalformedCapabilityNamespace(t *testing.T) {
 		t.Fatal("provider with pre-qualified runtime capability was accepted")
 	}
 }
-
 
 func TestRuntimeExecutionRefRoundTrip(t *testing.T) {
 	ref := ExecutionRef{Provider: "fixture", Transport: "remote_api", ID: "run-123"}
@@ -221,7 +229,6 @@ func TestRemoteFixtureExecutionContractUsesNoLocalPID(t *testing.T) {
 		t.Fatalf("remote inspect=%+v err=%v", inspection, err)
 	}
 }
-
 
 func TestGeminiRuntimeV2Contract(t *testing.T) {
 	p, ok := Lookup("gemini_cli")

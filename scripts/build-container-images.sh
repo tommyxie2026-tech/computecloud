@@ -62,3 +62,14 @@ docker run --rm --entrypoint sh computecloud-worker:ci -ec '
   ! command -v codex >/dev/null
   ! command -v claude >/dev/null
 '
+
+# The Agent HTTP controller and per-Attempt runtime share one pinned filesystem.
+# This smoke test verifies the package versions without making model calls.
+docker buildx build --platform linux/amd64 -f Dockerfile.agent-http \
+  --load -t computecloud-agent-http:ci .
+docker run --rm --entrypoint /bin/sh computecloud-agent-http:ci -ec '
+  test "$(id -u)" = "65532"
+  codex --version | grep -F "0.160.1"
+  claude --version | grep -F "2.1.292"
+  command -v docker >/dev/null
+'

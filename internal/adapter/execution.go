@@ -55,29 +55,33 @@ type StopResult struct {
 }
 
 type PrepareRequest struct {
-	Runtime   config.Runtime
-	Spec      *pb.TaskSpec
-	Policy    config.Policy
-	Gateway   *pb.GatewayAccess
-	Env       []string
-	CWD       string
-	Input     string
-	Emit      func(string, []byte) error
-	Stderr    io.Writer
-	StopGrace time.Duration
+	AttemptID  string
+	Generation int64
+	Runtime    config.Runtime
+	Spec       *pb.TaskSpec
+	Policy     config.Policy
+	Gateway    *pb.GatewayAccess
+	Env        []string
+	CWD        string
+	Input      string
+	Emit       func(string, []byte) error
+	Stderr     io.Writer
+	StopGrace  time.Duration
 }
 
 type PreparedExecution struct {
-	Profile   string
-	Runtime   config.Runtime
-	Args      []string
-	Env       []string
-	CWD       string
-	Input     string
-	Emit      func(string, []byte) error
-	Stderr    io.Writer
-	StopGrace time.Duration
-	Sensitive []string
+	AttemptID  string
+	Generation int64
+	Profile    string
+	Runtime    config.Runtime
+	Args       []string
+	Env        []string
+	CWD        string
+	Input      string
+	Emit       func(string, []byte) error
+	Stderr     io.Writer
+	StopGrace  time.Duration
+	Sensitive  []string
 }
 
 type StartResult struct {
@@ -145,15 +149,17 @@ func prepareCLI(p Provider, req PrepareRequest) (PreparedExecution, error) {
 		return PreparedExecution{}, err
 	}
 	return PreparedExecution{
-		Profile:   p.Profile(),
-		Runtime:   req.Runtime,
-		Args:      append([]string(nil), args...),
-		Env:       copyEnv(req.Env),
-		CWD:       req.CWD,
-		Input:     req.Input,
-		Emit:      req.Emit,
-		Stderr:    req.Stderr,
-		StopGrace: req.StopGrace,
+		AttemptID:  req.AttemptID,
+		Generation: req.Generation,
+		Profile:    p.Profile(),
+		Runtime:    req.Runtime,
+		Args:       append([]string(nil), args...),
+		Env:        copyEnv(req.Env),
+		CWD:        req.CWD,
+		Input:      req.Input,
+		Emit:       req.Emit,
+		Stderr:     req.Stderr,
+		StopGrace:  req.StopGrace,
 	}, nil
 }
 

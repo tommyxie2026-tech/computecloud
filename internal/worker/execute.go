@@ -254,16 +254,18 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 	w.recordEnvironmentSignal(envName, time.Since(environmentStarted).Milliseconds())
 	stderr := &capped{limit: 1 << 20}
 	prepared, e := provider.Prepare(adapter.PrepareRequest{
-		Runtime:   runtimeConfig,
-		Spec:      a.Spec,
-		Policy:    policy,
-		Gateway:   a.Gateway,
-		Env:       environmentPrepared.Env,
-		CWD:       environmentPrepared.CWD,
-		Input:     jobRun.prompt,
-		Emit:      func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) },
-		Stderr:    stderr,
-		StopGrace: time.Duration(w.cfg.StopGraceMS) * time.Millisecond,
+		AttemptID:  a.AttemptId,
+		Generation: a.Generation,
+		Runtime:    runtimeConfig,
+		Spec:       a.Spec,
+		Policy:     policy,
+		Gateway:    a.Gateway,
+		Env:        environmentPrepared.Env,
+		CWD:        environmentPrepared.CWD,
+		Input:      jobRun.prompt,
+		Emit:       func(kind string, b []byte) error { return w.emit(persistCtx, a, kind, redact(b, secrets)) },
+		Stderr:     stderr,
+		StopGrace:  time.Duration(w.cfg.StopGraceMS) * time.Millisecond,
 	})
 	if e != nil {
 		code := "INVALID_POLICY"

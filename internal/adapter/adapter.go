@@ -18,13 +18,13 @@ import (
 )
 
 type Outcome struct {
-	UsageComplete bool
-	Usage         *telemetry.Tokens
-	Final         bool
-	Success       bool
-	Result        string
-	Session       string
-	Code          string
+	UsageComplete bool              `json:"usage_complete"`
+	Usage         *telemetry.Tokens `json:"usage,omitempty"`
+	Final         bool              `json:"final"`
+	Success       bool              `json:"success"`
+	Result        string            `json:"result,omitempty"`
+	Session       string            `json:"session,omitempty"`
+	Code          string            `json:"code,omitempty"`
 }
 
 type StreamParser interface {
@@ -92,8 +92,8 @@ var registry = struct {
 
 func validateCapabilitySet(c CapabilitySet) error {
 	for namespace, values := range map[string][]string{
-		"runtime": c.Runtime,
-		"tool": c.Tools,
+		"runtime":     c.Runtime,
+		"tool":        c.Tools,
 		"environment": c.Environment,
 	} {
 		seen := map[string]bool{}
@@ -169,7 +169,7 @@ func probeCLI(ctx context.Context, r config.Runtime) error {
 
 type codexProvider struct{}
 
-func (codexProvider) Profile() string { return "codex_exec" }
+func (codexProvider) Profile() string                                   { return "codex_exec" }
 func (codexProvider) Probe(ctx context.Context, r config.Runtime) error { return probeCLI(ctx, r) }
 func (codexProvider) Args(spec *pb.TaskSpec, policy config.Policy) ([]string, error) {
 	if policy.CodexSandbox != "read-only" && policy.CodexSandbox != "workspace-write" {
@@ -192,7 +192,7 @@ func (codexProvider) SupportsGateway() bool { return true }
 
 type claudeProvider struct{}
 
-func (claudeProvider) Profile() string { return "claude_print" }
+func (claudeProvider) Profile() string                                   { return "claude_print" }
 func (claudeProvider) Probe(ctx context.Context, r config.Runtime) error { return probeCLI(ctx, r) }
 func (claudeProvider) Args(spec *pb.TaskSpec, policy config.Policy) ([]string, error) {
 	if policy.ClaudePermissionMode != "dontAsk" {
@@ -219,7 +219,7 @@ func (claudeProvider) SupportsGateway() bool { return false }
 
 type geminiProvider struct{}
 
-func (geminiProvider) Profile() string { return "gemini_cli" }
+func (geminiProvider) Profile() string                                   { return "gemini_cli" }
 func (geminiProvider) Probe(ctx context.Context, r config.Runtime) error { return probeCLI(ctx, r) }
 func (geminiProvider) Args(spec *pb.TaskSpec, policy config.Policy) ([]string, error) {
 	if policy.GeminiApprovalMode != "plan" && policy.GeminiApprovalMode != "auto_edit" {

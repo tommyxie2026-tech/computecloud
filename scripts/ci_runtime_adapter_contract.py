@@ -27,8 +27,8 @@ def main():
     logs.mkdir(parents=True, exist_ok=True)
 
     result = run([
-        "go", "test", "./internal/adapter", "./internal/worker",
-        "-run", "BuiltinProvidersAdvertiseOnlyCertifiedControlCapabilities|BuiltinControlDescriptorMatchesRuntimeCapabilities|RuntimeV2BuiltinsAndCapabilityNamespaces|RuntimeExecutionRefRoundTrip|RemoteRuntimeExecutesWithoutLocalAgentProcess",
+        "go", "test", "./internal/adapter", "./internal/agenthttp", "./internal/worker",
+        "-run", "BuiltinProvidersAdvertiseOnlyCertifiedControlCapabilities|BuiltinControlDescriptorMatchesRuntimeCapabilities|RuntimeV2BuiltinsAndCapabilityNamespaces|RuntimeExecutionRefRoundTrip|RemoteRuntimeExecutesWithoutLocalAgentProcess|HTTPRuntime|RunLifecycle|RunRejects|EnvironmentFile",
         "-count=1", "-v",
     ])
 
@@ -75,6 +75,8 @@ def main():
             "interactive_capabilities_fail_closed": True,
             "runtime_execution_ref": True,
             "remote_provider_transport_neutral": True,
+            "self_hosted_http_contract": True,
+            "docker_attempt_command_contract": True,
         },
         "violations": violations,
         "command": result["command"],
@@ -86,6 +88,11 @@ def main():
     if result["returncode"] != 0:
         sys.stderr.write(result["stdout"])
         sys.stderr.write(result["stderr"])
+        failures = [line for line in (result["stdout"] + "\n" + result["stderr"]).splitlines()
+                    if "--- FAIL:" in line or "panic:" in line or "server_test.go:" in line
+                    or "http_runtime_test.go:" in line or "runtime_execution_test.go:" in line]
+        for line in failures[:8]:
+            print("::error::" + line.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
     if violations:
         sys.stderr.write("runtime adapter contract violations: " + json.dumps(violations) + "\n")
     if status != "PASSED":
