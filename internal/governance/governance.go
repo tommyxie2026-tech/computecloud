@@ -179,6 +179,36 @@ func DecideTx(ctx context.Context, q store.Query, actor Actor, goalID string, in
 	return out, err
 }
 
+// ConsumeReplanPermissionTx consumes a human approval at most once. Call it in
+// the same Server transaction that publishes the guarded Plan and Job; a
+// rollback must restore the permission. It never launches work by itself.
+func ConsumeReplanPermissionTx(ctx context.Context, q store.Query, goalID, operationID string, planRevision, graphGeneration int64) error {
+	if goalID == "" || !job.ValidKey(operationID) || planRevision < 1 || graphGeneration < 1 {
+		return fail("INVALID_REPLAN_PERMISSION")
+	}
+	result, err := q.ExecContext(ctx, `UPDATE goal_replan_permissions SET consumed=1
+WHERE goal_id=? AND operation_id=? AND plan_revision=? AND graph_generation=? AND consumed=0
+AND EXISTS (SELECT 1 FROM goals g WHERE g.id=goal_replan_permissions.goal_id
+ AND g.active_plan_revision=goal_replan_permissions.plan_revision
+ AND g.active_graph_generation=goal_replan_permissions.graph_generation
+ AND g.state='NEEDS_APPROVAL')
+AND EXISTS (SELECT 1 FROM goal_governance_decisions d
+ WHERE d.goal_id=goal_replan_permissions.goal_id
+ AND d.operation_id=goal_replan_permissions.operation_id
+ AND d.action='APPROVE_NEXT_REPLAN')`, goalID, operationID, planRevision, graphGeneration)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fail("REPLAN_PERMISSION_UNAVAILABLE")
+	}
+	return nil
+}
+
 type Usage struct {
 	ID, AttemptID, Source string
 	Tokens, CostUnits     *int64

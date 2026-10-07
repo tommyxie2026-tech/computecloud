@@ -24,6 +24,14 @@ under a finite budget. Conflicting repeated usage IDs are rejected. Accounting
 ceilings cannot claim a runtime hard cap: runtimes without enforceable per-Attempt
 limits cannot opt into autonomous finite token/cost execution.
 
+The staged `GuardAndPublishReplan` transaction contract now lets a caller run
+Guard, one-use approval consumption, and Plan/Job publication atomically. A
+failed callback rolls all three back; stale or repeated approval consumption
+fails closed. An allowed decision replay also fails closed until a Server
+integration can prove the earlier Plan/Job publication committed. There is not
+yet a Server caller that creates a new immutable Plan and Job from this contract,
+so automatic Re-plan remains disabled and RPG remains PARTIAL.
+
 This contract does not introduce policy DSL, broad RBAC, Planner implementation,
 or arbitrary Workflow Engine. RPG CLOSED requires actual publication, cancellation,
 usage enforcement and Control bridge integration plus negative/recovery gates.
@@ -44,6 +52,7 @@ a finite usage budget therefore fences future assignments with
 already-frozen execution contracts. This is an opt-in accounting/governance
 foundation, not a runtime spend-control release. Unreported terminal Attempt usage
 is recorded as incomplete with null amounts. The Guard blocks unknown/exhausted
-accounting, but automatic re-plan publication and permission consumption are still
-pending. Evidence/constraint decisions are provenance only; frozen Jobs remain
+accounting. The one-use permission transaction primitive is implemented, but
+Server Plan/Job publication and enforceable Runtime caps remain pending.
+Evidence/constraint decisions are provenance only; frozen Jobs remain
 immutable. These limits keep RPG PARTIAL.

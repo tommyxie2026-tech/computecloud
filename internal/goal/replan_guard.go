@@ -128,6 +128,22 @@ func RegisterPlanFingerprint(ctx context.Context, db *store.DB, goalID string, r
 }
 
 func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDecision, error) {
+	return guardReplan(ctx, db, in, "", nil)
+}
+
+// GuardAndPublishReplan runs the Guard, optional one-use approval consumption,
+// and caller publication in one SQLite transaction. Publication must create the
+// immutable Plan and Job for the returned revision. Existing allowed decisions
+// fail closed until the Server can prove that a prior publication committed.
+// It must not launch work before this transaction commits.
+func GuardAndPublishReplan(ctx context.Context, db *store.DB, in ReplanRequest, approvalOperationID string, publish func(context.Context, store.Query, ReplanDecision) error) (ReplanDecision, error) {
+	if publish == nil {
+		return ReplanDecision{}, fmt.Errorf("replan publication required")
+	}
+	return guardReplan(ctx, db, in, approvalOperationID, publish)
+}
+
+func guardReplan(ctx context.Context, db *store.DB, in ReplanRequest, approvalOperationID string, publish func(context.Context, store.Query, ReplanDecision) error) (ReplanDecision, error) {
 	if in.ID == "" || in.GoalID == "" || in.EvaluationID == "" {
 		return ReplanDecision{}, fmt.Errorf("replan request id, goal id and evaluation id are required")
 	}
@@ -173,6 +189,9 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 			out.Code = existingCode
 			out.NextPlanRevision = existingPlan
 			out.NextGraphGeneration = existingGraph
+			if out.Allowed && publish != nil {
+				return fmt.Errorf("REPLAN_PUBLICATION_REPLAY_UNVERIFIED")
+			}
 			return nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -302,6 +321,15 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 			requestState, code = "NEEDS_APPROVAL", DecisionNoProgress
 			nextPlan, nextGraph = 0, 0
 		}
+		if requestState == DecisionAllowed && publish != nil {
+			if state == "NEEDS_APPROVAL" {
+				if err = governance.ConsumeReplanPermissionTx(ctx, q, in.GoalID, approvalOperationID, activePlan, activeGraph); err != nil {
+					return err
+				}
+			} else if approvalOperationID != "" {
+				return fmt.Errorf("REPLAN_PERMISSION_NOT_REQUIRED")
+			}
+		}
 
 		if _, err = q.ExecContext(ctx,
 			"INSERT INTO replan_requests(id,goal_id,evaluation_id,expected_plan_revision,expected_graph_generation,reason_code,state,decision_code,next_plan_revision,next_graph_generation,created,decided,failure_class,evidence_fingerprint,proposed_plan_fingerprint,strategy_signature,strategy_delta_json,progress_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -366,6 +394,9 @@ func GuardReplan(ctx context.Context, db *store.DB, in ReplanRequest) (ReplanDec
 		out.Code = code
 		out.NextPlanRevision = nextPlan
 		out.NextGraphGeneration = nextGraph
+		if out.Allowed && publish != nil {
+			return publish(ctx, q, out)
+		}
 		return nil
 	})
 	return out, err
