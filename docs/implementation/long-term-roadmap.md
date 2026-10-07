@@ -1,6 +1,6 @@
 # computecloud Agent-aware Distributed Job Execution Platform 长期路线图
 
-> 2026-10-06 执行更新：P0、缓存、readiness 观测、synthetic Goal 执行、治理审计与 Control 产物审阅已分批合入。RPG 完整闭环、生产验收、完整 Relay 与 Mobile Beta 尚未完成；当前证据与剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 为准。
+> 2026-10-07 执行更新：P0、缓存及 provider fixture P50、readiness 观测、synthetic Goal 执行、治理审计与 Control 产物审阅已分批合入。RPG 完整闭环、真实 Worker/Job 与独立主机生产验收、完整 Relay 与 Mobile Beta 尚未完成；当前证据与剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 为准。
 当前执行台账：[P0–P2 实施与验收](p0-p2-execution.md)（2026-10-06）。
 
 - 项目：computecloud
@@ -14,7 +14,7 @@
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
 - 当前实现依据：[v0.4.6 发布记录](v0.4.6-release-status.md)、[Prepared Workspace Core](prepared-workspace-core.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[P0–P2 实施台账](p0-p2-execution.md)；当前 main Server v16 / Worker v6；v0.4.6 tag Server v13
-- 当前实施跟踪：WS-A Core、WS-B 缓存基础、WS-C readiness 观测、synthetic Goal 执行/评估、Goal 治理审计和 C1 Observe PWA 已合入 main；WS-B 性能/生产验收、WS-C scoring、RPG 原子发布与预算上限、完整 Relay 和 Mobile Beta 未完成。Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实施跟踪：WS-A Core、WS-B 缓存基础及 provider fixture P50 Gate、WS-C readiness 观测、synthetic Goal 执行/评估、Goal 治理审计和 C1 Observe PWA 已合入 main；WS-B 真实 Worker/Job 性能与生产验收、WS-C scoring、RPG 原子发布与预算上限、完整 Relay 和 Mobile Beta 未完成。Production Baseline 继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
 

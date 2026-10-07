@@ -183,7 +183,7 @@ AND ProgressNotStalled
 
 ## 当前主线：Prepared Workspace 验收
 
-Prepared Workspace / Workspace Template 与缓存、warm pool、有界 GC 和观测已合入 main。当前重点是用代表性工作负载复核准备时延、并发影响和独立主机上的完整 Job 效果，同时保持 Workspace 可恢复、可审计。本机 macOS provider fixture 已达到缓存 P50 ≤ cold P50 40% 的目标；Linux CI 增加显式比值 Gate，真实 Worker/Job 性能验收仍待执行。
+Prepared Workspace / Workspace Template 与缓存、warm pool、有界 GC 和观测已合入 main。当前重点是用代表性工作负载复核准备时延、并发影响和独立主机上的完整 Job 效果，同时保持 Workspace 可恢复、可审计。本机 macOS 与 Linux CI provider fixture 已达到缓存 P50 ≤ cold P50 40% 的目标；真实 Worker/Job 性能验收仍待执行。
 
 主要方向：
 
