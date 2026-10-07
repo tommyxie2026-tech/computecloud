@@ -21,6 +21,7 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费和可强制的 Runtime token/cost 上限未完成，RPG-4 仍为 PARTIAL；完成后关闭，不新增 RPG-5
 - 当前 main Server schema：**v16**（Goal 执行与治理迁移）（v0.4.6 tag 为 v13）；Worker schema：**v6**
 - 下一轮任务与缺口：[P0–P2 实施台账](docs/implementation/p0-p2-execution.md)；优先验证缓存目标与独立主机生产基线，再完成 Goal 安全闭环，最后推进 Relay/Mobile 未完成的交付 Gate
+- 认证模拟 Gate：[CI 范围与证据](docs/validation/certification-simulation.md) 汇总 v13→v16 升级/恢复、单 runner 双 Worker、Relay 回退和缓存 P50；它不代表真实独立主机、真实 Runtime 或生产环境验收
 - 发布状态以 [GitHub Actions](https://github.com/tommyxie2026-tech/computecloud/actions) 与 [GitHub Releases](https://github.com/tommyxie2026-tech/computecloud/releases) 为准；代码实现完成不等于已发布
 
 当前演进关系：
@@ -182,7 +183,7 @@ AND ProgressNotStalled
 
 ## 当前主线：Prepared Workspace 验收
 
-Prepared Workspace / Workspace Template 与缓存、warm pool、有界 GC 和观测已合入 main。当前重点是用代表性工作负载复核准备时延、并发影响和独立主机上的完整 Job 效果，同时保持 Workspace 可恢复、可审计。现有单机 provider fixture 的缓存 P50 尚未达到原定 cold P50 的 40% 目标，不视为性能验收完成。
+Prepared Workspace / Workspace Template 与缓存、warm pool、有界 GC 和观测已合入 main。当前重点是用代表性工作负载复核准备时延、并发影响和独立主机上的完整 Job 效果，同时保持 Workspace 可恢复、可审计。本机 macOS 与 Linux CI provider fixture 已达到缓存 P50 ≤ cold P50 40% 的目标；真实 Worker/Job 性能验收仍待执行。
 
 主要方向：
 
