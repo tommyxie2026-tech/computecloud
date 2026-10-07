@@ -7,8 +7,8 @@
 - 适用周期：未来 4–6 周
 - 当前稳定发布基线：v0.4.6 Post-0.4.5 Stabilization
 - 当前 main 功能基线：v0.4.x Runtime / Tool / Environment、Prepared Workspace、synthetic Goal、实验性 Relay（Server v16 / Worker v6）
-- 当前产品主线：Prepared Workspace 性能与生产验收；随后完成 Goal 安全闭环
-- 并行旁路：RPG-4 PARTIAL / Goal Governance 原子发布、Relay/Mobile 后续 Gate
+- 当前产品主线：先完成 Goal、Runtime/Environment、Trigger/Delivery 与 Relay 代码闭环；最后进行真实双机、Prepared Workspace 性能与生产验收
+- 并行旁路：RPG-4 PARTIAL / Goal Governance Server Plan/Job 原子发布、Relay/Mobile 后续 Gate；一次性审批消费和 CI Trigger/Delivery 首个适配器已合入
 - 原则：**并行开发不等于架构拆服务；继续保持单 Go Server + SQLite，优先通过 package / contract / CI Gate 隔离并行工作。**
 
 ## 0. 当前认领状态

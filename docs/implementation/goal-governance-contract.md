@@ -26,9 +26,10 @@ limits cannot opt into autonomous finite token/cost execution.
 
 The staged `GuardAndPublishReplan` transaction contract now lets a caller run
 Guard, one-use approval consumption, and Plan/Job publication atomically. A
-failed callback rolls all three back; stale or repeated approval consumption
-fails closed. An allowed decision replay also fails closed until a Server
-integration can prove the earlier Plan/Job publication committed. There is not
+failed or empty publication rolls all three back; stale or repeated approval
+consumption fails closed. An allowed decision replay returns the existing decision only
+when an immutable Plan, bound Job and matching frozen spec prove publication;
+otherwise it fails closed. There is not
 yet a Server caller that creates a new immutable Plan and Job from this contract,
 so automatic Re-plan remains disabled and RPG remains PARTIAL.
 

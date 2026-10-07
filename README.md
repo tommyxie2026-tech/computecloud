@@ -14,7 +14,7 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - v0.4.6 已通过完整 CI、package、multi-arch container 与 release；发布范围和升级步骤见 [v0.4.6 部署指南](docs/deployment/production-v0.4.6.md)，验收证据见 [v0.4.6 发布记录](docs/implementation/v0.4.6-release-status.md)
 - main 功能基线：**v0.4.x Runtime / Tool / Environment + Prepared Workspace、synthetic Goal 与实验性 Relay**（尚未发布为新的稳定版本）
 - 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
-- 当前功能主线：**先完成 Goal、Runtime/Environment、Trigger/Delivery 与 Relay 的代码闭环**；真实双机、缓存性能和生产验收放在候选范围冻结之后
+- 当前功能主线：**先完成 Goal、Runtime/Environment、Trigger/Delivery 与 Relay 的代码闭环**；真实双机、缓存性能和生产验收放在候选范围冻结之后。CI Trigger/Delivery 的 CLI 适配器和本地交付记录已合入，真实 CI→Server 验收仍待完成
 - Relay/P2P 当前进度：Transport seam、实验性 TLS Relay fixture、direct-first fallback 与 Worker 双 Job 恢复 Gate 已合入；`direct` 仍为默认路径，票据自动分发、显式配置接线、真实 NAT/长任务验收未完成
 - Relay 设计与实施计划：[ADR-021](docs/adr/0021-relay-assisted-p2p-transport.md) / [v0.4.x Relay 传输计划](docs/implementation/relay-p2p-transport-plan.md)
 - 下一步 Relay：完成无人值守票据分发与 Worker/Server 显式 opt-in 接线，再做流量优先级、运维和真实网络验收
