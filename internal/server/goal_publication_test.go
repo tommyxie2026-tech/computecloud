@@ -15,7 +15,7 @@ func replanProposal(goalID, evaluationID string, spec job.Spec) goal.ReplanReque
 		ID: "proposal-1", GoalID: goalID, EvaluationID: evaluationID,
 		ExpectedPlanRevision: 1, ExpectedGraphGeneration: 1,
 		ReasonCode: "NEW_EVIDENCE",
-		Evidence:   goal.ReplanEvidence{FailureClass: goal.FailureInvalidAssumption, Evidence: []goal.Evidence{{Type: "test_failure", ArtifactID: "artifact-1", Fact: "new evidence"}}},
+		Evidence:   goal.ReplanEvidence{FailureClass: goal.FailureTest, Evidence: []goal.Evidence{{Type: "job_evaluation", Fact: "TEST_FAILURE"}}},
 		ProposedPlan: goal.PlanCanonical{
 			Strategy: "retry-with-fix", StrategyClass: "bounded-retry", DependencySignature: "single",
 			RequiredCapabilities: []string{"runtime:codex_exec"}, KeyAssumptions: []string{"fix available"},
@@ -89,6 +89,16 @@ func TestServerGoalReplanRejectsMismatchAndRollsBack(t *testing.T) {
 	forged.EvaluationID = "forged-evaluation"
 	if _, _, err := s.PublishGoalReplan(ctx, prior.ID, forged, "", job.JSON(spec)); err == nil {
 		t.Fatal("unverified evaluation accepted")
+	}
+	forged = proposal
+	forged.Evidence.Evidence = []goal.Evidence{{Type: "job_evaluation", Fact: "fabricated failure"}}
+	if _, _, err := s.PublishGoalReplan(ctx, prior.ID, forged, "", job.JSON(spec)); err == nil {
+		t.Fatal("fabricated evaluation evidence accepted")
+	}
+	forged = proposal
+	forged.Evidence.Evidence = []goal.Evidence{{Type: "job_evaluation", ArtifactID: "unverified-artifact", Fact: "TEST_FAILURE"}}
+	if _, _, err := s.PublishGoalReplan(ctx, prior.ID, forged, "", job.JSON(spec)); err == nil {
+		t.Fatal("unverified artifact reference accepted")
 	}
 	badSpec := spec
 	badSpec.Input.Text = "different input"
