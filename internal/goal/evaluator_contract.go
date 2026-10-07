@@ -88,6 +88,7 @@ type PlanCanonical struct {
 	KeyAssumptions       []string
 	EvaluationStrategy   string
 	SideEffectClass      string
+	JobSpecHash          string
 }
 
 func (p PlanCanonical) Validate() error {
@@ -100,7 +101,19 @@ func (p PlanCanonical) Validate() error {
 	if len(p.RequiredCapabilities) > 64 || len(p.KeyAssumptions) > 64 {
 		return fmt.Errorf("too many plan canonical entries")
 	}
+	if p.JobSpecHash != "" && (len(p.JobSpecHash) != 64 || !hexHash(p.JobSpecHash)) {
+		return fmt.Errorf("invalid plan job spec hash")
+	}
 	return nil
+}
+
+func hexHash(v string) bool {
+	for _, c := range v {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 func (p PlanCanonical) Fingerprint() string {
@@ -116,10 +129,12 @@ func (p PlanCanonical) Fingerprint() string {
 		KeyAssumptions       []string
 		EvaluationStrategy   string
 		SideEffectClass      string
+		JobSpecHash          string `json:",omitempty"`
 	}{
 		Strategy: p.Strategy, StrategyClass: p.StrategyClass, DependencySignature: p.DependencySignature,
 		RequiredCapabilities: caps, KeyAssumptions: assumptions,
 		EvaluationStrategy: p.EvaluationStrategy, SideEffectClass: p.SideEffectClass,
+		JobSpecHash: p.JobSpecHash,
 	})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
@@ -135,7 +150,6 @@ func validFailureClass(v FailureClass) bool {
 		return false
 	}
 }
-
 
 type StrategyDelta struct {
 	ChangedDimensions []string
@@ -163,20 +177,20 @@ func (p PlanCanonical) StrategySignature() string {
 		DependencySignature string
 		SideEffectClass     string
 	}{
-		StrategyClass: strings.TrimSpace(p.StrategyClass),
+		StrategyClass:       strings.TrimSpace(p.StrategyClass),
 		DependencySignature: strings.TrimSpace(p.DependencySignature),
-		SideEffectClass: strings.TrimSpace(p.SideEffectClass),
+		SideEffectClass:     strings.TrimSpace(p.SideEffectClass),
 	})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
 
 type ProgressSnapshot struct {
-	AcceptedChecks       int
-	FailedChecks         int
-	UnknownChecks        int
-	ResolvedAssumptions  int
-	UnresolvedBlockers   int
+	AcceptedChecks      int
+	FailedChecks        int
+	UnknownChecks       int
+	ResolvedAssumptions int
+	UnresolvedBlockers  int
 }
 
 func (p ProgressSnapshot) Validate() error {
