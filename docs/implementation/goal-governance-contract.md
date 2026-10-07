@@ -30,8 +30,11 @@ failed or empty publication rolls all three back; stale or repeated approval
 consumption fails closed. An allowed decision replay returns the existing decision only
 when an immutable Plan, bound Job and matching frozen spec prove publication;
 otherwise it fails closed. The Server now has an internal explicit-proposal
-publication path: it requires a durable failed evaluation, a Plan fingerprint
-bound to the concrete Job spec, authorized credentials and templates, and
+publication path: it requires a durable failed evaluation and accepts only the
+evaluator's persisted `job_evaluation` failure fact as Re-plan evidence. Richer
+Artifact claims remain unavailable until their facts can be verified. The path
+also requires a Plan fingerprint bound to the concrete Job spec, authorized
+credentials and templates, and
 commits the new Job, Stage/Task, Plan and binding together. It is not exposed as
 an automatic or public proposal API. Automatic Re-plan remains disabled and RPG
 remains PARTIAL.

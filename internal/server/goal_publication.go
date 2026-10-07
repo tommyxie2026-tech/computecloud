@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/goal"
@@ -52,14 +54,17 @@ func (s *Server) PublishGoalReplan(ctx context.Context, priorJobID string, in go
 	if prior.State != "FAILED" || in.EvaluationID != fmt.Sprintf("%s:%d", prior.ID, prior.Version) {
 		return nil, empty, status.Error(codes.FailedPrecondition, "REPLAN_EVALUATION_UNVERIFIED")
 	}
-	var evaluationCount int
-	if err := s.db.SQL.QueryRowContext(ctx, `SELECT count(*) FROM goal_evaluations
- WHERE goal_id=? AND graph_generation=? AND job_id=? AND job_version=? AND verdict='FAILED'`,
-		in.GoalID, in.ExpectedGraphGeneration, prior.ID, prior.Version).Scan(&evaluationCount); err != nil {
+	var evaluationBody []byte
+	if err := s.db.SQL.QueryRowContext(ctx, `SELECT evidence_json FROM goal_evaluations
+	 WHERE goal_id=? AND graph_generation=? AND job_id=? AND job_version=? AND verdict='FAILED'`,
+		in.GoalID, in.ExpectedGraphGeneration, prior.ID, prior.Version).Scan(&evaluationBody); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, empty, status.Error(codes.FailedPrecondition, "REPLAN_EVALUATION_UNVERIFIED")
+		}
 		return nil, empty, dbErr(err)
 	}
-	if evaluationCount != 1 {
-		return nil, empty, status.Error(codes.FailedPrecondition, "REPLAN_EVALUATION_UNVERIFIED")
+	if !proposalMatchesEvaluation(in.Evidence, evaluationBody, prior.ID, in.ExpectedPlanRevision) {
+		return nil, empty, status.Error(codes.InvalidArgument, "REPLAN_EVIDENCE_UNVERIFIED")
 	}
 	jobID := store.ID()
 	key := "goal-replan-" + job.Hash([]byte(in.GoalID + "/" + in.EvaluationID))[:32]
@@ -200,4 +205,38 @@ func (s *Server) PublishGoalReplan(ctx context.Context, priorJobID string, in go
 	}
 	created.Existing = decision.Existing
 	return created, decision, nil
+}
+
+// The initial explicit proposal path accepts only the failure fact persisted by
+// the evaluator. Richer artifact facts need their own verifiable provenance.
+func proposalMatchesEvaluation(in goal.ReplanEvidence, raw []byte, jobID string, revision int64) bool {
+	var record struct {
+		JobID        string `json:"job_id"`
+		JobState     string `json:"job_state"`
+		Reason       string `json:"reason"`
+		PlanRevision int64  `json:"plan_revision"`
+	}
+	if json.Unmarshal(raw, &record) != nil || record.JobID != jobID || record.PlanRevision != revision || record.JobState != "FAILED" {
+		return false
+	}
+	reason := strings.TrimSpace(record.Reason)
+	if reason == "" {
+		reason = "JOB_FAILED"
+	}
+	class := goal.FailureUnknown
+	switch reason {
+	case "TEST_FAILURE":
+		class = goal.FailureTest
+	case "TIMEOUT":
+		class = goal.FailureTimeout
+	case "CAPABILITY_UNAVAILABLE":
+		class = goal.FailureMissingCapability
+	case "PERMISSION_DENIED":
+		class = goal.FailurePermissionDenied
+	case "RESOURCE_EXHAUSTED":
+		class = goal.FailureResourceExhausted
+	}
+	return in.FailureClass == class && len(in.Evidence) == 1 &&
+		in.Evidence[0].Type == "job_evaluation" && in.Evidence[0].ArtifactID == "" &&
+		in.Evidence[0].Fact == reason
 }
