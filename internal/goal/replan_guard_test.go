@@ -242,6 +242,12 @@ func TestGuardPublicationReplayRequiresCommittedPlanJobBinding(t *testing.T) {
 	if _, err := GuardAndPublishReplan(ctx, db, in, "", publish); err == nil || err.Error() != "REPLAN_PUBLICATION_REPLAY_UNVERIFIED" {
 		t.Fatalf("mismatched frozen Job accepted: %v", err)
 	}
+	if _, err := db.SQL.Exec(`UPDATE jobs SET spec='{"spec":"frozen"}',owner='other' WHERE id='replan-job-2'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GuardAndPublishReplan(ctx, db, in, "", publish); err == nil || err.Error() != "REPLAN_PUBLICATION_REPLAY_UNVERIFIED" {
+		t.Fatalf("cross-owner Job accepted: %v", err)
+	}
 }
 
 func TestGuardReplanIsIdempotentPerEvaluation(t *testing.T) {

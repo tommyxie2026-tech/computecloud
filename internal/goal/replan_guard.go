@@ -422,9 +422,11 @@ func guardReplan(ctx context.Context, db *store.DB, in ReplanRequest, approvalOp
 func publishedReplanExists(ctx context.Context, q store.Query, goalID string, revision, generation int64) (bool, error) {
 	var count int
 	err := q.QueryRowContext(ctx, `SELECT count(*) FROM goal_plans p
+ JOIN goals g ON g.id=p.goal_id
  JOIN goal_job_bindings b ON b.goal_id=p.goal_id AND b.plan_revision=p.revision
   AND b.graph_generation=p.graph_generation AND b.job_id=p.job_id
  JOIN jobs j ON j.id=p.job_id AND j.spec=p.frozen_spec
+  AND j.owner=g.owner AND j.project=g.project
  WHERE p.goal_id=? AND p.revision=? AND p.graph_generation=?
   AND length(p.graph_json)>0`, goalID, revision, generation).Scan(&count)
 	return count == 1, err
