@@ -14,14 +14,14 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - v0.4.6 已通过完整 CI、package、multi-arch container 与 release；发布范围和升级步骤见 [v0.4.6 部署指南](docs/deployment/production-v0.4.6.md)，验收证据见 [v0.4.6 发布记录](docs/implementation/v0.4.6-release-status.md)
 - main 功能基线：**v0.4.x Runtime / Tool / Environment + Prepared Workspace、synthetic Goal 与实验性 Relay**（尚未发布为新的稳定版本）
 - 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
-- 当前功能主线：**Prepared Workspace 缓存性能与生产验收**；随后完成 Goal 安全闭环，Relay 与 Mobile 继续按独立 Gate 推进
+- 当前功能主线：**先完成 Goal、Runtime/Environment、Trigger/Delivery 与 Relay 的代码闭环**；真实双机、缓存性能和生产验收放在候选范围冻结之后
 - Relay/P2P 当前进度：Transport seam、实验性 TLS Relay fixture、direct-first fallback 与 Worker 双 Job 恢复 Gate 已合入；`direct` 仍为默认路径，票据自动分发、显式配置接线、真实 NAT/长任务验收未完成
 - Relay 设计与实施计划：[ADR-021](docs/adr/0021-relay-assisted-p2p-transport.md) / [v0.4.x Relay 传输计划](docs/implementation/relay-p2p-transport-plan.md)
 - 下一步 Relay：完成无人值守票据分发与 Worker/Server 显式 opt-in 接线，再做流量优先级、运维和真实网络验收
 - Goal-oriented Computing：Legacy Job 的 synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 证据评估和 Control 治理审计已接入执行路径；自动 Re-plan 仍关闭
 - RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费和可强制的 Runtime token/cost 上限未完成，RPG-4 仍为 PARTIAL；完成后关闭，不新增 RPG-5
 - 当前 main Server schema：**v16**（Goal 执行与治理迁移）（v0.4.6 tag 为 v13）；Worker schema：**v6**
-- 下一轮任务与缺口：[P0–P2 实施台账](docs/implementation/p0-p2-execution.md)；优先验证缓存目标与独立主机生产基线，再完成 Goal 安全闭环，最后推进 Relay/Mobile 未完成的交付 Gate
+- 下一轮任务与缺口：[0.4.x 收尾计划](docs/implementation/v0.4-closeout-plan.md)；先推进代码与 CI，最后使用独立主机完成真实生产基线和缓存验收
 - 认证模拟 Gate：[CI 范围与证据](docs/validation/certification-simulation.md) 汇总 v13→v16 升级/恢复、单 runner 双 Worker、Relay 回退和缓存 P50；它不代表真实独立主机、真实 Runtime 或生产环境验收
 - 发布状态以 [GitHub Actions](https://github.com/tommyxie2026-tech/computecloud/actions) 与 [GitHub Releases](https://github.com/tommyxie2026-tech/computecloud/releases) 为准；代码实现完成不等于已发布
 

@@ -48,17 +48,21 @@ RPG closure may be inferred from fixture tests or a prepared deployment guide.
 
 ## Remaining work in priority order
 
-1. P1: measure cache targets on representative Linux Worker workloads and complete real
-   Production Baseline with independent hosts and authorized real-runtime budgets. The
-   local ten-Attempt concurrency Gate and CI provider-fixture P50 target are in place;
-   they do not substitute for real Job acceptance.
-2. P1: implement atomic Guard/Plan/Job publication and one-use governance permission
+1. P1: implement atomic Guard/Plan/Job publication and one-use governance permission
    consumption. Obtain enforceable adapter token/cost ceilings before claiming
    bounded autonomous spend; current finite policies fence unsupported execution.
-3. P2: complete ticket distribution and explicit Worker/Server Relay configuration,
-   traffic priority/operations, then real NAT/fault/long-task acceptance.
-4. P2: implement Mobile pairing/push with explicit device credential lifecycle;
-   configure Apple/Android signing and validate on real devices.
+2. v0.4 ecosystem: implement a real API-backed Runtime, a second isolated
+   Environment Provider and one authenticated Trigger/Delivery adapter. Keep
+   each contract and its negative/restart Gate independently reviewable.
+3. P2: complete ticket distribution and explicit Worker/Server Relay configuration
+   and traffic priority/operations. Keep `direct` the default.
+4. Last: measure cache targets on representative Linux Worker workloads and
+   complete the real Production Baseline with independent hosts and authorized
+   real-runtime budgets. The local ten-Attempt concurrency Gate and CI
+   provider-fixture P50 target do not substitute for real Job acceptance.
+
+Mobile pairing/push, signing and device acceptance remain in the v0.5.x C3
+Mobile Beta lane, separate from v0.4.x exit gates.
 
 These are outstanding implementation/acceptance items, not completed merely by
 merging the foundations. The scoped prerelease does not create a new stable
