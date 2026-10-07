@@ -106,6 +106,17 @@ func InstalledCompatible(compatible []string) []string {
 	return out
 }
 
+// RuntimeBoundarySupported prevents a host CLI from claiming that an
+// Environment Provider isolated its execution. A container or remote provider
+// needs a Runtime transport that actually starts work beyond the host process.
+func RuntimeBoundarySupported(name, transport string) bool {
+	d, ok := Lookup(name)
+	if !ok {
+		return false
+	}
+	return d.IsolationClass == "process" || transport == "remote_api"
+}
+
 func compatible(compatible []string, name string) bool {
 	for _, v := range compatible {
 		if v == name {
@@ -148,4 +159,3 @@ func AuthorizeRequired(requiredCapabilities, runtimeCompatible, policyAllowed []
 	}
 	return nil
 }
-
