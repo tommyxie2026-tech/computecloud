@@ -1,6 +1,6 @@
 # P0–P2 execution ledger
 
-Initial baseline: main `8540e06` (2026-09-30). Current merged baseline: `e2e16f1` (2026-10-06).
+Initial baseline: main `8540e06` (2026-09-30). Current merged baseline: `7f9de5d` (2026-10-07).
 Product: Agent-aware Distributed Job Execution Platform / Agent Job Executor.
 
 This ledger separates implementation, automated validation, merge/release, and
@@ -10,6 +10,8 @@ The scoped preview `v0.4.7-rc.1` was published as a prerelease; its release gate
 and limitations are tracked in [the release record](v0.4.7-rc.1-release-status.md).
 The [certification simulation gate](../validation/certification-simulation.md)
 collects repeatable CI evidence, but cannot close the real-environment baseline.
+The [v0.4.x closeout plan](v0.4-closeout-plan.md) now tracks the remaining
+ecosystem, Goal, Relay and real-acceptance slices against explicit release gates.
 
 | Order | Scope | Status / acceptance |
 | --- | --- | --- |
@@ -46,17 +48,21 @@ RPG closure may be inferred from fixture tests or a prepared deployment guide.
 
 ## Remaining work in priority order
 
-1. P1: measure cache targets on representative Linux Worker workloads and complete real
-   Production Baseline with independent hosts and authorized real-runtime budgets. The
-   local ten-Attempt concurrency Gate and CI provider-fixture P50 target are in place;
-   they do not substitute for real Job acceptance.
-2. P1: implement atomic Guard/Plan/Job publication and one-use governance permission
+1. P1: implement atomic Guard/Plan/Job publication and one-use governance permission
    consumption. Obtain enforceable adapter token/cost ceilings before claiming
    bounded autonomous spend; current finite policies fence unsupported execution.
-3. P2: complete ticket distribution and explicit Worker/Server Relay configuration,
-   traffic priority/operations, then real NAT/fault/long-task acceptance.
-4. P2: implement Mobile pairing/push with explicit device credential lifecycle;
-   configure Apple/Android signing and validate on real devices.
+2. v0.4 ecosystem: implement a real API-backed Runtime, a second isolated
+   Environment Provider and one authenticated Trigger/Delivery adapter. Keep
+   each contract and its negative/restart Gate independently reviewable.
+3. P2: complete ticket distribution and explicit Worker/Server Relay configuration
+   and traffic priority/operations. Keep `direct` the default.
+4. Last: measure cache targets on representative Linux Worker workloads and
+   complete the real Production Baseline with independent hosts and authorized
+   real-runtime budgets. The local ten-Attempt concurrency Gate and CI
+   provider-fixture P50 target do not substitute for real Job acceptance.
+
+Mobile pairing/push, signing and device acceptance remain in the v0.5.x C3
+Mobile Beta lane, separate from v0.4.x exit gates.
 
 These are outstanding implementation/acceptance items, not completed merely by
 merging the foundations. The scoped prerelease does not create a new stable
