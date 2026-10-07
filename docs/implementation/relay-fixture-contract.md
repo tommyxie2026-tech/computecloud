@@ -72,3 +72,9 @@ exactly one durable Attempt and a subsequent map/reduce Job. Worker default `New
 is unchanged; explicit `NewWithConnector` requires TLS. This validates local
 transport recovery; it does not supply unattended ticket distribution, production
 NAT evidence or control/event/bulk traffic priority.
+
+`Server.ServeWithTunnel` accepts a direct listener and a listener of already
+paired opaque Relay connections on the same gRPC Server. Both routes therefore
+share Worker authentication, session replacement, Job/Attempt state, commands,
+and Artifact ownership. The caller still has to provision tickets and feed the
+tunnel listener; no production config opts in automatically.
