@@ -96,7 +96,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		issuerServer = &http.Server{Handler: issuer, ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 4096}
+		issuerServer = &http.Server{Handler: issuer, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 4096}
 		issuerDone = make(chan error, 1)
 		go func() {
 			err := issuerServer.Serve(tls.NewListener(issuerListener, &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}))
