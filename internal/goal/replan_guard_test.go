@@ -3,6 +3,7 @@ package goal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -65,6 +66,22 @@ func request(id, eval string, planRev, graphGen int64, evidenceFact, strategy st
 	}
 }
 
+func publishTestPlan(ctx context.Context, q store.Query, d ReplanDecision) error {
+	now := store.Now()
+	jobID := fmt.Sprintf("replan-job-%d", d.NextPlanRevision)
+	frozen := []byte(`{"spec":"frozen"}`)
+	if _, err := q.ExecContext(ctx, `INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism)
+ VALUES(?,'owner','project',?,'request','spec',?,'single','QUEUED',?,?,?,1)`, jobID, jobID, frozen, now, now, now+60000); err != nil {
+		return err
+	}
+	if _, err := q.ExecContext(ctx, `INSERT INTO goal_job_bindings(job_id,goal_id,plan_revision,graph_generation) VALUES(?,'g',?,?)`, jobID, d.NextPlanRevision, d.NextGraphGeneration); err != nil {
+		return err
+	}
+	_, err := q.ExecContext(ctx, `INSERT INTO goal_plans(goal_id,revision,graph_generation,job_id,frozen_spec,graph_json,created)
+ VALUES('g',?,?,?,?,'[]',?)`, d.NextPlanRevision, d.NextGraphGeneration, jobID, frozen, now)
+	return err
+}
+
 func TestGuardReplanAllowsAndAdvancesGeneration(t *testing.T) {
 	db := newGoalDB(t)
 	createTestGoal(t, db, "g", Budget{MaxReplans: 2, MaxTotalAttempts: 4, MaxWallTime: time.Hour})
@@ -106,7 +123,10 @@ func TestGuardPublicationConsumesApprovalAtomically(t *testing.T) {
 	in := request("r1", "e1", 1, 1, "fact-a", "strategy-a")
 	publish := func(ctx context.Context, q store.Query, decision ReplanDecision) error {
 		_, err := q.ExecContext(ctx, "INSERT OR IGNORE INTO publication_fixture VALUES(?,?)", decision.NextPlanRevision, decision.NextGraphGeneration)
-		return err
+		if err != nil {
+			return err
+		}
+		return publishTestPlan(ctx, q, decision)
 	}
 	if _, err := GuardAndPublishReplan(ctx, db, in, "", publish); err == nil || err.Error() != "INVALID_REPLAN_PERMISSION" {
 		t.Fatalf("pending approval was bypassed: %v", err)
@@ -137,9 +157,9 @@ func TestGuardPublicationConsumesApprovalAtomically(t *testing.T) {
 	if err != nil || !first.Allowed || first.NextPlanRevision != 2 {
 		t.Fatalf("publication=%+v err=%v", first, err)
 	}
-	_, err = GuardAndPublishReplan(ctx, db, in, "approval-1", publish)
-	if err == nil || err.Error() != "REPLAN_PUBLICATION_REPLAY_UNVERIFIED" {
-		t.Fatalf("unverified publication replay accepted: %v", err)
+	replayed, err := GuardAndPublishReplan(ctx, db, in, "approval-1", publish)
+	if err != nil || !replayed.Existing || !replayed.Allowed {
+		t.Fatalf("verified publication replay=%+v err=%v", replayed, err)
 	}
 	if err := db.SQL.QueryRow("SELECT count(*) FROM publication_fixture").Scan(&published); err != nil {
 		t.Fatal(err)
@@ -164,8 +184,10 @@ func TestAutonomousGuardPublicationSharesTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	decision, err := GuardAndPublishReplan(ctx, db, in, "", func(ctx context.Context, q store.Query, d ReplanDecision) error {
-		_, err := q.ExecContext(ctx, "INSERT INTO publication_fixture VALUES(?)", d.NextPlanRevision)
-		return err
+		if _, err := q.ExecContext(ctx, "INSERT INTO publication_fixture VALUES(?)", d.NextPlanRevision); err != nil {
+			return err
+		}
+		return publishTestPlan(ctx, q, d)
 	})
 	if err != nil || !decision.Allowed || decision.NextPlanRevision != 2 {
 		t.Fatalf("autonomous publication=%+v err=%v", decision, err)
@@ -173,6 +195,27 @@ func TestAutonomousGuardPublicationSharesTransaction(t *testing.T) {
 	var n int
 	if err := db.SQL.QueryRow("SELECT count(*) FROM publication_fixture WHERE revision=2").Scan(&n); err != nil || n != 1 {
 		t.Fatalf("publication missing: count=%d err=%v", n, err)
+	}
+}
+
+func TestGuardPublicationRejectsEmptyCallbackAndRollsBack(t *testing.T) {
+	db := newGoalDB(t)
+	ctx := context.Background()
+	createTestGoal(t, db, "g", Budget{MaxReplans: 2, MaxTotalAttempts: 4, MaxWallTime: time.Hour})
+	in := request("r1", "e1", 1, 1, "fact-a", "strategy-a")
+	if _, err := GuardAndPublishReplan(ctx, db, in, "", func(context.Context, store.Query, ReplanDecision) error { return nil }); err == nil || err.Error() != "REPLAN_PUBLICATION_MISSING" {
+		t.Fatalf("empty publication accepted: %v", err)
+	}
+	var revision int64
+	var requests int
+	if err := db.SQL.QueryRow("SELECT active_plan_revision FROM goals WHERE id='g'").Scan(&revision); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQL.QueryRow("SELECT count(*) FROM replan_requests WHERE goal_id='g'").Scan(&requests); err != nil {
+		t.Fatal(err)
+	}
+	if revision != 1 || requests != 0 {
+		t.Fatalf("empty publication left partial decision: revision=%d requests=%d", revision, requests)
 	}
 }
 
@@ -184,18 +227,7 @@ func TestGuardPublicationReplayRequiresCommittedPlanJobBinding(t *testing.T) {
 	called := 0
 	publish := func(ctx context.Context, q store.Query, d ReplanDecision) error {
 		called++
-		now := store.Now()
-		frozen := []byte(`{"spec":"frozen"}`)
-		if _, err := q.ExecContext(ctx, `INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism)
- VALUES('replan-job','owner','project','replan-e1','request','spec',?,'single','QUEUED',?,?,?,1)`, frozen, now, now, now+60000); err != nil {
-			return err
-		}
-		if _, err := q.ExecContext(ctx, `INSERT INTO goal_job_bindings(job_id,goal_id,plan_revision,graph_generation) VALUES('replan-job','g',?,?)`, d.NextPlanRevision, d.NextGraphGeneration); err != nil {
-			return err
-		}
-		_, err := q.ExecContext(ctx, `INSERT INTO goal_plans(goal_id,revision,graph_generation,job_id,frozen_spec,graph_json,created)
- VALUES('g',?,?,'replan-job',?,'[]',?)`, d.NextPlanRevision, d.NextGraphGeneration, frozen, now)
-		return err
+		return publishTestPlan(ctx, q, d)
 	}
 	if _, err := GuardAndPublishReplan(ctx, db, in, "", publish); err != nil {
 		t.Fatal(err)
@@ -204,7 +236,7 @@ func TestGuardPublicationReplayRequiresCommittedPlanJobBinding(t *testing.T) {
 	if err != nil || !replayed.Existing || !replayed.Allowed || called != 1 {
 		t.Fatalf("verified replay=%+v err=%v callback count=%d", replayed, err, called)
 	}
-	if _, err := db.SQL.Exec(`UPDATE jobs SET spec='{"spec":"changed"}' WHERE id='replan-job'`); err != nil {
+	if _, err := db.SQL.Exec(`UPDATE jobs SET spec='{"spec":"changed"}' WHERE id='replan-job-2'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := GuardAndPublishReplan(ctx, db, in, "", publish); err == nil || err.Error() != "REPLAN_PUBLICATION_REPLAY_UNVERIFIED" {

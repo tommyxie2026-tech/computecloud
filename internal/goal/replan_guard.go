@@ -401,7 +401,16 @@ func guardReplan(ctx context.Context, db *store.DB, in ReplanRequest, approvalOp
 		out.NextPlanRevision = nextPlan
 		out.NextGraphGeneration = nextGraph
 		if out.Allowed && publish != nil {
-			return publish(ctx, q, out)
+			if err := publish(ctx, q, out); err != nil {
+				return err
+			}
+			verified, err := publishedReplanExists(ctx, q, in.GoalID, nextPlan, nextGraph)
+			if err != nil {
+				return err
+			}
+			if !verified {
+				return fmt.Errorf("REPLAN_PUBLICATION_MISSING")
+			}
 		}
 		return nil
 	})
