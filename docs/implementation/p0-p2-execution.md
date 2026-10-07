@@ -1,6 +1,6 @@
 # P0–P2 execution ledger
 
-Initial baseline: main `8540e06` (2026-09-30). Current merged baseline: `e2e16f1` (2026-10-06).
+Initial baseline: main `8540e06` (2026-09-30). Current merged baseline: `7f9de5d` (2026-10-07).
 Product: Agent-aware Distributed Job Execution Platform / Agent Job Executor.
 
 This ledger separates implementation, automated validation, merge/release, and
@@ -10,6 +10,8 @@ The scoped preview `v0.4.7-rc.1` was published as a prerelease; its release gate
 and limitations are tracked in [the release record](v0.4.7-rc.1-release-status.md).
 The [certification simulation gate](../validation/certification-simulation.md)
 collects repeatable CI evidence, but cannot close the real-environment baseline.
+The [v0.4.x closeout plan](v0.4-closeout-plan.md) now tracks the remaining
+ecosystem, Goal, Relay and real-acceptance slices against explicit release gates.
 
 | Order | Scope | Status / acceptance |
 | --- | --- | --- |

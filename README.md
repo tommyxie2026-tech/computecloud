@@ -1,6 +1,7 @@
 # computecloud
 
-当前执行台账：[P0–P2 实施与验收](docs/implementation/p0-p2-execution.md)（2026-10-06）。
+当前执行台账：[P0–P2 实施与验收](docs/implementation/p0-p2-execution.md)（2026-10-07）。
+0.4.x 收尾与双机验收：[实施计划](docs/implementation/v0.4-closeout-plan.md) / [双机预检](docs/validation/dual-host-preflight.md)。
 
 轻量的 **Agent-aware Distributed Job Execution Platform**。使用 Go、gRPC 和本机 SQLite，把 Agent Job 可靠地分配到远程 Worker 执行，并围绕 Runtime、Tool、Environment、Workspace、Artifact、Retry、Control 与 Goal-oriented Computing 建立可恢复、可审计的执行语义。
 
