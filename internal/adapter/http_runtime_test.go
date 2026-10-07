@@ -57,7 +57,7 @@ func TestHTTPRuntimeLifecycleAndEventCursor(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.URL.Path == "/v1/health":
-			_, _ = w.Write([]byte(`{"profile":"codex_http","version":"0.160.1"}`))
+			_, _ = w.Write([]byte(`{"profile":"codex_http","version":"0.160.1","isolation":"container"}`))
 		case r.Method == http.MethodPut && r.URL.Path == "/v1/runs/run-1":
 			var request httpRunRequest
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {

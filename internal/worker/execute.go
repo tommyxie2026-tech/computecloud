@@ -224,11 +224,14 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 	environmentStarted := time.Now()
 	var environmentRef envreg.Ref
 	environmentPrepared, e := environmentProvider.Prepare(execCtx, envreg.PrepareRequest{
-		AttemptID:  a.AttemptId,
-		TaskID:     a.TaskId,
-		Generation: a.Generation,
-		CWD:        cwd,
-		Env:        env,
+		AttemptID:        a.AttemptId,
+		TaskID:           a.TaskId,
+		Generation:       a.Generation,
+		CWD:              cwd,
+		Env:              env,
+		RuntimeProfile:   a.Spec.RuntimeProfile,
+		RuntimeEndpoint:  r.Endpoint,
+		RuntimeTokenFile: r.TokenFile,
 	}, func(ref envreg.Ref) error {
 		environmentRef = ref
 		return w.recordEnvironmentPrepared(persistCtx, a, ref)

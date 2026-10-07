@@ -28,16 +28,21 @@ const (
 )
 
 type Ref struct {
-	Provider string `json:"provider"`
-	ID       string `json:"id"`
+	Provider  string `json:"provider"`
+	ID        string `json:"id"`
+	Endpoint  string `json:"endpoint,omitempty"`
+	TokenFile string `json:"token_file,omitempty"`
 }
 
 type PrepareRequest struct {
-	AttemptID string
-	TaskID    string
-	Generation int64
-	CWD       string
-	Env       []string
+	AttemptID        string
+	TaskID           string
+	Generation       int64
+	CWD              string
+	Env              []string
+	RuntimeProfile   string
+	RuntimeEndpoint  string
+	RuntimeTokenFile string
 }
 
 type Prepared struct {

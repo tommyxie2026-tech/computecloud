@@ -19,10 +19,12 @@ token and has no unauthenticated health response.
 
 | Request | Meaning |
 | --- | --- |
-| `GET /v1/health?profile=codex_http` | Return exact `{profile,version}`; also accepts `claude_http`. |
+| `GET /v1/health?profile=codex_http` | Return exact `{profile,version,isolation:"container"}`; also accepts `claude_http`. |
 | `PUT /v1/runs/{attempt_id}` | Create once by immutable Attempt ID and generation; the Worker persists the remote reference before this call. Repeating the same request returns the same ID; a changed request is a conflict. |
 | `GET /v1/runs/{attempt_id}?after=N` | Return state, cleanup, exit code, final outcome, and sequenced events after cursor `N`. Events retain the existing Job/Attempt provenance when the Worker records them. |
 | `DELETE /v1/runs/{attempt_id}` | Request stop with bounded `grace_ms`, then report cleanup evidence or `UNKNOWN`. |
+| `GET /v1/environments/{attempt_id}` | Inspect the owned Docker container; unavailable Docker evidence returns `UNKNOWN`. |
+| `DELETE /v1/environments/{attempt_id}` | Persist a no-replay tombstone, stop the run if active, and confirm Docker cleanup or return `UNKNOWN`. |
 
 The service keeps a mode-0600 run marker that prevents execution replay after
 restart. Each Attempt runs in a distinct Docker container named from its
@@ -105,11 +107,22 @@ worker:
       credentials: [YOUR_CREDENTIAL_REF]
 ```
 
-Per-Attempt Docker execution is implemented in this slice, but
-`environment:container` is **not yet advertised**. ECO-03 still needs an
-EnvironmentProvider-level lifecycle and cleanup contract, plus Docker-backed
-file/network escape, crash/restart, and actual-host evidence. The final
-independent-host Runtime and upgrade/restore acceptance remains VAL-01.
+The HTTP Runtime advertises `environment:container` only when the Worker has
+registered the Container EnvironmentProvider and the authenticated service
+health response identifies its container isolation contract. A Job must still
+name `environment:container` and the Worker policy must explicitly allow
+`container`; legacy Jobs continue to use `process`. The EnvironmentProvider
+persists the controller socket and token-file reference before preparation,
+queries the controller on recovery, and requires a confirmed Docker cleanup
+response before reporting success. Releasing an Environment writes a durable
+tombstone before checking Docker, which prevents a late or replayed run from
+starting even when Docker is unavailable. If the controller or Docker daemon
+cannot prove cleanup, the Worker records `UNKNOWN` and fails closed.
+
+This is an implementation and fixture-test result, **not isolation
+certification**. Docker-backed file/network escape, crash/restart and
+actual-host negative tests remain ECO-03 acceptance work. The final independent
+host Runtime and upgrade/restore acceptance remains VAL-01.
 
 The Go tests cover authenticated contract handling, version and workspace
 fences, idempotent creation, Docker command construction, event cursor,

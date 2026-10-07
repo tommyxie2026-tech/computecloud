@@ -7,7 +7,7 @@ import (
 )
 
 func TestBuiltinProcessAndInstalledCompatible(t *testing.T) {
-	if got, want := Names(), []string{"process"}; !reflect.DeepEqual(got, want) {
+	if got, want := Names(), []string{"container", "process"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("environments=%v want=%v", got, want)
 	}
 	got := InstalledCompatible([]string{"missing", "process", "process"})
