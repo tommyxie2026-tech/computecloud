@@ -21,19 +21,22 @@ EXPECTED = {
 def main() -> int:
     out = pathlib.Path("dist/certification-simulation")
     out.mkdir(parents=True, exist_ok=True)
-    command = [
+    correctness_command = [
         "go", "test", "-json", "-race", "-count=1",
         "./internal/store", "./internal/maintenance", "./internal/server", "./internal/workspace",
-        "-run", "^(TestReleaseV13ToV16AndSnapshotRestore|TestOfflineBackupRestoresDatabaseAndArtifacts|TestJobHTTPMCPAndTwoWorkerStrategies|TestTwoWorkersLifecycle|TestRelayJobRestartRecovery|TestCachePerformanceReport)$",
+        "-run", "^(TestReleaseV13ToV16AndSnapshotRestore|TestOfflineBackupRestoresDatabaseAndArtifacts|TestJobHTTPMCPAndTwoWorkerStrategies|TestTwoWorkersLifecycle|TestRelayJobRestartRecovery)$",
     ]
+    performance_command = ["go", "test", "-json", "-count=1", "./internal/workspace", "-run", "^TestCachePerformanceReport$"]
     env = dict(os.environ)
     env["COMPUTECLOUD_CACHE_BENCHMARK"] = "1"
-    run = subprocess.run(command, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    (out / "go-test.jsonl").write_text(run.stdout)
+    correctness = subprocess.run(correctness_command, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    performance = subprocess.run(performance_command, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    raw = correctness.stdout + performance.stdout
+    (out / "go-test.jsonl").write_text(raw)
 
     results = {}
     cache = None
-    for line in run.stdout.splitlines():
+    for line in raw.splitlines():
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
@@ -54,7 +57,7 @@ def main() -> int:
         and isinstance(ratio, (float, int))
         and ratio <= 0.4
     )
-    passed = run.returncode == 0 and len(results) == len(EXPECTED) and all(v == "pass" for v in results.values()) and cache_gate
+    passed = correctness.returncode == 0 and performance.returncode == 0 and len(results) == len(EXPECTED) and all(v == "pass" for v in results.values()) and cache_gate
     report = {
         "status": "PASSED" if passed else "FAILED",
         "scope": "CI simulation on one hosted runner; not independent Linux hosts or real Runtime/NAT/24h acceptance",
@@ -65,14 +68,15 @@ def main() -> int:
         "cases": results,
         "cache": cache,
         "cache_p50_target_met_in_fixture": cache_gate,
-        "command": command,
+        "correctness_command": correctness_command,
+        "performance_command": performance_command,
     }
     (out / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps(report, sort_keys=True))
     if not passed:
         failed = {name: results.get(name, "missing") for name in EXPECTED.values() if results.get(name) != "pass"}
-        print(f"::error title=Certification simulation failed::cases={json.dumps(failed, sort_keys=True)} cache_p50_ratio={ratio} cache_gate={cache_gate} go_exit={run.returncode}")
-        print(run.stdout[-12000:])
+        print(f"::error title=Certification simulation failed::cases={json.dumps(failed, sort_keys=True)} cold_p50_ms={cache.get('cold_p50_ms') if cache else None} warm_p50_ms={cache.get('warm_p50_ms') if cache else None} cache_p50_ratio={ratio} cache_gate={cache_gate} go_exit={correctness.returncode}/{performance.returncode}")
+        print(raw[-12000:])
     return 0 if passed else 1
 
 

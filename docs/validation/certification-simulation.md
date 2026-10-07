@@ -12,7 +12,10 @@ repeatable **single-runner simulation**, not a Production Baseline certificate.
 | Relay restart | TLS Relay and Job recovery on loopback | No NAT, ISP outage or long task |
 | Prepared Workspace | Ten cold, nine cached, ten simultaneous provider materializations; cached/cold P50 must be at most 40% | Provider fixture, not full Job or representative Worker repository |
 
-The job fails if a required test is missing or fails, or if the fixture P50
+The correctness cases run with Go's race detector. The performance fixture runs
+separately without it, so instrumentation does not penalize the in-process
+cache path while the cold path spends its time in an external Git process. The
+job fails if a required test is missing or fails, or if that fixture P50
 target is missed. The report always records `real_hosts=0`,
 `real_model_calls=0`, and `real_upgrade=false`; no status field may be used as
 evidence for the unrun real environment cases in [the multi-node acceptance
