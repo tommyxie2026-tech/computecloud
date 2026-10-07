@@ -8,6 +8,8 @@ real-environment acceptance. A role assignment is not proof of delivery.
 
 The scoped preview `v0.4.7-rc.1` was published as a prerelease; its release gates
 and limitations are tracked in [the release record](v0.4.7-rc.1-release-status.md).
+The [certification simulation gate](../validation/certification-simulation.md)
+collects repeatable CI evidence, but cannot close the real-environment baseline.
 
 | Order | Scope | Status / acceptance |
 | --- | --- | --- |
