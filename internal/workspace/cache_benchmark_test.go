@@ -106,7 +106,8 @@ func TestCachePerformanceReport(t *testing.T) {
 		}
 	}
 	sort.Float64s(concurrent)
-	report := map[string]any{"scope": "provider_fixture_not_job_benchmark", "os": runtime.GOOS, "arch": runtime.GOARCH, "cold_samples": len(cold), "warm_samples": len(warm), "jobs_executed": 0, "dependency_files": 128, "dependency_bytes": 128 * 16384, "cache_hit_ratio": float64(hits) / 10, "cold_p50_ms": cold[len(cold)/2], "cold_p95_ms": cold[len(cold)-1], "warm_p50_ms": warm[len(warm)/2], "warm_p95_ms": warm[len(warm)-1], "concurrent_attempts": concurrentAttempts, "concurrent_cache_hits": concurrentAttempts, "concurrent_p50_ms": concurrent[concurrentAttempts/2], "concurrent_p95_ms": concurrent[concurrentAttempts-1], "concurrent_wall_ms": concurrentWallMS}
+	ratio := warm[len(warm)/2] / cold[len(cold)/2]
+	report := map[string]any{"scope": "provider_fixture_not_job_benchmark", "os": runtime.GOOS, "arch": runtime.GOARCH, "cold_samples": len(cold), "warm_samples": len(warm), "jobs_executed": 0, "dependency_files": 128, "dependency_bytes": 128 * 16384, "cache_hit_ratio": float64(hits) / 10, "cold_p50_ms": cold[len(cold)/2], "cold_p95_ms": cold[len(cold)-1], "warm_p50_ms": warm[len(warm)/2], "warm_p95_ms": warm[len(warm)-1], "warm_over_cold_p50": ratio, "p50_target_met": ratio <= 0.4, "concurrent_attempts": concurrentAttempts, "concurrent_cache_hits": concurrentAttempts, "concurrent_p50_ms": concurrent[concurrentAttempts/2], "concurrent_p95_ms": concurrent[concurrentAttempts-1], "concurrent_wall_ms": concurrentWallMS}
 	body, _ := json.Marshal(report)
 	t.Log("CACHE_BENCHMARK " + string(body))
 }

@@ -12,7 +12,7 @@ and limitations are tracked in [the release record](v0.4.7-rc.1-release-status.m
 | Order | Scope | Status / acceptance |
 | --- | --- | --- |
 | P0 | Retry storage gate, deterministic process-stop fixture, schema documentation | COMPLETE: PR #92 merged; full matrix and main CI 37435035493 PASS |
-| P1-A | Workspace cache, bounded GC, warm materialization, metrics and benchmark | PR #93 merged; full matrix 37434895415 PASS. Follow-up adds shared-lock concurrent hits and ten-Attempt measurement; local wall time 443.888 → 156.738 ms in two fixture samples, while latest sequential cached/cold P50 40.612/80.595 ms still exceeds the <=40% ratio target. Real workload acceptance pending |
+| P1-A | Workspace cache, bounded GC, warm materialization, metrics and benchmark | PR #93 merged; full matrix 37434895415 PASS. Follow-up adds shared-lock concurrent hits and ten-Attempt measurement. Bounded parallel file materialization now gives three local macOS fixture runs with cached/cold P50 ratios 27.0%, 27.3%, and 27.2%; the fixture target is met locally. Representative Linux Worker/real Job acceptance remains pending |
 | P1-B | Readiness advertisement, stale/unknown handling and explainability | PR #94 merged; full matrix 37436461912 PASS. Observation-only signals; scheduling scoring remains disabled |
 | P1-C | Production Baseline | BLOCKED on external environment: two independent Linux Workers, pinned real Runtime/MCP versions, accounts/budgets and a 24h+ window; #1/#9 remain open |
 | P1-D | Goal compatibility, persistence, execution/evaluation integration, RPG-4 and Control bridge | PR #95–100 merged; full matrices 37442929805 / 37450161254 PASS. Synthetic execution, atomic reservations, artifact evaluation, human decisions and Control audit projection implemented. Atomic Guard → new Plan/Job publication, permission consumption and enforceable Runtime token/cost caps still pending; RPG remains PARTIAL |
@@ -44,9 +44,10 @@ RPG closure may be inferred from fixture tests or a prepared deployment guide.
 
 ## Remaining work in priority order
 
-1. P1: measure cache targets on representative workloads and complete real Production
-   Baseline with independent hosts and authorized real-runtime budgets. The local
-   ten-Attempt concurrency Gate is now in place; sequential P50 target remains open.
+1. P1: measure cache targets on representative Linux Worker workloads and complete real
+   Production Baseline with independent hosts and authorized real-runtime budgets. The
+   local ten-Attempt concurrency Gate and macOS fixture P50 target are in place; they
+   do not substitute for real Job acceptance.
 2. P1: implement atomic Guard/Plan/Job publication and one-use governance permission
    consumption. Obtain enforceable adapter token/cost ceilings before claiming
    bounded autonomous spend; current finite policies fence unsupported execution.
