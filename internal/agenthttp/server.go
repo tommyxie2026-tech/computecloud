@@ -32,6 +32,11 @@ var runIDRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$`)
 var imageDigestRE = regexp.MustCompile(`@sha256:[0-9a-f]{64}$`)
 var runProcess = process.Run
 var containerCleanup = func(s *Server, id string) bool { return s.cleanupContainer(id) }
+var dockerReady = func(s *Server) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, s.cfg.DockerExecutable, "info", "--format", "{{.ServerVersion}}").Run() == nil
+}
 
 type Config struct {
 	TokenFile        string
@@ -190,6 +195,10 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	_, version, _, ok := s.profile(name)
 	if !ok {
 		http.Error(w, "unknown profile", http.StatusNotFound)
+		return
+	}
+	if !dockerReady(s) {
+		http.Error(w, "Docker unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	respond(w, http.StatusOK, map[string]string{"profile": name, "version": version, "isolation": "container"})

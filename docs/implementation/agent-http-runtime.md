@@ -19,7 +19,7 @@ token and has no unauthenticated health response.
 
 | Request | Meaning |
 | --- | --- |
-| `GET /v1/health?profile=codex_http` | Return exact `{profile,version,isolation:"container"}`; also accepts `claude_http`. |
+| `GET /v1/health?profile=codex_http` | Probe the Docker daemon and return `{profile,version,isolation:"container"}`; also accepts `claude_http`. Docker failure returns 503. |
 | `PUT /v1/runs/{attempt_id}` | Create once by immutable Attempt ID and generation; the Worker persists the remote reference before this call. Repeating the same request returns the same ID; a changed request is a conflict. |
 | `GET /v1/runs/{attempt_id}?after=N` | Return state, cleanup, exit code, final outcome, and sequenced events after cursor `N`. Events retain the existing Job/Attempt provenance when the Worker records them. |
 | `DELETE /v1/runs/{attempt_id}` | Request stop with bounded `grace_ms`, then report cleanup evidence or `UNKNOWN`. |

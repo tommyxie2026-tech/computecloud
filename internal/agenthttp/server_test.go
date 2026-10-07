@@ -55,7 +55,9 @@ func TestRunLifecycleIdempotencyAndRestartFence(t *testing.T) {
 	server, cfg := testServer(t)
 	original := runProcess
 	cleanupOriginal := containerCleanup
+	dockerReadyOriginal := dockerReady
 	containerCleanup = func(*Server, string) bool { return true }
+	dockerReady = func(*Server) bool { return true }
 	canonicalWorkspace, err := filepath.EvalSymlinks(cfg.WorkspaceRoot)
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +83,7 @@ func TestRunLifecycleIdempotencyAndRestartFence(t *testing.T) {
 		_, _ = stdout.Write([]byte("{\"type\":\"turn.completed\",\"usage\":{}}\n"))
 		return process.Result{Cleanup: true, ExitCode: 0}
 	}
-	t.Cleanup(func() { runProcess = original; containerCleanup = cleanupOriginal })
+	t.Cleanup(func() { runProcess = original; containerCleanup = cleanupOriginal; dockerReady = dockerReadyOriginal })
 	if got := call(t, server, http.MethodGet, "/v1/health?profile=codex_http", nil, false).Code; got != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated health status=%d", got)
 	}
@@ -201,6 +203,9 @@ func TestEnvironmentReleaseFencesLateRun(t *testing.T) {
 func TestEnvironmentDockerUnavailableKeepsUnknownAndFencesReplay(t *testing.T) {
 	server, cfg := testServer(t)
 	server.cfg.DockerExecutable = filepath.Join(cfg.StateDir, "missing-docker")
+	if got := call(t, server, http.MethodGet, "/v1/health?profile=codex_http", nil, true).Code; got != http.StatusServiceUnavailable {
+		t.Fatalf("health without Docker status=%d", got)
+	}
 	if got := call(t, server, http.MethodGet, "/v1/environments/no-docker", nil, true).Code; got != http.StatusServiceUnavailable {
 		t.Fatalf("inspect without Docker status=%d", got)
 	}
