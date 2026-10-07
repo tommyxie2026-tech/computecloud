@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,17 +37,14 @@ func run() error {
 	worker := flag.String("worker", "", "Worker identity")
 	connectionEpoch := flag.String("connection-epoch", "", "connection epoch")
 	role := flag.String("role", "", "server or worker")
+	issuerListen := flag.String("issuer-listen", "", "optional TLS ticket issuer listener")
+	issuerServerID := flag.String("issuer-server-id", "", "Server identity permitted to issue pairs")
+	issuerServerToken := flag.String("issuer-server-token-file", "", "private Server issuer token file")
+	issuerWorkerTokens := flag.String("issuer-worker-tokens-file", "", "private JSON map of Worker IDs to issuer tokens")
 	flag.Parse()
-	info, err := os.Stat(*signingFile)
+	key, err := readPrivate(*signingFile)
 	if err != nil {
-		return fmt.Errorf("ticket signing key unavailable")
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
-		return fmt.Errorf("ticket signing key must be a private regular file")
-	}
-	key, err := os.ReadFile(*signingFile)
-	if err != nil || len(key) < 32 {
-		return fmt.Errorf("ticket signing key requires at least 32 bytes")
+		return fmt.Errorf("ticket signing key: %w", err)
 	}
 	if *mint {
 		now := time.Now()
@@ -70,10 +69,74 @@ func run() error {
 	defer listener.Close()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	var issuerServer *http.Server
+	var issuerDone chan error
+	if *issuerListen != "" {
+		serverToken, err := readPrivate(*issuerServerToken)
+		if err != nil {
+			return fmt.Errorf("issuer Server token: %w", err)
+		}
+		workerRaw, err := readPrivate(*issuerWorkerTokens)
+		if err != nil {
+			return fmt.Errorf("issuer Worker tokens: %w", err)
+		}
+		var workerStrings map[string]string
+		if err := json.Unmarshal(workerRaw, &workerStrings); err != nil {
+			return fmt.Errorf("invalid issuer Worker token map: %w", err)
+		}
+		workerTokens := make(map[string][]byte, len(workerStrings))
+		for id, token := range workerStrings {
+			workerTokens[id] = []byte(token)
+		}
+		issuer, err := relay.NewIssuer(broker, *issuerServerID, []byte(strings.TrimSpace(string(serverToken))), workerTokens)
+		if err != nil {
+			return err
+		}
+		issuerListener, err := net.Listen("tcp", *issuerListen)
+		if err != nil {
+			return err
+		}
+		issuerServer = &http.Server{Handler: issuer, ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 4096}
+		issuerDone = make(chan error, 1)
+		go func() {
+			err := issuerServer.Serve(tls.NewListener(issuerListener, &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}))
+			if err != nil && err != http.ErrServerClosed {
+				cancel()
+			}
+			issuerDone <- err
+		}()
+	} else if *issuerServerID != "" || *issuerServerToken != "" || *issuerWorkerTokens != "" {
+		return fmt.Errorf("issuer listener required when issuer credentials are configured")
+	}
 	slog.Info("experimental relay fixture listening", "address", listener.Addr().String(), "relay_epoch", broker.Epoch())
 	err = broker.Serve(ctx, listener, &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}})
+	if issuerServer != nil {
+		_ = issuerServer.Close()
+		issuerErr := <-issuerDone
+		if issuerErr != nil && issuerErr != http.ErrServerClosed {
+			return issuerErr
+		}
+	}
 	if ctx.Err() != nil {
 		return nil
 	}
 	return err
+}
+
+func readPrivate(path string) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+		return nil, fmt.Errorf("private regular file with mode 0600 required")
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(b) < 32 {
+		return nil, fmt.Errorf("credential requires at least 32 bytes")
+	}
+	return b, nil
 }

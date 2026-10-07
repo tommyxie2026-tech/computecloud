@@ -33,6 +33,25 @@ actual outer TLS broker and a second end-to-end TLS handshake through it, plus
 signature/expiry/replay/identity/quota/restart and cancellation checks. This is local
 fixture evidence; real NAT and unattended credential distribution remain unverified.
 
+## Experimental ticket issuer
+
+The fixture can optionally listen on a second TLS port with `-issuer-listen`,
+`-issuer-server-id`, `-issuer-server-token-file`, and
+`-issuer-worker-tokens-file`. All credential files must be private regular files;
+the Worker token file is a JSON map from Worker ID to a distinct 32-byte-or-longer
+Bearer token. The Server uses `POST /v1/relay/pairs` with a `worker_id` JSON body
+to obtain only its own signed ticket. An authenticated Worker uses
+`POST /v1/relay/pairs/claim` to retrieve only its matching ticket, once. The
+issuer retains unclaimed Worker tickets only in memory until expiry. It never
+returns the other role's ticket, stores no Job state, requires TLS, and sends
+`Cache-Control: no-store` on authenticated responses. Restart changes the Relay
+epoch and invalidates outstanding pairs.
+
+This is the Broker-side unattended provisioning primitive. Server/Worker opt-in
+configuration and their automatic issue/claim connection loops are still a
+separate implementation step; ordinary Worker and Server processes do not use
+this API yet. The issuer is not a production Relay service.
+
 ## Direct-first connector
 
 `rpcutil.NewDirectFirstConnector` composes explicit direct and alternate byte
