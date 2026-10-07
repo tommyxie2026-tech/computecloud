@@ -81,11 +81,11 @@ func (s *Server) PublishGoalReplan(ctx context.Context, priorJobID string, in go
 			return fmt.Errorf("STALE_GOAL_JOB_BINDING")
 		}
 		var currentVersion int64
-		var currentState string
-		if e := q.QueryRowContext(ctx, "SELECT state,version FROM jobs WHERE id=?", priorJobID).Scan(&currentState, &currentVersion); e != nil {
+		var currentState, currentOwner, currentProject string
+		if e := q.QueryRowContext(ctx, "SELECT state,version,owner,project FROM jobs WHERE id=?", priorJobID).Scan(&currentState, &currentVersion, &currentOwner, &currentProject); e != nil {
 			return e
 		}
-		if currentState != "FAILED" || currentVersion != prior.Version {
+		if currentState != "FAILED" || currentVersion != prior.Version || currentOwner != prior.owner || currentProject != prior.project {
 			return fmt.Errorf("REPLAN_EVALUATION_STALE")
 		}
 		frozen := job.Frozen{Spec: spec, Digests: map[string]string{}, Routes: map[string]string{}, RouteDigests: map[string]string{}}
