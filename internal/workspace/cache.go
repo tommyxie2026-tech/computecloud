@@ -100,9 +100,50 @@ func (p *LocalPreparedProvider) PrepareAttempt(ctx context.Context, tmpl Workspa
 		unlock()
 		return p.prepareAttemptExclusive(ctx, tmpl, source, root, attempt, started, m)
 	}
-	target, metrics, err := p.prepareAttemptLocked(ctx, tmpl, source, root, attempt, started, m, hit)
+	target, metrics, err := p.prepareCachedAttempt(ctx, tmpl, root, attempt, started, m)
 	unlock()
 	return target, metrics, err
+}
+
+// On a cache hit without a warm slot, validation and materialization can run
+// concurrently under the shared cache lock. The Attempt is returned only after
+// its template digest is verified; a failed validation removes the pre-spawn
+// copy. This preserves fail-closed tamper handling while avoiding serial I/O.
+func (p *LocalPreparedProvider) prepareCachedAttempt(ctx context.Context, tmpl WorkspaceTemplate, root, attempt string, started time.Time, m PrepareMetrics) (string, PrepareMetrics, error) {
+	ref := PreparedWorkspaceRef{TemplateID: tmpl.TemplateID, Provider: p.Describe().Name, ImmutableRef: tmpl.Fingerprint()}
+	type validation struct {
+		result InspectResult
+		err    error
+		ms     int64
+	}
+	validated := make(chan validation, 1)
+	go func() {
+		result, err := p.inspectTemplate(ctx, tmpl, ref)
+		validated <- validation{result, err, time.Since(started).Milliseconds()}
+	}()
+	materializeStarted := time.Now()
+	target, materializeErr := p.materializeValidated(ctx, ref, root, attempt)
+	m.MaterializeMS = time.Since(materializeStarted).Milliseconds()
+	check := <-validated
+	m.PrepareMS = check.ms
+	if check.err != nil || !check.result.Valid || materializeErr != nil {
+		if target != "" {
+			_ = os.RemoveAll(target)
+		}
+		if check.err != nil {
+			return "", m, check.err
+		}
+		if !check.result.Valid {
+			return "", m, fmt.Errorf("prepared workspace exists but is invalid: %s", check.result.Reason)
+		}
+		return "", m, materializeErr
+	}
+	if err := p.touchTemplate(ref.ImmutableRef); err != nil {
+		_ = os.RemoveAll(target)
+		return "", m, err
+	}
+	m.CacheHit = true
+	return target, m, nil
 }
 
 func (p *LocalPreparedProvider) prepareAttemptExclusive(ctx context.Context, tmpl WorkspaceTemplate, source, root, attempt string, started time.Time, m PrepareMetrics) (string, PrepareMetrics, error) {

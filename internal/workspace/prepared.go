@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -420,6 +422,7 @@ func copyWritableTree(ctx context.Context, source, target string) error {
 	var workers sync.WaitGroup
 	var firstErr error
 	var errMu sync.Mutex
+	var cloneUnavailable atomic.Bool
 	for i := 0; i < 8; i++ {
 		workers.Add(1)
 		go func() {
@@ -431,7 +434,7 @@ func copyWritableTree(ctx context.Context, source, target string) error {
 				if skip {
 					continue
 				}
-				if err := copyWritableFile(ctx, item.source, item.target, item.mode); err != nil {
+				if err := copyWritableFile(ctx, item.source, item.target, item.mode, &cloneUnavailable); err != nil {
 					errMu.Lock()
 					if firstErr == nil {
 						firstErr = err
@@ -493,12 +496,18 @@ func copyWritableTree(ctx context.Context, source, target string) error {
 	return firstErr
 }
 
-func copyWritableFile(ctx context.Context, path, dst string, mode os.FileMode) error {
+func copyWritableFile(ctx context.Context, path, dst string, mode os.FileMode, cloneUnavailable *atomic.Bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := cloneFile(path, dst, mode); err == nil {
-		return nil
+	if !cloneUnavailable.Load() {
+		if err := cloneFile(path, dst, mode); err == nil {
+			return nil
+		} else if errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, syscall.ENOTTY) || errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.EXDEV) {
+			// A filesystem without CoW support rejects every file. Probe once
+			// per tree instead of paying for two opens and a failed ioctl each time.
+			cloneUnavailable.Store(true)
+		}
 	}
 	src, err := os.Open(path)
 	if err != nil {
