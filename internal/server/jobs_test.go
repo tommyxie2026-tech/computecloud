@@ -30,6 +30,7 @@ type jobHarness struct {
 type jobTestTransport struct {
 	ServerTLS, WorkerTLS config.TLS
 	Listener             net.Listener
+	TunnelListener       net.Listener
 	Connector            func(string) rpcutil.Connector
 }
 
@@ -70,7 +71,9 @@ func newJobHarnessWithTransport(t *testing.T, workers bool, transport *jobTestTr
 	sc, stop := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
-		if transport != nil {
+		if transport != nil && transport.TunnelListener != nil {
+			done <- s.ServeWithTunnel(sc, l, transport.TunnelListener)
+		} else if transport != nil {
 			done <- s.ServeTunnel(sc, l)
 		} else {
 			done <- s.Serve(sc, l)

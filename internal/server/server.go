@@ -94,9 +94,30 @@ func (s *Server) ServeTunnel(ctx context.Context, l net.Listener) error {
 	if s.cfg.TLS.InsecureLoopback {
 		return errors.New("alternate transport requires inner TLS")
 	}
-	return s.Serve(ctx, l)
+	return s.serve(ctx, l, nil)
 }
 func (s *Server) Serve(ctx context.Context, l net.Listener) error {
+	return s.serve(ctx, l, nil)
+}
+
+// ServeWithTunnel accepts direct and alternate byte transports on the same
+// gRPC Server, authentication, Worker sessions and durable execution store.
+// The caller owns ticket provisioning and supplies a listener of paired,
+// opaque tunnel connections; this method never changes the direct default.
+func (s *Server) ServeWithTunnel(ctx context.Context, direct, tunnel net.Listener) error {
+	if direct == nil || tunnel == nil {
+		return errors.New("direct and tunnel listeners required")
+	}
+	if s.cfg.TLS.InsecureLoopback {
+		return errors.New("alternate transport requires inner TLS")
+	}
+	return s.serve(ctx, direct, tunnel)
+}
+
+func (s *Server) serve(ctx context.Context, l, tunnel net.Listener) error {
+	if l == nil {
+		return errors.New("server listener required")
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	tls, e := rpcutil.ServerTLS(l.Addr().String(), s.cfg.TLS)
@@ -125,10 +146,26 @@ func (s *Server) Serve(ctx context.Context, l net.Listener) error {
 	done := make(chan struct{})
 	go func() { defer close(done); s.loop(ctx) }()
 	go func() { <-ctx.Done(); g.Stop() }()
+	var tunnelDone chan error
+	if tunnel != nil {
+		tunnelDone = make(chan error, 1)
+		go func() {
+			te := g.Serve(tunnel)
+			if te != nil && !errors.Is(te, grpc.ErrServerStopped) {
+				cancel()
+			}
+			tunnelDone <- te
+		}()
+	}
 	e = g.Serve(l)
 	stopping := ctx.Err() != nil
 	cancel()
 	<-done
+	if tunnelDone != nil {
+		if te := <-tunnelDone; te != nil && !errors.Is(te, grpc.ErrServerStopped) {
+			return te
+		}
+	}
 	if httpDone != nil {
 		if he := <-httpDone; he != nil {
 			return he
