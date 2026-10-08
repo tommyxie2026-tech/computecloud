@@ -1,14 +1,46 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/goal"
+	"github.com/tommyxie2026-tech/computecloud/internal/governance"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
+	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
+
+func goalProposerContext(ctx context.Context) context.Context {
+	p, _ := rpcutil.PrincipalFrom(ctx)
+	p.Identity.Scopes = append(p.Identity.Scopes, "goals:propose")
+	return rpcutil.WithPrincipal(ctx, p)
+}
+
+func TestServerGoalReplanRequiresProposerScope(t *testing.T) {
+	s, ctx, _, _ := offlineJobServer(t)
+	defer s.Close()
+	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
+	prior, err := s.SubmitJob(ctx, "goal-scope-original", job.JSON(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goalID := "goal_" + prior.ID
+	if _, err := s.db.SQL.Exec("UPDATE goals SET max_replans=1,max_total_attempts=2 WHERE id=?", goalID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.Tx(ctx, func(q store.Query) error { return jobState(ctx, q, prior, "FAILED", "", "TEST_FAILURE") }); err != nil {
+		t.Fatal(err)
+	}
+	proposal := replanProposal(goalID, fmt.Sprintf("%s:%d", prior.ID, prior.Version), spec)
+	if _, _, err := s.PublishGoalReplan(ctx, prior.ID, proposal, "", job.JSON(spec)); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("ordinary submitter published Re-plan: %v", err)
+	}
+}
 
 func replanProposal(goalID, evaluationID string, spec job.Spec) goal.ReplanRequest {
 	return goal.ReplanRequest{
@@ -30,6 +62,7 @@ func replanProposal(goalID, evaluationID string, spec job.Spec) goal.ReplanReque
 func TestServerGoalReplanPublicationAndReplay(t *testing.T) {
 	s, ctx, _, _ := offlineJobServer(t)
 	defer s.Close()
+	ctx = goalProposerContext(ctx)
 	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
 	prior, err := s.SubmitJob(ctx, "goal-replan-original", job.JSON(spec))
 	if err != nil {
@@ -72,6 +105,7 @@ func TestServerGoalReplanPublicationAndReplay(t *testing.T) {
 func TestServerGoalReplanRejectsMismatchAndRollsBack(t *testing.T) {
 	s, ctx, _, _ := offlineJobServer(t)
 	defer s.Close()
+	ctx = goalProposerContext(ctx)
 	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
 	prior, err := s.SubmitJob(ctx, "goal-replan-original", job.JSON(spec))
 	if err != nil {
@@ -138,6 +172,7 @@ func TestServerGoalReplanRejectsMismatchAndRollsBack(t *testing.T) {
 func TestServerGoalReplanPublishesExistingMapGraph(t *testing.T) {
 	s, ctx, _, _ := offlineJobServer(t)
 	defer s.Close()
+	ctx = goalProposerContext(ctx)
 	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("report_merge_v1")
 	prior, err := s.SubmitJob(ctx, "goal-map-original", job.JSON(spec))
 	if err != nil {
@@ -167,5 +202,56 @@ func TestServerGoalReplanPublishesExistingMapGraph(t *testing.T) {
 	}
 	if stages != 2 || tasks != len(spec.Map.Partitions) || graphNodes != len(spec.Map.Partitions)+1 {
 		t.Fatalf("map graph stages=%d tasks=%d nodes=%d", stages, tasks, graphNodes)
+	}
+}
+
+func TestServerGoalPendingProposalPublishesAfterHumanApproval(t *testing.T) {
+	s, ctx, _, _ := offlineJobServer(t)
+	defer s.Close()
+	ctx = goalProposerContext(ctx)
+	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
+	prior, err := s.SubmitJob(ctx, "goal-approval-original", job.JSON(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goalID := "goal_" + prior.ID
+	if _, err := s.db.SQL.Exec("UPDATE goals SET max_replans=3,max_total_attempts=5 WHERE id=?", goalID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.Tx(ctx, func(q store.Query) error { return jobState(ctx, q, prior, "FAILED", "", "TEST_FAILURE") }); err != nil {
+		t.Fatal(err)
+	}
+	first := replanProposal(goalID, fmt.Sprintf("%s:%d", prior.ID, prior.Version), spec)
+	created, decision, err := s.PublishGoalReplan(ctx, prior.ID, first, "", job.JSON(spec))
+	if err != nil || !decision.Allowed {
+		t.Fatalf("first=%+v %v", decision, err)
+	}
+	if err := s.db.Tx(ctx, func(q store.Query) error { return jobState(ctx, q, created, "FAILED", "", "TIMEOUT") }); err != nil {
+		t.Fatal(err)
+	}
+	second := replanProposal(goalID, fmt.Sprintf("%s:%d", created.ID, created.Version), spec)
+	second.ID = "proposal-2"
+	second.ExpectedPlanRevision = 2
+	second.ExpectedGraphGeneration = 2
+	second.Evidence.FailureClass = goal.FailureTimeout
+	second.Evidence.Evidence[0].Fact = "TIMEOUT"
+	second.ProposedPlan.Strategy = "retry-after-timeout"
+	if _, pending, err := s.PublishGoalReplan(ctx, created.ID, second, "", job.JSON(spec)); err != nil || !pending.NeedsApproval || pending.Code != goal.DecisionLoopDetected {
+		t.Fatalf("pending=%+v %v", pending, err)
+	}
+	var version int64
+	if err := s.db.SQL.QueryRow("SELECT version FROM goals WHERE id=?", goalID).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	approval := governance.Request{OperationID: "approval-1", ExpectedVersion: version, PlanRevision: 2, GraphGeneration: 2, Action: "APPROVE_NEXT_REPLAN", Reason: "reviewed strategy retry"}
+	if _, err := s.DecideGoal(humanGoalContext(ctx), created.ID, approval); err != nil {
+		t.Fatal(err)
+	}
+	approved, decision, err := s.PublishGoalReplan(ctx, created.ID, second, "approval-1", job.JSON(spec))
+	if err != nil || !decision.Allowed || approved == nil {
+		t.Fatalf("approved=%+v decision=%+v err=%v", approved, decision, err)
+	}
+	if replayed, replay, err := s.PublishGoalReplan(ctx, created.ID, second, "", job.JSON(spec)); err != nil || !replay.Existing || replayed.ID != approved.ID {
+		t.Fatalf("replay=%+v decision=%+v err=%v", replayed, replay, err)
 	}
 }

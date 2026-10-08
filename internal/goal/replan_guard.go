@@ -168,39 +168,52 @@ func guardReplan(ctx context.Context, db *store.DB, in ReplanRequest, approvalOp
 
 	var out ReplanDecision
 	err := db.Tx(ctx, func(q store.Query) error {
-		var existingState, existingCode, existingEvidence, existingPlanFingerprint, existingStrategySignature string
-		var existingPlan, existingGraph int64
+		var existingID, existingReason, existingState, existingCode, existingEvidence, existingPlanFingerprint, existingStrategySignature string
+		var existingExpectedPlan, existingExpectedGraph, existingPlan, existingGraph int64
 		var existingDeltaJSON, existingProgressJSON []byte
 		err := q.QueryRowContext(ctx,
-			"SELECT state,decision_code,next_plan_revision,next_graph_generation,evidence_fingerprint,proposed_plan_fingerprint,strategy_signature,strategy_delta_json,progress_json FROM replan_requests WHERE goal_id=? AND evaluation_id=?",
+			"SELECT id,reason_code,expected_plan_revision,expected_graph_generation,state,decision_code,next_plan_revision,next_graph_generation,evidence_fingerprint,proposed_plan_fingerprint,strategy_signature,strategy_delta_json,progress_json FROM replan_requests WHERE goal_id=? AND evaluation_id=?",
 			in.GoalID, in.EvaluationID).
-			Scan(&existingState, &existingCode, &existingPlan, &existingGraph, &existingEvidence, &existingPlanFingerprint, &existingStrategySignature, &existingDeltaJSON, &existingProgressJSON)
+			Scan(&existingID, &existingReason, &existingExpectedPlan, &existingExpectedGraph, &existingState, &existingCode, &existingPlan, &existingGraph, &existingEvidence, &existingPlanFingerprint, &existingStrategySignature, &existingDeltaJSON, &existingProgressJSON)
 		if err == nil {
-			if existingEvidence != evidenceFingerprint ||
+			// Guard-only retries may carry a new delivery ID. Publication
+			// preserves the identity of the proposal reviewed by a human.
+			if (publish != nil && existingID != in.ID) || existingReason != in.ReasonCode ||
+				existingExpectedPlan != in.ExpectedPlanRevision || existingExpectedGraph != in.ExpectedGraphGeneration ||
+				existingEvidence != evidenceFingerprint ||
 				existingPlanFingerprint != planFingerprint ||
 				existingStrategySignature != strategySignature ||
 				string(existingDeltaJSON) != string(strategyDeltaJSON) ||
 				string(existingProgressJSON) != string(progressJSON) {
 				return fmt.Errorf("IDEMPOTENCY_CONFLICT")
 			}
-			out.Existing = true
-			out.Allowed = existingState == DecisionAllowed
-			out.NeedsApproval = existingState == "NEEDS_APPROVAL"
-			out.Code = existingCode
-			out.NextPlanRevision = existingPlan
-			out.NextGraphGeneration = existingGraph
-			if out.Allowed && publish != nil {
-				verified, e := publishedReplanExists(ctx, q, in.GoalID, existingPlan, existingGraph)
-				if e != nil {
+			if existingState == "NEEDS_APPROVAL" && publish != nil && approvalOperationID != "" {
+				// Re-evaluate the same pending proposal after human approval.
+				// Deletion and re-publication share this transaction; a failed
+				// permission consume or publication restores the pending record.
+				if _, e := q.ExecContext(ctx, "DELETE FROM replan_requests WHERE goal_id=? AND evaluation_id=?", in.GoalID, in.EvaluationID); e != nil {
 					return e
 				}
-				if !verified {
-					return fmt.Errorf("REPLAN_PUBLICATION_REPLAY_UNVERIFIED")
+			} else {
+				out.Existing = true
+				out.Allowed = existingState == DecisionAllowed
+				out.NeedsApproval = existingState == "NEEDS_APPROVAL"
+				out.Code = existingCode
+				out.NextPlanRevision = existingPlan
+				out.NextGraphGeneration = existingGraph
+				if out.Allowed && publish != nil {
+					verified, e := publishedReplanExists(ctx, q, in.GoalID, existingPlan, existingGraph)
+					if e != nil {
+						return e
+					}
+					if !verified {
+						return fmt.Errorf("REPLAN_PUBLICATION_REPLAY_UNVERIFIED")
+					}
 				}
+				return nil
 			}
-			return nil
 		}
-		if !errors.Is(err, sql.ErrNoRows) {
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 
@@ -289,6 +302,7 @@ func guardReplan(ctx context.Context, db *store.DB, in ReplanRequest, approvalOp
 		if usageErr != nil && usageErr.Error() != "GOAL_USAGE_UNKNOWN" && usageErr.Error() != "GOAL_USAGE_EXHAUSTED" {
 			return usageErr
 		}
+		approvedOverride := state == "NEEDS_APPROVAL" && approvalOperationID != "" && publish != nil
 		switch {
 		case terminal(state):
 			requestState, code = "REJECTED", DecisionGoalTerminal
@@ -313,17 +327,25 @@ func guardReplan(ctx context.Context, db *store.DB, in ReplanRequest, approvalOp
 			nextPlan, nextGraph = 0, 0
 		case seenEvidence != 0:
 			requestState, code = "NEEDS_APPROVAL", DecisionNoNewEvidence
+			if publish != nil {
+				// The immutable evidence index cannot record a duplicate.
+				// Approval must not promise publication that cannot commit.
+				requestState = "REJECTED"
+			}
 			nextPlan, nextGraph = 0, 0
 		case seenPlan != 0:
 			requestState, code = "NEEDS_APPROVAL", DecisionDuplicatePlan
+			if publish != nil {
+				requestState = "REJECTED"
+			}
 			nextPlan, nextGraph = 0, 0
-		case seenStrategy != 0:
+		case seenStrategy != 0 && !approvedOverride:
 			requestState, code = "NEEDS_APPROVAL", DecisionLoopDetected
 			nextPlan, nextGraph = 0, 0
-		case repeatedFailure:
+		case repeatedFailure && !approvedOverride:
 			requestState, code = "NEEDS_APPROVAL", DecisionRepeatedFailure
 			nextPlan, nextGraph = 0, 0
-		case !progressImproved && previousNoProgress:
+		case !progressImproved && previousNoProgress && !approvedOverride:
 			requestState, code = "NEEDS_APPROVAL", DecisionNoProgress
 			nextPlan, nextGraph = 0, 0
 		}

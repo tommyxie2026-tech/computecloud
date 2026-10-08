@@ -75,5 +75,5 @@ idempotent submission/evaluation, transaction rollback, adoption across restart,
 stale graph fences, missing artifact proof, manual retry and deadline regression.
 The complete server/store/goal test suites pass locally. This is fixture evidence,
 not real Runtime/MCP or production acceptance. Runtime token/cost enforcement
-and a governed external re-plan proposal API remain unimplemented;
+and external proposal acceptance against real Runtimes remain unimplemented;
 `automatic_replan_enabled` remains false and RPG integration remains PARTIAL.

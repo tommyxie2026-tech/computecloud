@@ -29,15 +29,33 @@ Guard, one-use approval consumption, and Plan/Job publication atomically. A
 failed or empty publication rolls all three back; stale or repeated approval
 consumption fails closed. An allowed decision replay returns the existing decision only
 when an immutable Plan, bound Job and matching frozen spec prove publication;
-otherwise it fails closed. The Server now has an internal explicit-proposal
+otherwise it fails closed. The Server now has an explicit governed proposal
 publication path: it requires a durable failed evaluation and accepts only the
 evaluator's persisted `job_evaluation` failure fact as Re-plan evidence. Richer
 Artifact claims remain unavailable until their facts can be verified. The path
 also requires a Plan fingerprint bound to the concrete Job spec, authorized
-credentials and templates, and
-commits the new Job, Stage/Task, Plan and binding together. It is not exposed as
-an automatic or public proposal API. Automatic Re-plan remains disabled and RPG
-remains PARTIAL.
+credentials and templates, and commits the new Job, Stage/Task, Plan and binding
+together. The HTTP caller needs `goals:propose`, `jobs:submit`, `jobs:read`,
+`jobs:control`, and the current Job write lease. This scope grants no human
+approval authority; a required one-use approval is still consumed in the same
+transaction. Automatic Re-plan remains disabled and RPG remains PARTIAL.
+
+`POST /v1/jobs/{job}/goal/replans` accepts bounded JSON with `proposal`,
+`job_spec`, and optional `approval_operation_id`. Proposal fields use snake_case:
+`id`, `goal_id`, `evaluation_id`, `expected_plan_revision`,
+`expected_graph_generation`, `reason_code`, `evidence`, `proposed_plan`,
+`strategy_delta`, and `progress`. The proposed Plan's `job_spec_hash` must
+match the canonical hash of `job_spec`; failure evidence must match the
+evaluator's persisted `job_evaluation` fact. First publication returns 202
+with `job` and `decision`; identical replay returns 200 with the same Job.
+A Guard decision that cannot publish returns 409 with `decision`. Malformed
+JSON, stale evaluation, tampered evidence, and unauthorized credentials fail
+closed; a conflicting replay returns 409. A human approval can release an
+otherwise bounded strategy-loop,
+repeated-failure or no-progress guard; it cannot override attempt, Re-plan,
+wall-time or usage limits. Duplicate evidence and duplicate Plan fingerprints
+are rejected for publication because their immutable indexes cannot record a
+second copy. This endpoint does not choose a Plan or create a Workflow Engine.
 
 This contract does not introduce policy DSL, broad RBAC, Planner implementation,
 or arbitrary Workflow Engine. RPG CLOSED requires actual publication, cancellation,
@@ -59,8 +77,8 @@ a finite usage budget therefore fences future assignments with
 already-frozen execution contracts. This is an opt-in accounting/governance
 foundation, not a runtime spend-control release. Unreported terminal Attempt usage
 is recorded as incomplete with null amounts. The Guard blocks unknown/exhausted
-accounting. The one-use permission transaction and internal Server publication
-path are implemented, but a governed proposal API and enforceable Runtime caps
-remain pending.
+accounting. The one-use permission transaction and governed proposal API are
+implemented; enforceable Runtime caps and real end-to-end acceptance remain
+pending.
 Evidence/constraint decisions are provenance only; frozen Jobs remain
 immutable. These limits keep RPG PARTIAL.

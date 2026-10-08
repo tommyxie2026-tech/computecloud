@@ -188,6 +188,103 @@ func TestGuardPublicationConsumesApprovalAtomically(t *testing.T) {
 	}
 }
 
+func TestGuardPendingProposalPublishesAfterHumanApproval(t *testing.T) {
+	db := newGoalDB(t)
+	ctx := context.Background()
+	createTestGoal(t, db, "g", Budget{MaxReplans: 3, MaxTotalAttempts: 5, MaxWallTime: time.Hour})
+	first := request("r1", "e1", 1, 1, "same-failure", "strategy-a")
+	if d, err := GuardAndPublishReplan(ctx, db, first, "", publishTestPlan); err != nil || !d.Allowed {
+		t.Fatalf("first publication=%+v %v", d, err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+	second := request("r2", "e2", 2, 2, "new-failure", "strategy-b")
+	second.ProposedPlan.StrategyClass = first.ProposedPlan.StrategyClass
+	pending, err := GuardAndPublishReplan(ctx, db, second, "", publishTestPlan)
+	if err != nil || !pending.NeedsApproval || pending.Code != DecisionLoopDetected {
+		t.Fatalf("pending=%+v %v", pending, err)
+	}
+	var version int64
+	if err := db.SQL.QueryRow("SELECT version FROM goals WHERE id='g'").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	actor := governance.Actor{ID: "human-1", Kind: "human", Owner: "owner", Projects: []string{"project"}, Scopes: []string{"goals:approve"}}
+	approval := governance.Request{OperationID: "approval-1", ExpectedVersion: version, PlanRevision: 2, GraphGeneration: 2, Action: "APPROVE_NEXT_REPLAN", Reason: "reviewed repeated failure"}
+	if err := db.Tx(ctx, func(q store.Query) error { _, err := governance.DecideTx(ctx, q, actor, "g", approval); return err }); err != nil {
+		t.Fatal(err)
+	}
+	changed := second
+	changed.ID = "changed-request"
+	changed.ReasonCode = "changed-reason"
+	if d, err := GuardAndPublishReplan(ctx, db, changed, "approval-1", publishTestPlan); err == nil || err.Error() != "IDEMPOTENCY_CONFLICT" {
+		t.Fatalf("changed pending proposal accepted: %+v %v", d, err)
+	}
+	var pendingID, pendingReason string
+	if err := db.SQL.QueryRow("SELECT id,reason_code FROM replan_requests WHERE goal_id='g' AND evaluation_id='e2'").Scan(&pendingID, &pendingReason); err != nil {
+		t.Fatal(err)
+	}
+	if pendingID != second.ID || pendingReason != second.ReasonCode {
+		t.Fatalf("pending audit changed: id=%q reason=%q", pendingID, pendingReason)
+	}
+	if d, err := GuardAndPublishReplan(ctx, db, second, "wrong-approval", publishTestPlan); err == nil {
+		t.Fatalf("invalid approval published pending proposal: %+v", d)
+	}
+	published, err := GuardAndPublishReplan(ctx, db, second, "approval-1", publishTestPlan)
+	if err != nil || !published.Allowed || published.Existing || published.NextPlanRevision != 3 {
+		t.Fatalf("approved publication=%+v %v", published, err)
+	}
+	replayed, err := GuardAndPublishReplan(ctx, db, second, "", publishTestPlan)
+	if err != nil || !replayed.Allowed || !replayed.Existing {
+		t.Fatalf("replay=%+v %v", replayed, err)
+	}
+	var consumed, jobs int
+	if err := db.SQL.QueryRow("SELECT consumed FROM goal_replan_permissions WHERE goal_id='g' AND operation_id='approval-1'").Scan(&consumed); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQL.QueryRow("SELECT count(*) FROM goal_job_bindings WHERE goal_id='g' AND plan_revision=3").Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if consumed != 1 || jobs != 1 {
+		t.Fatalf("approval=%d jobs=%d", consumed, jobs)
+	}
+}
+
+func TestGuardPublicationRejectsDuplicateEvidenceWithoutApprovalPath(t *testing.T) {
+	db := newGoalDB(t)
+	ctx := context.Background()
+	createTestGoal(t, db, "g", Budget{MaxReplans: 3, MaxTotalAttempts: 5, MaxWallTime: time.Hour})
+	if d, err := GuardAndPublishReplan(ctx, db, request("r1", "e1", 1, 1, "same-failure", "strategy-a"), "", publishTestPlan); err != nil || !d.Allowed {
+		t.Fatalf("first=%+v %v", d, err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := GuardAndPublishReplan(ctx, db, request("r2", "e2", 2, 2, "same-failure", "strategy-b"), "", publishTestPlan)
+	if err != nil || got.Allowed || got.NeedsApproval || got.Code != DecisionNoNewEvidence {
+		t.Fatalf("duplicate evidence must be terminal for this evaluation: %+v %v", got, err)
+	}
+}
+
+func TestGuardPublicationRejectsDuplicatePlanWithoutApprovalPath(t *testing.T) {
+	db := newGoalDB(t)
+	ctx := context.Background()
+	createTestGoal(t, db, "g", Budget{MaxReplans: 3, MaxTotalAttempts: 5, MaxWallTime: time.Hour})
+	first := request("r1", "e1", 1, 1, "first-failure", "strategy-a")
+	if d, err := GuardAndPublishReplan(ctx, db, first, "", publishTestPlan); err != nil || !d.Allowed {
+		t.Fatalf("first=%+v %v", d, err)
+	}
+	if _, err := db.SQL.Exec("UPDATE goals SET state='EVALUATING' WHERE id='g'"); err != nil {
+		t.Fatal(err)
+	}
+	second := request("r2", "e2", 2, 2, "new-failure", "strategy-b")
+	second.ProposedPlan = first.ProposedPlan
+	got, err := GuardAndPublishReplan(ctx, db, second, "", publishTestPlan)
+	if err != nil || got.Allowed || got.NeedsApproval || got.Code != DecisionDuplicatePlan {
+		t.Fatalf("duplicate plan must be terminal for this evaluation: %+v %v", got, err)
+	}
+}
+
 func TestAutonomousGuardPublicationSharesTransaction(t *testing.T) {
 	db := newGoalDB(t)
 	ctx := context.Background()
