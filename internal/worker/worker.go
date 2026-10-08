@@ -127,7 +127,10 @@ func (w *Worker) Close() error {
 	return errors.Join(w.conn.Close(), w.db.Close())
 }
 func advertisedRuntimeCapabilities(provider adapter.Provider) []string {
-	caps := provider.Capabilities()
+	return advertisedCapabilitySet(provider, provider.Capabilities())
+}
+
+func advertisedCapabilitySet(provider adapter.Provider, caps adapter.CapabilitySet) []string {
 	caps.Tools = toolreg.InstalledCompatible(caps.Tools)
 	caps.Environment = envreg.InstalledCompatible(caps.Environment)
 	compatible := caps.Environment[:0]
@@ -177,6 +180,10 @@ func (w *Worker) probe(ctx context.Context) error {
 		if e := provider.Probe(ctx, r); e != nil {
 			return errors.New("probe " + profile + ": " + e.Error())
 		}
+		caps, e := adapter.ConfiguredCapabilities(ctx, provider, r)
+		if e != nil {
+			return errors.New("capabilities " + profile + ": " + e.Error())
+		}
 		digests := map[string]string{}
 		for _, tmpl := range config.Templates(w.cfg) {
 			if tmpl.RuntimeProfile == profile {
@@ -188,7 +195,7 @@ func (w *Worker) probe(ctx context.Context) error {
 			Version:         r.Version,
 			Models:          r.Models,
 			Credentials:     r.Credentials,
-			Capabilities:    advertisedRuntimeCapabilities(provider),
+			Capabilities:    advertisedCapabilitySet(provider, caps),
 			Repositories:    keys(w.cfg.Repositories),
 			Policies:        keys(w.cfg.Policies),
 			Verifiers:       keys(w.cfg.Verifiers),

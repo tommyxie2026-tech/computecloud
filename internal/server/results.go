@@ -218,6 +218,9 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 		if e = appendEvent(ctx, q, &pb.Event{TaskId: t.TaskId, AttemptId: r.Attempt.AttemptId, Generation: a.generation, Type: "attempt.completed", PayloadJson: config.JSON(map[string]any{"success": r.Success, "cleanup_confirmed": true, "artifact_ids": r.ArtifactIds})}, nil); e != nil {
 			return e
 		}
+		if e = recordBoundGoalAttemptUsage(ctx, q, t.TaskId, r.Attempt.AttemptId); e != nil {
+			return e
+		}
 		if _, e = q.ExecContext(ctx, "UPDATE attempts SET released=1,final_hash=? WHERE id=?", hash, r.Attempt.AttemptId); e != nil {
 			return e
 		}
@@ -248,7 +251,6 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 	}
 	return &pb.Ack{State: state}, nil
 }
-
 
 func persistRuntimeSessionRef(ctx context.Context, q store.Query, ev *pb.Event) error {
 	if ev == nil || ev.Type != "session.started" {
@@ -289,7 +291,6 @@ func persistRuntimeSessionRef(ctx context.Context, q store.Query, ev *pb.Event) 
 	}
 	return nil
 }
-
 
 func resolveRuntimeSessionRef(current, final string) (string, error) {
 	if final == "" {

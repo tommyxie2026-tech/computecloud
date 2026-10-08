@@ -14,6 +14,7 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/process"
 	"github.com/tommyxie2026-tech/computecloud/internal/telemetry"
+	"google.golang.org/protobuf/proto"
 )
 
 type RuntimeState string
@@ -61,6 +62,7 @@ type PrepareRequest struct {
 	Spec       *pb.TaskSpec
 	Policy     config.Policy
 	Gateway    *pb.GatewayAccess
+	Budget     *pb.RuntimeBudget
 	Env        []string
 	CWD        string
 	Input      string
@@ -82,6 +84,7 @@ type PreparedExecution struct {
 	Stderr     io.Writer
 	StopGrace  time.Duration
 	Sensitive  []string
+	Budget     *pb.RuntimeBudget
 }
 
 type StartResult struct {
@@ -148,18 +151,27 @@ func prepareCLI(p Provider, req PrepareRequest) (PreparedExecution, error) {
 	if err != nil {
 		return PreparedExecution{}, err
 	}
+	args, err = applyHTTPRuntimeBudget(p.Profile(), args, req.Budget)
+	if err != nil {
+		return PreparedExecution{}, err
+	}
+	var budget *pb.RuntimeBudget
+	if req.Budget != nil {
+		budget = proto.Clone(req.Budget).(*pb.RuntimeBudget)
+	}
 	return PreparedExecution{
 		AttemptID:  req.AttemptID,
 		Generation: req.Generation,
 		Profile:    p.Profile(),
 		Runtime:    req.Runtime,
-		Args:       append([]string(nil), args...),
+		Args:       args,
 		Env:        copyEnv(req.Env),
 		CWD:        req.CWD,
 		Input:      req.Input,
 		Emit:       req.Emit,
 		Stderr:     req.Stderr,
 		StopGrace:  req.StopGrace,
+		Budget:     budget,
 	}, nil
 }
 

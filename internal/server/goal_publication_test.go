@@ -102,6 +102,34 @@ func TestServerGoalReplanPublicationAndReplay(t *testing.T) {
 	}
 }
 
+func TestServerGoalReplanPublishesClaudeHTTPCostBudget(t *testing.T) {
+	s, ctx, _, peer := offlineJobServer(t)
+	defer s.Close()
+	ctx = goalProposerContext(ctx)
+	priorSpec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
+	prior, err := s.SubmitJob(ctx, "goal-cost-budget-original", job.JSON(priorSpec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goalID := "goal_" + prior.ID
+	if _, err = s.db.SQL.Exec("UPDATE goals SET max_replans=1,max_total_attempts=2 WHERE id=?", goalID); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.db.Tx(ctx, func(q store.Query) error { return jobState(ctx, q, prior, "FAILED", "", "TEST_FAILURE") }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.SQL.Exec("INSERT INTO goal_budget_policy(goal_id,max_cost_units) VALUES(?,?)", goalID, 2_000_000); err != nil {
+		t.Fatal(err)
+	}
+	claudeSpec := configureClaudeHTTPBudgetFixture(s, peer)
+	proposal := replanProposal(goalID, fmt.Sprintf("%s:%d", prior.ID, prior.Version), claudeSpec)
+	proposal.ID = "proposal-claude-http-cost"
+	created, decision, err := s.PublishGoalReplan(ctx, prior.ID, proposal, "", job.JSON(claudeSpec))
+	if err != nil || created == nil || !decision.Allowed {
+		t.Fatalf("cost-only claude_http replan rejected: job=%+v decision=%+v err=%v", created, decision, err)
+	}
+}
+
 func TestServerGoalReplanRejectsMismatchAndRollsBack(t *testing.T) {
 	s, ctx, _, _ := offlineJobServer(t)
 	defer s.Close()

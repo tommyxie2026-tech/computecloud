@@ -20,7 +20,8 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - Relay 设计与实施计划：[ADR-021](docs/adr/0021-relay-assisted-p2p-transport.md) / [v0.4.x Relay 传输计划](docs/implementation/relay-p2p-transport-plan.md)
 - 下一步 Relay：补齐 Control/Lease/Cancel 与 Bulk 的流量优先级、运维指标/手册，再做真实网络验收
 - Goal-oriented Computing：Legacy Job 的 synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 证据评估和 Control 治理审计已接入执行路径；显式提议可通过受控 HTTP 入口原子发布新 Plan/Job，自动 Re-plan 仍关闭
-- RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费和显式提议入口已实现。可强制的 Runtime token/cost 上限与真实环境验收未完成，RPG-4 仍为 PARTIAL；完成后关闭，不新增 RPG-5
+- Runtime 预算：自托管 `claude_http` 已支持 Claude 客户端估算费用的微美元硬停止边界，包含能力协商、Assignment 冻结、单在途 Attempt、原子 usage 结算和未知用量 fail-closed。一次 API 调用可能越过阈值；它不是供应商账单上限。Codex token/cost 与 Claude token 上限仍不支持。
+- RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费、显式提议入口和限定范围 Runtime cost enforcement 已实现。固定版本真实 Runtime 与独立主机验收仍待完成，RPG-4 保持 PARTIAL；完成后关闭，不新增 RPG-5
 - 当前 main Server schema：**v16**（Goal 执行与治理迁移）（v0.4.6 tag 为 v13）；Worker schema：**v6**
 - 下一轮任务与缺口：[0.4.x 收尾计划](docs/implementation/v0.4-closeout-plan.md)；先推进代码与 CI，最后使用独立主机完成真实生产基线和缓存验收
 - 认证模拟 Gate：[CI 范围与证据](docs/validation/certification-simulation.md) 汇总 v13→v16 升级/恢复、单 runner 双 Worker、Relay 回退和缓存 P50；它不代表真实独立主机、真实 Runtime 或生产环境验收

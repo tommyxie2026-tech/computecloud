@@ -38,6 +38,9 @@ type Attempt struct {
 	UsageComplete bool     `json:"usage_complete"`
 	Source        string   `json:"source"`
 	Usage         *Tokens  `json:"usage"`
+	CostUnits     *int64   `json:"cost_units,omitempty"`
+	CostComplete  bool     `json:"cost_complete"`
+	BudgetReached bool     `json:"budget_reached"`
 	Process       *Process `json:"process"`
 	NativeFinal   bool     `json:"native_final"`
 }

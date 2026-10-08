@@ -54,6 +54,13 @@ type httpRunStatus struct {
 	HasMore  bool           `json:"has_more"`
 }
 
+type httpRuntimeHealth struct {
+	Profile      string   `json:"profile"`
+	Version      string   `json:"version"`
+	Isolation    string   `json:"isolation"`
+	Capabilities []string `json:"capabilities"`
+}
+
 func (p httpRuntimeProvider) Profile() string                 { return p.profile }
 func (p httpRuntimeProvider) Version(r config.Runtime) string { return r.Version }
 func (p httpRuntimeProvider) Transport() string               { return "remote_api" }
@@ -140,21 +147,41 @@ func httpRequest(ctx context.Context, r config.Runtime, method, path string, in,
 	return nil
 }
 
-func (p httpRuntimeProvider) Probe(ctx context.Context, r config.Runtime) error {
-	var health struct {
-		Profile   string `json:"profile"`
-		Version   string `json:"version"`
-		Isolation string `json:"isolation"`
-	}
+func (p httpRuntimeProvider) health(ctx context.Context, r config.Runtime) (httpRuntimeHealth, error) {
+	var health httpRuntimeHealth
 	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := httpRequest(probeCtx, r, http.MethodGet, "/v1/health?profile="+url.QueryEscape(p.profile), nil, &health); err != nil {
-		return err
+		return health, err
 	}
 	if health.Profile != p.profile || health.Version != r.Version || health.Isolation != "container" {
-		return fmt.Errorf("HTTP runtime identity mismatch: got %q %q", health.Profile, health.Version)
+		return health, fmt.Errorf("HTTP runtime identity mismatch: got %q %q", health.Profile, health.Version)
 	}
-	return nil
+	return health, nil
+}
+
+func (p httpRuntimeProvider) Probe(ctx context.Context, r config.Runtime) error {
+	_, err := p.health(ctx, r)
+	return err
+}
+
+func (p httpRuntimeProvider) ConfiguredRuntimeCapabilities(ctx context.Context, r config.Runtime) ([]string, error) {
+	health, err := p.health(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	allowed := map[string]bool{}
+	if p.profile == "claude_http" {
+		allowed["budget_claude_estimated_usd_v1"] = true
+	}
+	runtime := append([]string(nil), p.Capabilities().Runtime...)
+	for _, capability := range health.Capabilities {
+		if !allowed[capability] {
+			return nil, fmt.Errorf("HTTP runtime advertised unsupported capability %q", capability)
+		}
+		runtime = append(runtime, capability)
+	}
+	return runtime, nil
 }
 
 func (p httpRuntimeProvider) Prepare(req PrepareRequest) (PreparedExecution, error) {

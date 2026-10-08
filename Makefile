@@ -1,7 +1,7 @@
 GO ?= go
 VERSION ?= 0.4.7-rc.1
 
-.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-prepared-workspace-contract ci-prepared-workspace-recovery ci-long-run-flow ci-fair-flow ci-runtime-contract-flow ci-runtime-execution-flow ci-tool-contract-flow ci-environment-contract-flow ci-environment-execution-flow ci-agent-control-schema ci-agent-control-read ci-runtime-adapter-contract ci-agent-control-fencing ci-agent-control-negative ci-agent-control-dispatch ci-agent-control-approval ci-agent-control-resume ci-control-client-check ci-control-client-e2e ci-control-mobile-check ci-manual-retry-negative ci-container-image container-build capacity capacity-check release-package generate
+.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-prepared-workspace-contract ci-prepared-workspace-recovery ci-long-run-flow ci-fair-flow ci-runtime-contract-flow ci-runtime-execution-flow ci-tool-contract-flow ci-environment-contract-flow ci-environment-execution-flow ci-agent-control-schema ci-agent-control-read ci-runtime-adapter-contract ci-runtime-budget ci-agent-control-fencing ci-agent-control-negative ci-agent-control-dispatch ci-agent-control-approval ci-agent-control-resume ci-control-client-check ci-control-client-e2e ci-control-mobile-check ci-manual-retry-negative ci-container-image container-build capacity capacity-check release-package generate
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w -X main.version=$(VERSION)' -o bin/computecloud ./cmd/computecloud
 test:
@@ -44,6 +44,8 @@ ci-agent-control-read:
 	python3 scripts/ci_agent_control_read.py --output dist/ci-agent-control-read/report.json
 ci-runtime-adapter-contract:
 	python3 scripts/ci_runtime_adapter_contract.py --output dist/ci-runtime-adapter-contract/report.json
+ci-runtime-budget:
+	python3 scripts/ci_runtime_budget.py --output dist/ci-runtime-budget/report.json
 ci-agent-control-fencing:
 	python3 scripts/ci_agent_control_fencing.py --output dist/ci-agent-control-fencing/report.json
 ci-agent-control-negative:

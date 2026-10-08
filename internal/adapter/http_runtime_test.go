@@ -43,6 +43,57 @@ func testHTTPRuntime(t *testing.T, handler http.Handler) config.Runtime {
 	return config.Runtime{Endpoint: "unix:///tmp/runtime.sock", TokenFile: token, Version: "0.160.1"}
 }
 
+// A controller capability is trusted only after the authenticated health
+// contract identifies the same pinned Runtime. If version gating or the
+// allowlist disappears, a Worker could advertise a budget it cannot enforce.
+func TestConfiguredHTTPRuntimeCapabilitiesFailClosedByVersion(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		profile string
+		version string
+		caps    []string
+		want    bool
+		wantErr bool
+	}{
+		{name: "minimum Claude", profile: "claude_http", version: "2.1.217", caps: []string{"budget_claude_estimated_usd_v1"}, want: true},
+		{name: "current Claude", profile: "claude_http", version: "2.1.292", caps: []string{"budget_claude_estimated_usd_v1"}, want: true},
+		{name: "old Claude remains unbudgeted", profile: "claude_http", version: "2.1.216"},
+		{name: "Codex never inherits Claude budget", profile: "codex_http", version: "0.160.1"},
+		{name: "unknown capability", profile: "claude_http", version: "2.1.292", caps: []string{"invented_budget"}, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"profile": tc.profile, "version": tc.version, "isolation": "container", "capabilities": tc.caps,
+				})
+			})
+			runtime := testHTTPRuntime(t, handler)
+			runtime.Version = tc.version
+			provider, ok := Lookup(tc.profile)
+			if !ok {
+				t.Fatal("provider missing")
+			}
+			caps, err := ConfiguredCapabilities(context.Background(), provider, runtime)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("unknown capability accepted: %+v", caps)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := false
+			for _, capability := range caps.Advertised() {
+				got = got || capability == "runtime:budget_claude_estimated_usd_v1"
+			}
+			if got != tc.want {
+				t.Fatalf("budget capability=%v want=%v advertised=%v", got, tc.want, caps.Advertised())
+			}
+		})
+	}
+}
+
 func TestHTTPRuntimeLifecycleAndEventCursor(t *testing.T) {
 	var mu sync.Mutex
 	var requests []string

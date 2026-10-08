@@ -21,8 +21,10 @@ the same transaction before Goal cancellation can be considered effective.
 Token/cost reports bind a durable Attempt, source and unique usage ID. Values are
 nullable; incomplete reports stay incomplete and block autonomous re-planning
 under a finite budget. Conflicting repeated usage IDs are rejected. Accounting
-ceilings cannot claim a runtime hard cap: runtimes without enforceable per-Attempt
-limits cannot opt into autonomous finite token/cost execution.
+ceilings only claim a runtime boundary when the bound execution advertises and
+implements it. The initial supported case is a cost-only Goal whose active Job
+uses `claude_http` throughout. All token limits, mixed limits and Codex cost
+limits remain fail-closed.
 
 The staged `GuardAndPublishReplan` transaction contract lets a caller run
 Guard, one-use approval consumption, and Plan/Job publication atomically. A
@@ -71,14 +73,23 @@ also require `goals:budget` and `goals:constraints` respectively. Goal GET inclu
 a bounded recent-decision projection. ABORT/REJECT atomically put the Job into
 its established STOPPING/cleanup path; they do not manufacture cleanup proof.
 
-No current Runtime adapter advertises enforceable token/cost hard limits. Setting
-a finite usage budget therefore fences future assignments with
-`GOAL_RUNTIME_BUDGET_UNSUPPORTED`; existing active Attempts still follow their
-already-frozen execution contracts. This is an opt-in accounting/governance
-foundation, not a runtime spend-control release. Unreported terminal Attempt usage
-is recorded as incomplete with null amounts. The Guard blocks unknown/exhausted
-accounting. The one-use permission transaction and governed proposal API are
-implemented; enforceable Runtime caps and real end-to-end acceptance remain
-pending.
+`claude_http` version 2.1.217 or later may advertise
+`runtime:budget_claude_estimated_usd_v1`. For a cost-only policy, the Server
+subtracts complete settled usage, freezes the remaining micro-USD amount and
+`usd_micros_client_estimate` semantics into the Assignment, and permits only
+one in-flight Attempt for that Goal. The Worker passes the amount to Claude's
+`--max-budget-usd`; the final estimate can exceed the threshold by one API call.
+This is an enforceable stop boundary over Claude's client-side estimate, not a
+strict actual-billing cap. Completion records usage in the same transaction
+before releasing the Attempt. Missing final/token/cost evidence is recorded as
+incomplete and blocks future admission with `GOAL_USAGE_UNKNOWN`; exhausted
+usage blocks with `GOAL_USAGE_EXHAUSTED`.
+
+Codex cost/token limits and Claude token limits remain unsupported and receive
+`GOAL_RUNTIME_BUDGET_UNSUPPORTED`. Existing active Attempts keep their frozen
+contracts. Goal GET retains `runtime_hard_budget_supported` and adds
+`runtime_budget_capabilities`; both are derived from durable policy and active
+bound Job profiles rather than current Worker presence. Real-provider and
+independent-host acceptance remain pending.
 Evidence/constraint decisions are provenance only; frozen Jobs remain
 immutable. These limits keep RPG PARTIAL.
