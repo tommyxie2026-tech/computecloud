@@ -14,13 +14,14 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - v0.4.6 已通过完整 CI、package、multi-arch container 与 release；发布范围和升级步骤见 [v0.4.6 部署指南](docs/deployment/production-v0.4.6.md)，验收证据见 [v0.4.6 发布记录](docs/implementation/v0.4.6-release-status.md)
 - main 功能基线：**v0.4.x Runtime / Tool / Environment + Prepared Workspace、synthetic Goal 与实验性 Relay**（尚未发布为新的稳定版本）
 - 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
-- 当前功能主线：**先完成 Goal、Runtime/Environment、Trigger/Delivery 与 Relay 的代码闭环**；真实双机、缓存性能和生产验收放在候选范围冻结之后。CI Trigger/Delivery 的 CLI 适配器和本地交付记录已合入，真实 CI→Server 验收仍待完成；隔离 Environment 不能由宿主机 CLI 虚报执行边界
+- 当前功能主线：Goal 的原子 Plan/Job 发布、一次性批准消费和限定 `claude_http` 费用上限已完成代码与 CI 闭环；下一步是 Relay 运维闭环、真实 Runtime/Environment/Trigger 验收与独立双机基线。CI Trigger/Delivery 的 CLI 适配器和本地交付记录已合入，真实 CI→Server 验收仍待完成；隔离 Environment 不能由宿主机 CLI 虚报执行边界
 - 自托管 HTTP Runtime：`codex_http` / `claude_http` 的 Unix-socket Provider、HTTP 服务和固定版本 OCI 镜像已实现，服务为每个 Attempt 启动独立 Docker 容器；Container EnvironmentProvider 已接入持久引用、恢复检查与清理证明。部署与契约见 [HTTP Runtime 说明](docs/implementation/agent-http-runtime.md)。真实 CLI、Docker 隔离负向测试和双机验收仍待完成。
 - Relay/P2P 当前进度：Transport seam、实验性 TLS Relay fixture、direct-first fallback 与 Worker 双 Job 恢复 Gate 已合入；Broker 侧短期一次性票据签发/领取接口和 Server 直连/隧道共用 gRPC 服务的接入点已实现。Server/Worker 的自动签发、领取与连接循环已提供显式 `direct_then_relay` 配置，`direct` 仍为默认路径；真实 NAT/长任务验收未完成
 - Relay 设计与实施计划：[ADR-021](docs/adr/0021-relay-assisted-p2p-transport.md) / [v0.4.x Relay 传输计划](docs/implementation/relay-p2p-transport-plan.md)
 - 下一步 Relay：补齐 Control/Lease/Cancel 与 Bulk 的流量优先级、运维指标/手册，再做真实网络验收
 - Goal-oriented Computing：Legacy Job 的 synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 证据评估和 Control 治理审计已接入执行路径；显式提议可通过受控 HTTP 入口原子发布新 Plan/Job，自动 Re-plan 仍关闭
-- RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费和显式提议入口已实现。可强制的 Runtime token/cost 上限与真实环境验收未完成，RPG-4 仍为 PARTIAL；完成后关闭，不新增 RPG-5
+- Runtime 预算：自托管 `claude_http` 已支持 Claude 客户端估算费用的微美元硬停止边界，包含能力协商、Assignment 冻结、单在途 Attempt、原子 usage 结算和未知用量 fail-closed。一次 API 调用可能越过阈值；它不是供应商账单上限。Codex token/cost 与 Claude token 上限仍不支持。
+- RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费、显式提议入口和限定范围 Runtime cost enforcement 已实现。固定版本真实 Runtime 与独立主机验收仍待完成，RPG-4 保持 PARTIAL；完成后关闭，不新增 RPG-5
 - 当前 main Server schema：**v16**（Goal 执行与治理迁移）（v0.4.6 tag 为 v13）；Worker schema：**v6**
 - 下一轮任务与缺口：[0.4.x 收尾计划](docs/implementation/v0.4-closeout-plan.md)；先推进代码与 CI，最后使用独立主机完成真实生产基线和缓存验收
 - 认证模拟 Gate：[CI 范围与证据](docs/validation/certification-simulation.md) 汇总 v13→v16 升级/恢复、单 runner 双 Worker、Relay 回退和缓存 P50；它不代表真实独立主机、真实 Runtime 或生产环境验收
@@ -52,7 +53,7 @@ Goal -> Plan -> Execution Graph -> Scheduler -> Worker
 
 ### Re-plan Guard 当前进度
 
-以下 RPG-1～3 状态指 Guard 原语及其测试。Server 已对 synthetic Goal 的 Attempt 创建进行原子预算预留，但 Guard 尚未接入新 Plan/Job 发布闭环。
+以下 RPG-1～3 状态指 Guard 原语及其测试。Server 已完成 synthetic Goal 的原子 Attempt 预留、Guard → Plan/Job 发布、一次性批准消费与限定 Runtime 费用上限。自动 Re-plan 仍关闭；RPG 完整闭环仍需固定版本真实 Runtime 和独立主机验收。
 
 ~~~text
 RPG-1  ✅ Bound
@@ -203,7 +204,7 @@ startup latency
 
 它属于 Agent Job 执行性能与恢复能力，不发展成通用 IDE / Dev Environment 产品。
 
-Goal Governance 决策与审计已接入 Control；RPG-4 仍需原子发布和 Runtime 预算强制能力，不能由已有审批记录推定闭环完成。
+Goal Governance 决策与审计已接入 Control；原子发布与限定 `claude_http` 估算费用强制已通过 CI。RPG-4 仍需真实 Provider、恢复路径和独立主机验收，不能由 fixture 结果推定生产闭环完成。
 
 ## 构建与试跑
 

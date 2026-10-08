@@ -201,7 +201,41 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Docker unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	respond(w, http.StatusOK, map[string]string{"profile": name, "version": version, "isolation": "container"})
+	capabilities := []string{}
+	if name == "claude_http" && versionAtLeast(version, 2, 1, 217) {
+		capabilities = append(capabilities, "budget_claude_estimated_usd_v1")
+	}
+	respond(w, http.StatusOK, map[string]any{"profile": name, "version": version, "isolation": "container", "capabilities": capabilities})
+}
+
+func versionAtLeast(version string, wantMajor, wantMinor, wantPatch int) bool {
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	got := [3]int{}
+	for i, part := range parts {
+		if part == "" || len(part) > 1 && part[0] == '0' {
+			return false
+		}
+		for _, digit := range part {
+			if digit < '0' || digit > '9' {
+				return false
+			}
+		}
+		value, err := strconv.Atoi(part)
+		if err != nil || value < 0 {
+			return false
+		}
+		got[i] = value
+	}
+	want := [3]int{wantMajor, wantMinor, wantPatch}
+	for i := range got {
+		if got[i] != want[i] {
+			return got[i] > want[i]
+		}
+	}
+	return true
 }
 
 type environmentStatus struct {

@@ -1,6 +1,6 @@
 # computecloud 3–5 人并行开发计划
 
-> 2026-10-07 执行更新：P0、缓存及 provider fixture P50、readiness 观测、synthetic Goal 执行、治理审计与 Control 产物审阅已分批合入。RPG 完整闭环、真实 Worker/Job 与独立主机生产验收、完整 Relay 与 Mobile Beta 尚未完成；当前证据与剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 为准。
+> 2026-10-09 执行更新：P0、缓存及 provider fixture P50、readiness 观测、synthetic Goal 执行、治理审计、Control 产物审阅及 `claude_http` 估算费用强制边界已完成代码与 CI Gate；PR #125 CI 37803798658 含真实 Docker/假 Claude OCI 矩阵并全部通过。真实 Runtime、Worker/Job 与独立主机生产验收、完整 Relay 与 Mobile Beta 尚未完成；当前证据与剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 为准。
 当前执行台账：[P0–P2 实施与验收](p0-p2-execution.md)（2026-10-06）。
 
 - 日期：2026-09-29
@@ -8,7 +8,7 @@
 - 当前稳定发布基线：v0.4.6 Post-0.4.5 Stabilization
 - 当前 main 功能基线：v0.4.x Runtime / Tool / Environment、Prepared Workspace、synthetic Goal、实验性 Relay（Server v16 / Worker v6）
 - 当前产品主线：先完成 Goal、Runtime/Environment、Trigger/Delivery 与 Relay 代码闭环；最后进行真实双机、Prepared Workspace 性能与生产验收
-- 并行旁路：RPG-4 PARTIAL / Goal Governance Server Plan/Job 原子发布、Relay/Mobile 后续 Gate；一次性审批消费和 CI Trigger/Delivery 首个适配器已合入
+- 并行旁路：RPG-4 PARTIAL / Goal Governance Server Plan/Job 原子发布与限定 `claude_http` cost enforcement 已实现，真实 Provider 验收和 Relay/Mobile 后续 Gate 待完成；一次性审批消费和 CI Trigger/Delivery 首个适配器已合入
 - 原则：**并行开发不等于架构拆服务；继续保持单 Go Server + SQLite，优先通过 package / contract / CI Gate 隔离并行工作。**
 
 ## 0. 当前认领状态
@@ -20,7 +20,7 @@ Status: DONE for v0.4.5 core scope; prepared-workspace-contract/recovery release
 
 WS-B: PARTIAL — cache/warm/GC/benchmark merged; representative performance and independent-host acceptance pending
 WS-C: PARTIAL — readiness contract/observer/explain merged; scheduling scoring intentionally disabled
-WS-D: PARTIAL — synthetic Goal execution/evaluation and governance merged; atomic Guard → Plan/Job publication, one-use approval consumption and enforceable Runtime caps pending
+WS-D: PARTIAL — synthetic Goal execution/evaluation、atomic Guard → Plan/Job publication、one-use approval consumption 与 `claude_http` estimated-cost enforcement 已实现；真实 Provider/独立主机验收待完成
 WS-E: PARTIAL — Runtime Approval/ACK and Goal Control decision/audit bridge merged; Mobile pairing/push pending
 ~~~
 
@@ -644,6 +644,12 @@ usage_complete=false
 ~~~
 
 不得伪造 0 消耗。
+
+初始可强制范围仅为自托管 `claude_http` 的 cost-only Goal。费用单位为
+Claude 客户端估算值的微美元，单次 API 调用可能越过阈值；有限预算
+Goal 强制单在途 Attempt，usage 缺失或不完整时禁止继续调度。Codex
+token/cost 与 Claude token 仍为 fail-closed unsupported。CI Gate 为
+`ci-runtime-budget`，真实 Provider 与独立主机证据归入 VAL-01。
 
 ## 6.7 DoD
 

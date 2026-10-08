@@ -263,6 +263,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		Spec:       a.Spec,
 		Policy:     policy,
 		Gateway:    a.Gateway,
+		Budget:     a.RuntimeBudget,
 		Env:        environmentPrepared.Env,
 		CWD:        environmentPrepared.CWD,
 		Input:      jobRun.prompt,
@@ -294,7 +295,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		}))
 	}
 	out := run.Outcome
-	metrics := telemetry.Attempt{UsageComplete: out.UsageComplete, Source: a.Spec.RuntimeProfile, Usage: out.Usage, Process: run.Metrics, NativeFinal: out.Final}
+	metrics := telemetry.Attempt{UsageComplete: out.UsageComplete, Source: a.Spec.RuntimeProfile, Usage: out.Usage, CostUnits: out.CostUnits, CostComplete: out.CostComplete, BudgetReached: out.BudgetReached, Process: run.Metrics, NativeFinal: out.Final}
 	if e := w.emit(persistCtx, a, "attempt.metrics", config.JSON(metrics)); e != nil {
 		released := w.releaseEnvironment(persistCtx, a.AttemptId, environmentProvider, environmentPrepared.Ref)
 		clean := runtimeCleanupConfirmed(run.Cleanup) && environmentCleanupConfirmed(released.Cleanup)
@@ -324,6 +325,11 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		if !runtimeCleanupConfirmed(run.Cleanup) {
 			code = "CLEANUP_UNCONFIRMED"
 		}
+	}
+	if out.BudgetReached && runtimeCleanupConfirmed(run.Cleanup) {
+		success = false
+		code = "RUNTIME_BUDGET_EXHAUSTED"
+		msg = "runtime reached the dispatched cost boundary"
 	}
 	verification := []map[string]any{}
 	for _, cmd := range verify {
@@ -406,6 +412,11 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		msg = "could not persist result bundle"
 	} else {
 		ids = []string{artifact.ArtifactId}
+	}
+	if out.BudgetReached {
+		success = false
+		code = "RUNTIME_BUDGET_EXHAUSTED"
+		msg = "runtime reached the dispatched cost boundary"
 	}
 	environmentReleased := w.releaseEnvironment(persistCtx, a.AttemptId, environmentProvider, environmentPrepared.Ref)
 	cleanupConfirmed := runtimeCleanupConfirmed(run.Cleanup) && environmentCleanupConfirmed(environmentReleased.Cleanup)

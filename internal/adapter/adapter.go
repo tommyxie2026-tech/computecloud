@@ -20,6 +20,9 @@ import (
 type Outcome struct {
 	UsageComplete bool              `json:"usage_complete"`
 	Usage         *telemetry.Tokens `json:"usage,omitempty"`
+	CostUnits     *int64            `json:"cost_units,omitempty"`
+	CostComplete  bool              `json:"cost_complete"`
+	BudgetReached bool              `json:"budget_reached"`
 	Final         bool              `json:"final"`
 	Success       bool              `json:"success"`
 	Result        string            `json:"result,omitempty"`
@@ -372,13 +375,21 @@ func (p *Parser) Line(line []byte) error {
 		case "result":
 			p.outcome.Usage = telemetry.ReadTokens(m["usage"])
 			p.outcome.UsageComplete = p.outcome.Usage != nil
+			if cost, err := parseUSDmicros(m["total_cost_usd"]); err == nil {
+				p.outcome.CostUnits = &cost
+				p.outcome.CostComplete = true
+			}
 			p.outcome.Final = true
 			p.outcome.Result = str("result")
 			p.outcome.Session = str("session_id")
 			var bad bool
 			_ = json.Unmarshal(m["is_error"], &bad)
-			p.outcome.Success = !bad && str("subtype") == "success"
-			if !p.outcome.Success {
+			subtype := str("subtype")
+			p.outcome.BudgetReached = subtype == "error_max_budget_usd"
+			p.outcome.Success = !bad && subtype == "success"
+			if p.outcome.BudgetReached {
+				p.outcome.Code = "RUNTIME_BUDGET_EXHAUSTED"
+			} else if !p.outcome.Success {
 				p.outcome.Code = "RUNTIME_FAILED"
 			}
 			typ = "runtime.result"

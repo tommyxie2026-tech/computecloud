@@ -76,6 +76,12 @@ func saveAttemptMetrics(ctx context.Context, q store.Query, attempt string, raw 
 	if m.UsageComplete && m.Usage == nil {
 		return status.Error(codes.InvalidArgument, "INVALID_ATTEMPT_METRICS")
 	}
+	if m.CostUnits != nil && (*m.CostUnits < 0 || *m.CostUnits > 2_000_000_000_000_000) {
+		return status.Error(codes.InvalidArgument, "INVALID_ATTEMPT_METRICS")
+	}
+	if m.CostComplete && m.CostUnits == nil || m.BudgetReached && (!m.CostComplete || m.CostUnits == nil) {
+		return status.Error(codes.InvalidArgument, "INVALID_ATTEMPT_METRICS")
+	}
 	if m.Usage != nil && (m.Usage.Input < 0 || m.Usage.Output < 0 || m.Usage.CachedInput < 0 || m.Usage.Input > 1e15 || m.Usage.Output > 1e15 || m.Usage.CachedInput > 1e15) {
 		return status.Error(codes.InvalidArgument, "INVALID_ATTEMPT_METRICS")
 	}

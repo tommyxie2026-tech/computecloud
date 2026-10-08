@@ -522,6 +522,9 @@ func (s *Server) tick(ctx context.Context) error {
 	return s.scheduleQueued(ctx, peers)
 }
 func fits(p *session, t *pb.Task) bool {
+	return fitsWithCapabilities(p, t, nil)
+}
+func fitsWithCapabilities(p *session, t *pb.Task, additional []string) bool {
 	if !config.Contains(p.identity.Projects, t.Spec.ProjectId) {
 		return false
 	}
@@ -531,6 +534,9 @@ func fits(p *session, t *pb.Task) bool {
 		}
 		good := true
 		for _, c := range t.Spec.RequiredCapabilities {
+			good = good && config.Contains(r.Capabilities, c)
+		}
+		for _, c := range additional {
 			good = good && config.Contains(r.Capabilities, c)
 		}
 		if good {
@@ -552,6 +558,8 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		if e != nil {
 			return e
 		}
+		var runtimeBudget *pb.RuntimeBudget
+		var budgetCapabilities []string
 		if j != nil {
 			if j.StopReason != "" || terminal(j.State) || j.State == "RECONCILING" || j.Deadline <= store.Now() {
 				return nil
@@ -559,6 +567,16 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 			if route := j.frozen.Routes[t.Spec.CredentialRef]; route != "" && (!s.cfg.ModelGateway.Enabled || j.frozen.RouteDigests[route] != config.RouteDigest(s.cfg.ModelGateway.Routes[route])) {
 				_, e = q.ExecContext(ctx, "UPDATE tasks SET blocker='GATEWAY_ROUTE_CHANGED' WHERE id=?", id)
 				return e
+			}
+			runtimeBudget, budgetCapabilities, e = buildGoalRuntimeBudget(ctx, q, j, t)
+			if e != nil {
+				switch e.Error() {
+				case "GOAL_RUNTIME_BUDGET_UNSUPPORTED", "GOAL_USAGE_EXHAUSTED", "GOAL_USAGE_UNKNOWN", "GOAL_USAGE_OVERFLOW", "GOAL_BUDGET_IN_FLIGHT":
+					_, updateErr := q.ExecContext(ctx, "UPDATE tasks SET blocker=? WHERE id=?", e.Error(), id)
+					return updateErr
+				default:
+					return e
+				}
 			}
 			var active int
 			if e = q.QueryRowContext(ctx, "SELECT count(*) FROM attempts a JOIN tasks t ON a.task=t.id WHERE t.job_id=? AND a.released=0", j.ID).Scan(&active); e != nil {
@@ -603,6 +621,7 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		} else {
 			sawReadyWorker := false
 			sawCompatibleWorker := false
+			sawBudgetCapabilityMismatch := false
 			for _, p := range peers {
 				var active int
 				var seen int64
@@ -614,7 +633,11 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 					continue
 				}
 				sawReadyWorker = true
-				if !fits(p, t) || (jc != nil && !fitsJob(p, t, jc)) {
+				baseFits := fits(p, t) && (jc == nil || fitsJob(p, t, jc))
+				if !baseFits || !fitsWithCapabilities(p, t, budgetCapabilities) {
+					if baseFits && len(budgetCapabilities) != 0 {
+						sawBudgetCapabilityMismatch = true
+					}
 					observe(p, "TEMPLATE_OR_CAPABILITY_MISMATCH")
 					continue
 				}
@@ -635,6 +658,8 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 			if chosen == nil {
 				if !sawReadyWorker {
 					blocker = "NO_READY_WORKER"
+				} else if sawBudgetCapabilityMismatch {
+					blocker = "GOAL_RUNTIME_BUDGET_UNSUPPORTED"
 				} else if !sawCompatibleWorker {
 					blocker = "TEMPLATE_OR_CAPABILITY_MISMATCH"
 				} else {
@@ -660,22 +685,13 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 			if e = q.QueryRowContext(ctx, `SELECT count(*) FROM goals g JOIN goal_job_bindings b ON b.goal_id=g.id WHERE b.job_id=? AND b.plan_revision=g.active_plan_revision AND b.graph_generation=g.active_graph_generation AND g.state IN ('RUNNING','GRAPH_READY','REPLANNING') AND g.consumed_attempts<g.max_total_attempts AND (g.deadline=0 OR g.deadline>?) AND g.created+g.max_wall_time_ms>?`, j.ID, now, now).Scan(&allowed); e != nil {
 				return e
 			}
-			var finiteUsageBudget int
-			if e = q.QueryRowContext(ctx, `SELECT count(*) FROM goal_budget_policy p JOIN goal_job_bindings b ON b.goal_id=p.goal_id WHERE b.job_id=? AND (p.max_tokens IS NOT NULL OR p.max_cost_units IS NOT NULL)`, j.ID).Scan(&finiteUsageBudget); e != nil {
-				return e
-			}
-			if finiteUsageBudget != 0 {
-				// Current adapters do not enforce per-Attempt token/cost ceilings.
-				_, e = q.ExecContext(ctx, "UPDATE tasks SET blocker='GOAL_RUNTIME_BUDGET_UNSUPPORTED' WHERE id=?", id)
-				return e
-			}
 			if allowed != 1 {
 				_, e = q.ExecContext(ctx, "UPDATE tasks SET blocker='GOAL_EXECUTION_FENCED' WHERE id=?", id)
 				return e
 			}
 		}
 		nextGeneration := currentGeneration + 1
-		a := &pb.Assignment{TaskId: id, AttemptId: store.ID(), Generation: nextGeneration, LeaseToken: store.ID() + store.ID(), LeaseTtlMs: int64(s.cfg.LeaseSeconds) * 1000, DeadlineMs: deadline, Spec: t.Spec, Job: jc}
+		a := &pb.Assignment{TaskId: id, AttemptId: store.ID(), Generation: nextGeneration, LeaseToken: store.ID() + store.ID(), LeaseTtlMs: int64(s.cfg.LeaseSeconds) * 1000, DeadlineMs: deadline, Spec: t.Spec, Job: jc, RuntimeBudget: runtimeBudget}
 		now = store.Now()
 		if _, e = q.ExecContext(ctx, "INSERT INTO attempts(id,task,worker,epoch,generation,token,lease_until,last_renewed) VALUES(?,?,?,?,?,?,?,?)", a.AttemptId, id, chosen.hello.WorkerId, chosen.hello.Epoch, nextGeneration, a.LeaseToken, now+a.LeaseTtlMs, now); e != nil {
 			return e

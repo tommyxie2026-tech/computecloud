@@ -75,13 +75,8 @@ func (s *Server) PublishGoalReplan(ctx context.Context, priorJobID string, in go
 	jobID := store.ID()
 	key := "goal-replan-" + job.Hash([]byte(in.GoalID + "/" + in.EvaluationID))[:32]
 	decision, err := goal.GuardAndPublishReplan(ctx, s.db, in, approvalOperationID, func(ctx context.Context, q store.Query, d goal.ReplanDecision) error {
-		var unsupportedBudget int
-		if e := q.QueryRowContext(ctx, `SELECT count(*) FROM goal_budget_policy WHERE goal_id=?
- AND (max_tokens IS NOT NULL OR max_cost_units IS NOT NULL)`, in.GoalID).Scan(&unsupportedBudget); e != nil {
+		if e := goalRuntimeBudgetSupportedForSpec(ctx, q, in.GoalID, spec); e != nil {
 			return e
-		}
-		if unsupportedBudget != 0 {
-			return fmt.Errorf("GOAL_RUNTIME_BUDGET_UNSUPPORTED")
 		}
 		var goalID string
 		var revision, generation int64

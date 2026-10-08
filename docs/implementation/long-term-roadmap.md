@@ -1,6 +1,6 @@
 # computecloud Agent-aware Distributed Job Execution Platform 长期路线图
 
-> 2026-10-07 执行更新：P0、缓存及 provider fixture P50、readiness 观测、synthetic Goal 执行、治理审计与 Control 产物审阅已分批合入。RPG 完整闭环、真实 Worker/Job 与独立主机生产验收、完整 Relay 与 Mobile Beta 尚未完成；当前证据与剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 为准。
+> 2026-10-09 执行更新：P0、缓存及 provider fixture P50、readiness 观测、synthetic Goal 执行、治理审计、Control 产物审阅、原子 Plan/Job 发布与限定 `claude_http` 估算费用强制已完成代码和 CI Gate。真实 Runtime/Worker/Job 与独立主机生产验收、完整 Relay 与 Mobile Beta 尚未完成；当前证据与剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 为准。
 当前执行台账：[P0–P2 实施与验收](p0-p2-execution.md)（2026-10-06）。
 
 - 项目：computecloud
@@ -14,7 +14,7 @@
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
 - 当前实现依据：[v0.4.6 发布记录](v0.4.6-release-status.md)、[Prepared Workspace Core](prepared-workspace-core.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[P0–P2 实施台账](p0-p2-execution.md)；当前 main Server v16 / Worker v6；v0.4.6 tag Server v13
-- 当前实施跟踪：WS-A Core、WS-B 缓存基础及 provider fixture P50 Gate、WS-C readiness 观测、synthetic Goal 执行/评估、Goal 治理审计、一次性审批消费、CI Trigger/Delivery 首个适配器和 C1 Observe PWA 已合入 main；Goal 的 Server Plan/Job 原子发布与 Runtime 预算上限、完整 Relay 和 Mobile Beta 未完成。真实 Worker/Job 性能与独立主机生产验收排在上述实现之后，继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实施跟踪：WS-A Core、WS-B 缓存基础及 provider fixture P50 Gate、WS-C readiness 观测、synthetic Goal 执行/评估、Goal 治理审计、一次性审批消费、Server Plan/Job 原子发布、限定 `claude_http` cost enforcement、CI Trigger/Delivery 首个适配器和 C1 Observe PWA 已完成代码与 CI Gate。完整 Relay、Mobile Beta、真实 Worker/Job 性能与独立主机生产验收仍待完成，继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
 
@@ -209,8 +209,8 @@ Relay 传输基础纳入 v0.4.x，定位为 Runtime/Tool/Environment 横向传�
 | --- | --- | --- |
 | RLY-0 | ADR-021、Transport contract、威胁模型与版本边界 | 设计已合并 |
 | RLY-1 | Transport seam；direct 路径零回归 | 已合入 PR #102 |
-| RLY-2 | 轻量无状态 Relay、一次性短期配对票据、内层 TLS | 实验性 TLS fixture 已合入 PR #103；无人值守票据分发待完成 |
-| RLY-3 | direct-first / relay-fallback、`connection_epoch` fencing、重连 | direct-first fallback 已合入 PR #104；显式默认配置接线与运营验收待完成 |
+| RLY-2 | 轻量无状态 Relay、一次性短期配对票据、内层 TLS | 实验性 TLS fixture 和 Broker 一次性票据签发/领取接口已实现；运维指标与真实网络验收待完成 |
+| RLY-3 | direct-first / relay-fallback、`connection_epoch` fencing、重连 | direct-first fallback 及 Server/Worker 显式 `direct_then_relay` 签发、领取与连接循环已实现；`direct` 仍为默认，运营验收待完成 |
 | RLY-4 | Contract、安全负向、回退、重启恢复 CI Gate 与双机/NAT 验证 | 自动化回退和双 Job 恢复 Gate 已合入；真实双机/NAT/长任务验收待完成 |
 
 v0.4.x 的发布门槛是：`direct` 仍为默认模式，`direct_then_relay` 必须显式启用；在真实双主机、NAT、断网和长任务证据完成前，不宣称 Relay 已达到生产默认状态。设备身份、OIDC/RBAC、审计、企业 Lease 与可选 Blind E2EE Relay 仍属于 v0.6.x 治理范围。
@@ -1483,7 +1483,7 @@ v1.0  稳定 Agent-aware Distributed Job Execution Platform
 
 ## 19. Goal-oriented Computing 实施主线
 
-ADR-017 不要求一次性重写现有系统，而采用向上兼容演进。当前 RPG-1～3 有 durable primitive 和测试；synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 评估和治理审计已接入生产代码路径。Guard 尚未与新 Plan/Job 原子发布相连，自动 Re-plan 仍关闭，不能标记 RPG 完整闭环。历史 GI-01～GI-04 任务及崩溃边界见[早期实施台账 §3–4](v0.4.5-roadmap-reconciliation.md#3-责任与排期)，当前验收以[P0–P2 实施台账](p0-p2-execution.md)为准。
+ADR-017 不要求一次性重写现有系统，而采用向上兼容演进。当前 RPG-1～3 有 durable primitive 和测试；synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 评估、治理审计、Guard → Plan/Job 原子发布和限定 `claude_http` 估算费用强制已接入生产代码路径。自动 Re-plan 仍关闭，真实 Provider 和独立主机验收未完成，因此不能标记 RPG 生产闭环完成。历史 GI-01～GI-04 任务及崩溃边界见[早期实施台账 §3–4](v0.4.5-roadmap-reconciliation.md#3-责任与排期)，当前验收以[P0–P2 实施台账](p0-p2-execution.md)为准。
 
 ~~~text
 Phase G0  Compatibility

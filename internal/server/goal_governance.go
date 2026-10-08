@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/governance"
+	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"github.com/tommyxie2026-tech/computecloud/internal/telemetry"
@@ -125,11 +126,61 @@ func goalGovernanceProjection(ctx context.Context, q store.Query, gid string) (m
 	if err = q.QueryRowContext(ctx, `SELECT count(*) FROM goal_attempt_reservations r LEFT JOIN goal_usage u ON u.attempt_id=r.attempt_id WHERE r.goal_id=? AND (u.usage_id IS NULL OR u.complete=0)`, gid).Scan(&unknown); err != nil {
 		return nil, err
 	}
-	return map[string]any{"recent_decisions": decisions, "decision_limit": 20, "usage_complete": unknown == 0, "runtime_hard_budget_supported": false, "automatic_replan_enabled": false}, nil
+	supported, capabilities, err := projectedRuntimeBudgetSupport(ctx, q, gid)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"recent_decisions": decisions, "decision_limit": 20, "usage_complete": unknown == 0, "runtime_hard_budget_supported": supported, "runtime_budget_capabilities": capabilities, "automatic_replan_enabled": false}, nil
 }
 
-// Use exactly one token source per Attempt; cost remains unknown until an
-// authoritative billing source exists. Partial native/gateway tokens are retained.
+func projectedRuntimeBudgetSupport(ctx context.Context, q store.Query, gid string) (bool, []string, error) {
+	capabilities := []string{}
+	var maxTokens, maxCost sql.NullInt64
+	err := q.QueryRowContext(ctx, "SELECT max_tokens,max_cost_units FROM goal_budget_policy WHERE goal_id=?", gid).Scan(&maxTokens, &maxCost)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && !maxTokens.Valid && !maxCost.Valid {
+		return false, capabilities, nil
+	}
+	if err != nil {
+		return false, nil, err
+	}
+	if maxTokens.Valid || !maxCost.Valid {
+		return false, capabilities, nil
+	}
+	rows, err := q.QueryContext(ctx, `SELECT j.spec FROM goal_job_bindings b JOIN goals g ON g.id=b.goal_id
+		JOIN jobs j ON j.id=b.job_id WHERE b.goal_id=? AND b.plan_revision=g.active_plan_revision
+		AND b.graph_generation=g.active_graph_generation`, gid)
+	if err != nil {
+		return false, nil, err
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		found = true
+		var raw []byte
+		if err = rows.Scan(&raw); err != nil {
+			return false, nil, err
+		}
+		var frozen job.Frozen
+		if err = json.Unmarshal(raw, &frozen); err != nil {
+			return false, nil, err
+		}
+		for _, execution := range frozen.Spec.Executions() {
+			if execution.RuntimeProfile != "claude_http" {
+				return false, capabilities, nil
+			}
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return false, nil, err
+	}
+	if !found {
+		return false, capabilities, nil
+	}
+	return true, []string{claudeEstimatedUSDBudgetCapability}, nil
+}
+
+// Use exactly one token source per Attempt. Native cost is accepted only when
+// the configured Runtime reports its complete final estimate.
 func recordGoalAttemptUsage(ctx context.Context, q store.Query, j *Job, gid, aid string) error {
 	u := governance.Usage{ID: "runtime-" + aid, AttemptID: aid, Source: "runtime-unavailable", Complete: false}
 	var credential string
@@ -161,7 +212,28 @@ func recordGoalAttemptUsage(ctx context.Context, q store.Query, j *Job, gid, aid
 				tokens := m.Usage.Input + m.Usage.Output
 				u.Tokens = &tokens
 			}
+			u.CostUnits = m.CostUnits
+			u.Complete = m.NativeFinal && m.UsageComplete && m.CostComplete && u.Tokens != nil && u.CostUnits != nil
 		}
 	}
 	return governance.RecordUsageTx(ctx, q, gid, u)
+}
+
+func recordBoundGoalAttemptUsage(ctx context.Context, q store.Query, taskID, attemptID string) error {
+	var jobID sql.NullString
+	if err := q.QueryRowContext(ctx, "SELECT job_id FROM tasks WHERE id=?", taskID).Scan(&jobID); err != nil {
+		return err
+	}
+	if !jobID.Valid {
+		return nil
+	}
+	j, err := readJob(ctx, q, jobID.String)
+	if err != nil {
+		return err
+	}
+	goalID, err := ensureGoalBinding(ctx, q, j)
+	if err != nil {
+		return err
+	}
+	return recordGoalAttemptUsage(ctx, q, j, goalID, attemptID)
 }

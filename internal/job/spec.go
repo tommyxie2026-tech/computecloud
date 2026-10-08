@@ -31,12 +31,12 @@ type Workspace struct {
 	BaseCommit    string `json:"base_commit"`
 }
 type Execution struct {
-	Engine            string `json:"engine"`
-	RuntimeProfile    string `json:"runtime_profile"`
-	Model             string `json:"model"`
-	CredentialRef     string `json:"credential_ref"`
-	PolicyRef         string `json:"policy_ref"`
-	AcceptanceProfile string `json:"acceptance_profile"`
+	Engine            string   `json:"engine,omitempty"`
+	RuntimeProfile    string   `json:"runtime_profile"`
+	Model             string   `json:"model"`
+	CredentialRef     string   `json:"credential_ref"`
+	PolicyRef         string   `json:"policy_ref"`
+	AcceptanceProfile string   `json:"acceptance_profile"`
 	ReplaySafe        bool     `json:"replay_safe,omitempty"`
 	Tools             []string `json:"tools,omitempty"`
 	Environment       string   `json:"environment,omitempty"`

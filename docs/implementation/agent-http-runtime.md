@@ -119,6 +119,28 @@ tombstone before checking Docker, which prevents a late or replayed run from
 starting even when Docker is unavailable. If the controller or Docker daemon
 cannot prove cleanup, the Worker records `UNKNOWN` and fails closed.
 
+## Claude estimated-cost boundary
+
+Authenticated health for `claude_http` 2.1.217 or later advertises
+`budget_claude_estimated_usd_v1`. When a Goal has only `max_cost_units`, the
+Server dispatches the remaining allowance as integer micro-USD and the
+controller converts it exactly to `--max-budget-usd`. Decimal parsing rejects
+negative, non-finite and overflowing values and rounds a positive sub-micro-USD
+remainder upward. The Worker persists the final `total_cost_usd` estimate and
+`error_max_budget_usd` as `RUNTIME_BUDGET_EXHAUSTED`; the Server settles that
+usage before releasing the Attempt. A single API call can take the reported
+total above the dispatched remainder. This boundary controls the Claude client
+estimate and does not claim exact provider invoice enforcement.
+
+Finite-budget Goals permit one in-flight Attempt. Missing or incomplete usage
+blocks the next Attempt. Claude token caps and all Codex token/cost caps remain
+unsupported. `make ci-runtime-budget` validates this contract with fixture
+responses and Docker command construction. Its GitHub CI job additionally runs
+a credential-free fake Claude executable in OCI for normal completion, native
+budget termination, container failure, stream interruption and missing-final
+handling. It makes real Docker calls but no real model calls. Fixed-version
+real-provider validation remains part of VAL-01.
+
 This is an implementation and fixture-test result, **not isolation
 certification**. Docker-backed file/network escape, crash/restart and
 actual-host negative tests remain ECO-03 acceptance work. The final independent

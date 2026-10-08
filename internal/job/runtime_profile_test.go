@@ -7,10 +7,10 @@ import (
 
 func TestExecutionAllowsProviderNeutralRuntimeProfile(t *testing.T) {
 	e := Execution{
-		RuntimeProfile: "gemini_cli",
-		Model: "gemini-fixture",
-		CredentialRef: "cred",
-		PolicyRef: "policy",
+		RuntimeProfile:    "gemini_cli",
+		Model:             "gemini-fixture",
+		CredentialRef:     "cred",
+		PolicyRef:         "policy",
 		AcceptanceProfile: "verify",
 	}
 	if err := e.Validate(); err != nil {
@@ -36,22 +36,22 @@ func TestExecutionKeepsLegacyEngineAliasFenced(t *testing.T) {
 func TestJobSchemaAllowsProviderNeutralRuntimeWithoutLegacyEngine(t *testing.T) {
 	raw := map[string]any{
 		"schema_version": "v0.2",
-		"project_id": "project",
-		"mode": "single",
+		"project_id":     "project",
+		"mode":           "single",
 		"workspace": map[string]any{
 			"repository_ref": "repo",
-			"base_commit": "0123456789012345678901234567890123456789",
+			"base_commit":    "0123456789012345678901234567890123456789",
 		},
 		"input": map[string]any{"text": "do work"},
 		"execution": map[string]any{
-			"runtime_profile": "gemini_cli",
-			"model": "gemini-fixture",
-			"credential_ref": "cred",
-			"policy_ref": "policy",
+			"runtime_profile":    "gemini_cli",
+			"model":              "gemini-fixture",
+			"credential_ref":     "cred",
+			"policy_ref":         "policy",
 			"acceptance_profile": "verify",
 		},
 		"limits": map[string]any{
-			"timeout_seconds": 60,
+			"timeout_seconds":       60,
 			"max_attempts_per_task": 1,
 		},
 	}
@@ -61,5 +61,18 @@ func TestJobSchemaAllowsProviderNeutralRuntimeWithoutLegacyEngine(t *testing.T) 
 	}
 	if _, err = Decode(b, 32, 8); err != nil {
 		t.Fatalf("provider-neutral Job schema rejected Gemini: %v", err)
+	}
+}
+
+func TestProviderNeutralJobStructOmitsEmptyLegacyEngine(t *testing.T) {
+	execution := Execution{RuntimeProfile: "claude_http", Model: "claude", CredentialRef: "cred", PolicyRef: "policy", AcceptanceProfile: "verify"}
+	spec := Spec{
+		SchemaVersion: "v0.2", ProjectID: "project", Mode: "single",
+		Workspace: Workspace{RepositoryRef: "repo", BaseCommit: "0123456789012345678901234567890123456789"},
+		Input:     Input{Text: "do work"}, Execution: &execution,
+		Limits: Limits{TimeoutSeconds: 60, MaxAttemptsPerTask: 1},
+	}
+	if _, err := Decode(JSON(spec), 32, 8); err != nil {
+		t.Fatalf("provider-neutral Job struct encoded an invalid legacy engine: %v", err)
 	}
 }

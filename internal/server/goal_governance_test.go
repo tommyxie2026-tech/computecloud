@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/governance"
@@ -156,5 +157,53 @@ func TestGoalGovernanceBudgetUsageAndRollback(t *testing.T) {
 	usage.Complete = false
 	if err = s.db.Tx(ctx, func(q store.Query) error { return governance.RecordUsageTx(ctx, q, gid, usage) }); err == nil || err.Error() != "USAGE_CONFLICT" {
 		t.Fatalf("usage conflict=%v", err)
+	}
+}
+
+func TestGoalGovernanceProjectsOnlySupportedRuntimeBudget(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		profile   string
+		tokens    any
+		cost      any
+		supported bool
+	}{
+		{name: "Claude HTTP cost", profile: "claude_http", cost: int64(100), supported: true},
+		{name: "Codex cost", profile: "codex_exec", cost: int64(100)},
+		{name: "Claude token", profile: "claude_http", tokens: int64(100)},
+		{name: "Claude mixed", profile: "claude_http", tokens: int64(100), cost: int64(100)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, ctx, _, _ := offlineJobServer(t)
+			defer s.Close()
+			j, err := s.SubmitJob(ctx, "projection", job.JSON((&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")))
+			if err != nil {
+				t.Fatal(err)
+			}
+			gid := "goal_" + j.ID
+			if _, err = s.db.SQL.Exec("INSERT INTO goal_budget_policy(goal_id,max_tokens,max_cost_units) VALUES(?,?,?)", gid, tc.tokens, tc.cost); err != nil {
+				t.Fatal(err)
+			}
+			current, err := readJob(ctx, s.db.SQL, j.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			current.frozen.Spec.Execution.Engine = ""
+			current.frozen.Spec.Execution.RuntimeProfile = tc.profile
+			if _, err = s.db.SQL.Exec("UPDATE jobs SET spec=? WHERE id=?", job.JSON(current.frozen), j.ID); err != nil {
+				t.Fatal(err)
+			}
+			projection, err := goalGovernanceProjection(ctx, s.db.SQL, gid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if projection["runtime_hard_budget_supported"] != tc.supported {
+				t.Fatalf("projection=%+v", projection)
+			}
+			capabilities, ok := projection["runtime_budget_capabilities"].([]string)
+			if !ok || tc.supported && (len(capabilities) != 1 || capabilities[0] != claudeEstimatedUSDBudgetCapability) || !tc.supported && len(capabilities) != 0 {
+				t.Fatalf("capabilities=%#v", projection["runtime_budget_capabilities"])
+			}
+		})
 	}
 }

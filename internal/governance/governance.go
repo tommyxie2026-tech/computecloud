@@ -250,31 +250,8 @@ func RecordUsageTx(ctx context.Context, q store.Query, goalID string, u Usage) e
 // CheckUsageTx fails closed for unreported Attempts and incomplete usage. It is
 // accounting admission, not a claim that an external runtime enforces hard caps.
 func CheckUsageTx(ctx context.Context, q store.Query, goalID string) error {
-	var tokens, cost sql.NullInt64
-	err := q.QueryRowContext(ctx, "SELECT max_tokens,max_cost_units FROM goal_budget_policy WHERE goal_id=?", goalID).Scan(&tokens, &cost)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if !tokens.Valid && !cost.Valid {
-		return nil
-	}
-	var incomplete, usedTokens, usedCost int64
-	if err = q.QueryRowContext(ctx, `SELECT count(*) FROM goal_attempt_reservations r LEFT JOIN goal_usage u ON u.attempt_id=r.attempt_id WHERE r.goal_id=? AND (u.usage_id IS NULL OR u.complete=0)`, goalID).Scan(&incomplete); err != nil {
-		return err
-	}
-	if incomplete > 0 {
-		return fail("GOAL_USAGE_UNKNOWN")
-	}
-	if err = q.QueryRowContext(ctx, "SELECT coalesce(sum(tokens),0),coalesce(sum(cost_units),0) FROM goal_usage WHERE goal_id=?", goalID).Scan(&usedTokens, &usedCost); err != nil {
-		return err
-	}
-	if tokens.Valid && usedTokens >= tokens.Int64 || cost.Valid && usedCost >= cost.Int64 {
-		return fail("GOAL_USAGE_EXHAUSTED")
-	}
-	return nil
+	_, err := RemainingUsageTx(ctx, q, goalID)
+	return err
 }
 
 func DecodeRequest(raw []byte) (Request, error) {

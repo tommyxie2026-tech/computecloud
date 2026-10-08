@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -137,6 +138,189 @@ func TestRunLifecycleIdempotencyAndRestartFence(t *testing.T) {
 	}
 	if got := call(t, restarted, http.MethodPut, "/v1/runs/attempt-1", runRequest, true).Code; got != http.StatusConflict {
 		t.Fatalf("restart replay status=%d", got)
+	}
+}
+
+// Health capability output is the authenticated source used by the Worker.
+// The version boundary must never grant Claude cost enforcement to Codex or an
+// older Claude controller, while those controllers remain healthy otherwise.
+func TestHTTPRuntimeHealthCapabilities(t *testing.T) {
+	original := dockerReady
+	dockerReady = func(*Server) bool { return true }
+	t.Cleanup(func() { dockerReady = original })
+
+	server, cfg := testServer(t)
+	read := func(t *testing.T, server *Server, profile string) []string {
+		t.Helper()
+		response := call(t, server, http.MethodGet, "/v1/health?profile="+profile, nil, true)
+		if response.Code != http.StatusOK {
+			t.Fatalf("health status=%d body=%s", response.Code, response.Body.String())
+		}
+		var body struct {
+			Capabilities []string `json:"capabilities"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		return body.Capabilities
+	}
+	if got := read(t, server, "claude_http"); len(got) != 1 || got[0] != "budget_claude_estimated_usd_v1" {
+		t.Fatalf("current Claude capabilities=%v", got)
+	}
+	if got := read(t, server, "codex_http"); len(got) != 0 {
+		t.Fatalf("Codex inherited Claude capability=%v", got)
+	}
+
+	cfg.StateDir = filepath.Join(t.TempDir(), "state")
+	cfg.ClaudeVersion = "2.1.216"
+	old, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, old, "claude_http"); len(got) != 0 {
+		t.Fatalf("old Claude claimed budget capability=%v", got)
+	}
+
+	cfg.StateDir = filepath.Join(t.TempDir(), "state")
+	cfg.ClaudeVersion = "+2.1.292"
+	invalid, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, invalid, "claude_http"); len(got) != 0 {
+		t.Fatalf("invalid Claude version claimed budget capability=%v", got)
+	}
+}
+
+func TestClaudeBudgetDockerCommand(t *testing.T) {
+	server, cfg := testServer(t)
+	original := runProcess
+	cleanupOriginal := containerCleanup
+	dockerReadyOriginal := dockerReady
+	containerCleanup = func(*Server, string) bool { return true }
+	dockerReady = func(*Server) bool { return true }
+	runProcess = func(_ context.Context, _ string, args, _ []string, _ string, _ io.Reader, stdout, _ io.Writer, _ time.Duration, onStart func(int, string) error) process.Result {
+		joined := strings.Join(args, " ")
+		if !strings.Contains(joined, "--entrypoint "+cfg.ClaudeExecutable) || !strings.Contains(joined, "--max-budget-usd 1.250000") {
+			t.Errorf("Claude budget missing from Docker command: %v", args)
+		}
+		if err := onStart(42, "budget-test"); err != nil {
+			return process.Result{Err: err}
+		}
+		_, _ = stdout.Write([]byte("{\"type\":\"result\",\"subtype\":\"error_max_budget_usd\",\"is_error\":true,\"total_cost_usd\":1.2500001,\"usage\":{\"input_tokens\":3,\"output_tokens\":4}}\n"))
+		return process.Result{Cleanup: true, ExitCode: 1}
+	}
+	t.Cleanup(func() { runProcess = original; containerCleanup = cleanupOriginal; dockerReady = dockerReadyOriginal })
+
+	in := request{AttemptID: "budget-attempt", Generation: 1, Profile: "claude_http", Version: cfg.ClaudeVersion,
+		Args: []string{"-p", "--max-budget-usd", "1.250000"}, CWD: cfg.WorkspaceRoot, Input: "prompt"}
+	if got := call(t, server, http.MethodPut, "/v1/runs/budget-attempt", in, true).Code; got != http.StatusCreated {
+		t.Fatalf("create status=%d", got)
+	}
+	var got status
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		response := call(t, server, http.MethodGet, "/v1/runs/budget-attempt?after=0", nil, true)
+		if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.State == adapter.RuntimeExited {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !got.Outcome.BudgetReached || !got.Outcome.CostComplete || got.Outcome.CostUnits == nil || *got.Outcome.CostUnits != 1_250_001 {
+		t.Fatalf("budget outcome=%+v", got.Outcome)
+	}
+}
+
+func runClaudeBudgetOCI(t *testing.T, scenario string) status {
+	t.Helper()
+	image := os.Getenv("COMPUTECLOUD_BUDGET_TEST_IMAGE")
+	if image == "" {
+		t.Skip("budget OCI fixture image not configured")
+	}
+	docker, err := exec.LookPath("docker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err = os.Chmod(root, 0777); err != nil {
+		t.Fatal(err)
+	}
+	token := filepath.Join(root, "token")
+	if err = os.WriteFile(token, []byte("secret\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{TokenFile: token, StateDir: filepath.Join(root, "state"), WorkspaceRoot: root,
+		DockerExecutable: docker, RuntimeImage: "fixture@sha256:" + strings.Repeat("a", 64),
+		CodexExecutable: "/bin/false", CodexVersion: "0.160.1",
+		ClaudeExecutable: "/usr/local/bin/claude", ClaudeVersion: "2.1.292"}
+	server, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The fixture is built locally and has no registry RepoDigest. Constructor
+	// validation is still exercised with a pinned reference; only this package's
+	// test instance swaps in the local tag before invoking Docker.
+	server.cfg.RuntimeImage = image
+	id := "oci-" + strings.ReplaceAll(scenario, "_", "-")
+	in := request{AttemptID: id, Generation: 1, Profile: "claude_http", Version: cfg.ClaudeVersion,
+		Args: []string{"-p", "--max-budget-usd", "1.250000"}, Env: []string{"FAKE_CLAUDE_SCENARIO=" + scenario}, CWD: root, Input: "prompt"}
+	response := call(t, server, http.MethodPut, "/v1/runs/"+id, in, true)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", response.Code, response.Body.String())
+	}
+	var got status
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		response = call(t, server, http.MethodGet, "/v1/runs/"+id+"?after=0", nil, true)
+		if err = json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.State == adapter.RuntimeExited {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got.State != adapter.RuntimeExited || got.Cleanup != adapter.CleanupConfirmed {
+		t.Fatalf("terminal status=%+v", got)
+	}
+	return got
+}
+
+func TestClaudeBudgetOCINormalCompletion(t *testing.T) {
+	got := runClaudeBudgetOCI(t, "normal")
+	if !got.Outcome.Final || !got.Outcome.Success || !got.Outcome.CostComplete || got.Outcome.CostUnits == nil || *got.Outcome.CostUnits != 50 {
+		t.Fatalf("normal outcome=%+v", got.Outcome)
+	}
+}
+
+func TestClaudeBudgetOCINativeBudgetTermination(t *testing.T) {
+	got := runClaudeBudgetOCI(t, "budget")
+	if !got.Outcome.Final || !got.Outcome.BudgetReached || got.Outcome.Code != "RUNTIME_BUDGET_EXHAUSTED" || got.Outcome.CostUnits == nil || *got.Outcome.CostUnits != 1_250_001 {
+		t.Fatalf("budget outcome=%+v", got.Outcome)
+	}
+}
+
+func TestClaudeBudgetOCIContainerFailure(t *testing.T) {
+	got := runClaudeBudgetOCI(t, "container_failure")
+	if got.ExitCode == 0 || got.Outcome.Final {
+		t.Fatalf("container failure invented final outcome=%+v", got)
+	}
+}
+
+func TestClaudeBudgetOCIStreamInterruption(t *testing.T) {
+	got := runClaudeBudgetOCI(t, "stream_interruption")
+	if got.ExitCode == 0 || got.Outcome.Final {
+		t.Fatalf("stream interruption invented final outcome=%+v", got)
+	}
+}
+
+func TestClaudeBudgetOCIMissingFinal(t *testing.T) {
+	got := runClaudeBudgetOCI(t, "missing_final")
+	if got.ExitCode != 0 || got.Outcome.Final || got.Outcome.CostComplete {
+		t.Fatalf("missing final invented complete usage=%+v", got)
 	}
 }
 
