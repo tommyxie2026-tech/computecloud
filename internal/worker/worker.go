@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"sort"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	envreg "github.com/tommyxie2026-tech/computecloud/internal/environment"
+	"github.com/tommyxie2026-tech/computecloud/internal/relay"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	toolreg "github.com/tommyxie2026-tech/computecloud/internal/tool"
@@ -38,6 +40,7 @@ type Worker struct {
 	runs         map[string]*active
 	wg           sync.WaitGroup
 	hello        *pb.WorkerHello
+	relayClient  *relay.TicketClient
 }
 
 func enc(m proto.Message) []byte {
@@ -62,8 +65,37 @@ func newWithConnector(c config.Worker, connector rpcutil.Connector) (*Worker, er
 	if e := c.Validate(); e != nil {
 		return nil, e
 	}
+	var relayClient *relay.TicketClient
+	if c.Transport.Enabled() {
+		if connector != nil {
+			return nil, errors.New("configured Relay cannot be combined with injected connector")
+		}
+		var e error
+		relayClient, e = relay.NewTicketClient(c.Transport.RelayAddress, c.Transport.IssuerURL, c.Transport.TokenFile, c.Transport.CAFile, c.Transport.ServerName)
+		if e != nil {
+			return nil, e
+		}
+		direct := rpcutil.ConnectorFunc(func(ctx context.Context, address string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "tcp", address)
+		})
+		alternate := rpcutil.ConnectorFunc(func(ctx context.Context, _ string) (net.Conn, error) {
+			ticket, e := relayClient.Claim(ctx)
+			if e != nil {
+				return nil, e
+			}
+			return relayClient.Connect(ctx, ticket)
+		})
+		connector, e = rpcutil.NewDirectFirstConnector(direct, alternate, time.Duration(c.Transport.DirectTimeout())*time.Millisecond)
+		if e != nil {
+			relayClient.Close()
+			return nil, e
+		}
+	}
 	token, e := config.Token(c.TokenFile)
 	if e != nil {
+		if relayClient != nil {
+			relayClient.Close()
+		}
 		return nil, e
 	}
 	var conn *grpc.ClientConn
@@ -73,16 +105,27 @@ func newWithConnector(c config.Worker, connector rpcutil.Connector) (*Worker, er
 		conn, e = rpcutil.DialWithConnector(c.Address, token, c.TLS, connector)
 	}
 	if e != nil {
+		if relayClient != nil {
+			relayClient.Close()
+		}
 		return nil, e
 	}
 	d, e := store.Open(c.DataDir, store.WorkerSchema)
 	if e != nil {
 		conn.Close()
+		if relayClient != nil {
+			relayClient.Close()
+		}
 		return nil, e
 	}
-	return &Worker{cfg: c, db: d, conn: conn, client: pb.NewRuntimeServiceClient(conn), runs: map[string]*active{}}, nil
+	return &Worker{cfg: c, db: d, conn: conn, client: pb.NewRuntimeServiceClient(conn), runs: map[string]*active{}, relayClient: relayClient}, nil
 }
-func (w *Worker) Close() error { return errors.Join(w.conn.Close(), w.db.Close()) }
+func (w *Worker) Close() error {
+	if w.relayClient != nil {
+		w.relayClient.Close()
+	}
+	return errors.Join(w.conn.Close(), w.db.Close())
+}
 func advertisedRuntimeCapabilities(provider adapter.Provider) []string {
 	caps := provider.Capabilities()
 	caps.Tools = toolreg.InstalledCompatible(caps.Tools)

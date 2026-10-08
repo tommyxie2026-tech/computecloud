@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +51,16 @@ type Server struct {
 	Jobs             Jobs              `yaml:"jobs"`
 	MCP              MCP               `yaml:"mcp"`
 	ModelGateway     ModelGateway      `yaml:"model_gateway"`
+	Transport        RelayTransport    `yaml:"transport"`
+}
+type RelayTransport struct {
+	Mode            string `yaml:"mode"`
+	RelayAddress    string `yaml:"relay_address"`
+	IssuerURL       string `yaml:"issuer_url"`
+	TokenFile       string `yaml:"token_file"`
+	CAFile          string `yaml:"ca_file"`
+	ServerName      string `yaml:"server_name"`
+	DirectTimeoutMS int    `yaml:"direct_timeout_ms"`
 }
 type Runtime struct {
 	Executable    string                       `yaml:"executable"`
@@ -85,6 +97,7 @@ type Worker struct {
 	WorkspaceWarmSlots        int                   `yaml:"workspace_warm_slots"`
 	WorkspaceCacheMaxBytes    int64                 `yaml:"workspace_cache_max_bytes"`
 	WorkspaceCacheRetentionMS int64                 `yaml:"workspace_cache_retention_ms"`
+	Transport                 RelayTransport        `yaml:"transport"`
 }
 type Client struct {
 	Address   string `yaml:"address"`
@@ -124,6 +137,10 @@ func Load(path string) (Config, error) {
 	c.Worker.DataDir = abs(c.Worker.DataDir)
 	c.Worker.TokenFile = abs(c.Worker.TokenFile)
 	c.Client.TokenFile = abs(c.Client.TokenFile)
+	c.Server.Transport.TokenFile = abs(c.Server.Transport.TokenFile)
+	c.Server.Transport.CAFile = abs(c.Server.Transport.CAFile)
+	c.Worker.Transport.TokenFile = abs(c.Worker.Transport.TokenFile)
+	c.Worker.Transport.CAFile = abs(c.Worker.Transport.CAFile)
 	tlsPaths(&c.Server.TLS)
 	tlsPaths(&c.Worker.TLS)
 	tlsPaths(&c.Client.TLS)
@@ -203,6 +220,9 @@ func Contains(xs []string, x string) bool {
 	return false
 }
 func (c Server) Validate() error {
+	if err := c.Transport.Validate(true, c.TLS); err != nil {
+		return err
+	}
 	if c.DataDir == "" || c.LeaseSeconds < 3 || c.TickMS < 10 || c.MaxArtifactBytes < 1 || c.MaxProjectTasks < 1 {
 		return errors.New("invalid server limits/data_dir")
 	}
@@ -214,6 +234,9 @@ func (c Server) Validate() error {
 	return c.ValidateV02()
 }
 func (c Worker) Validate() error {
+	if err := c.Transport.Validate(false, c.TLS); err != nil {
+		return err
+	}
 	if c.ID == "" || c.DataDir == "" || c.Address == "" || c.Slots < 1 || len(c.Runtimes) == 0 {
 		return errors.New("worker id/data_dir/address/slots/runtimes required")
 	}
@@ -246,6 +269,42 @@ func (c Worker) Validate() error {
 			}
 			seenEnvironment[name] = true
 		}
+	}
+	return nil
+}
+func (t RelayTransport) Enabled() bool { return t.Mode == "direct_then_relay" }
+func (t RelayTransport) DirectTimeout() int {
+	if t.DirectTimeoutMS == 0 {
+		return 1000
+	}
+	return t.DirectTimeoutMS
+}
+func (t RelayTransport) Validate(server bool, innerTLS TLS) error {
+	if t.Mode == "" || t.Mode == "direct" {
+		if t.RelayAddress != "" || t.IssuerURL != "" || t.TokenFile != "" || t.CAFile != "" || t.ServerName != "" || t.DirectTimeoutMS != 0 {
+			return errors.New("Relay fields require explicit direct_then_relay mode")
+		}
+		return nil
+	}
+	if t.Mode != "direct_then_relay" || innerTLS.InsecureLoopback || !filepath.IsAbs(t.TokenFile) || !filepath.IsAbs(t.CAFile) || t.DirectTimeout() < 1 || t.DirectTimeout() > 10000 {
+		return errors.New("invalid Relay mode, inner TLS or credential paths")
+	}
+	host, port, err := net.SplitHostPort(t.RelayAddress)
+	if err != nil || host == "" || port == "" {
+		return errors.New("Relay address must be host:port")
+	}
+	if _, err := net.LookupPort("tcp", port); err != nil {
+		return errors.New("Relay address must use a valid TCP port")
+	}
+	u, err := url.Parse(t.IssuerURL)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || u.Hostname() != host || u.Port() == "" {
+		return errors.New("Relay issuer URL must be an HTTPS origin")
+	}
+	if _, err := net.LookupPort("tcp", u.Port()); err != nil {
+		return errors.New("Relay issuer URL must use a valid TCP port")
+	}
+	if server && t.DirectTimeoutMS != 0 {
+		return errors.New("Relay Server must not set direct timeout")
 	}
 	return nil
 }

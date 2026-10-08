@@ -81,10 +81,12 @@ PairTicket = signed, single-use, short-lived, server/worker-bound
 transport:
   mode: direct_then_relay
   relay_address: relay.example.com:7445
-  server_name: computecloud.internal
+  issuer_url: https://relay.example.com:7446
+  token_file: /etc/computecloud/relay-issuer.token
+  ca_file: /etc/computecloud/relay-ca.pem
 ~~~
 
-这是目标配置，功能未实现前不能写入生产配置。
+此配置已支持实验性显式启用；Server 和 Worker 分别使用自己的 issuer token，Worker 可设置 `direct_timeout_ms`。真实双机、NAT、长任务与流量优先级尚未验收，不能作为生产默认配置。
 
 实现后配置兼容约束为：`mode: direct` 保持现有行为；`mode: direct_then_relay` 才启用 v0.4.x 实验性回退。未知模式、缺少 relay 地址或票据校验失败必须 fail closed，不得隐式降级或隐藏重试。
 

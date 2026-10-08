@@ -32,6 +32,9 @@ type jobTestTransport struct {
 	Listener             net.Listener
 	TunnelListener       net.Listener
 	Connector            func(string) rpcutil.Connector
+	ConfiguredRelay      bool
+	WorkerTransports     map[string]config.RelayTransport
+	WorkerAddresses      map[string]string
 }
 
 func newJobHarness(t *testing.T, workers bool, options ...func(*config.Server)) *jobHarness {
@@ -71,7 +74,9 @@ func newJobHarnessWithTransport(t *testing.T, workers bool, transport *jobTestTr
 	sc, stop := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
-		if transport != nil && transport.TunnelListener != nil {
+		if transport != nil && transport.ConfiguredRelay {
+			done <- s.ServeWithConfiguredRelay(sc, l)
+		} else if transport != nil && transport.TunnelListener != nil {
 			done <- s.ServeWithTunnel(sc, l, transport.TunnelListener)
 		} else if transport != nil {
 			done <- s.ServeTunnel(sc, l)
@@ -101,11 +106,22 @@ func newJobHarnessWithTransport(t *testing.T, workers bool, transport *jobTestTr
 			c.DataDir = t.TempDir()
 			c.TokenFile = tok
 			c.Address = l.Addr().String()
-			var w *worker.Worker
 			if transport != nil {
+				if configured, ok := transport.WorkerTransports[c.ID]; ok {
+					c.Transport = configured
+				}
+				if address := transport.WorkerAddresses[c.ID]; address != "" {
+					c.Address = address
+				}
+			}
+			var w *worker.Worker
+			if transport != nil && transport.Connector != nil {
 				c.TLS = transport.WorkerTLS
 				w, e = worker.NewWithConnector(c, transport.Connector(c.ID))
 			} else {
+				if transport != nil {
+					c.TLS = transport.WorkerTLS
+				}
 				w, e = worker.New(c)
 			}
 			if e != nil {

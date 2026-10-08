@@ -162,8 +162,10 @@ func (i *Issuer) issue(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "issuer unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	// A pending claim must expire when the waiting Broker socket does. Otherwise
+	// a late Worker can consume a ticket whose Server side has already left.
 	claim := Ticket{RelayEpoch: i.broker.Epoch(), PairID: pairID, ServerID: i.serverID, WorkerID: input.WorkerID, Epoch: epoch,
-		Role: "server", IssuedMS: now.UnixMilli(), ExpiresMS: now.Add(MaxTicketTTL).UnixMilli()}
+		Role: "server", IssuedMS: now.UnixMilli(), ExpiresMS: now.Add(i.broker.limits.PairTimeout).UnixMilli()}
 	serverTicket, err := Sign(i.broker.key, claim, now)
 	if err != nil {
 		http.Error(w, "issuer unavailable", http.StatusServiceUnavailable)

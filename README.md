@@ -16,9 +16,9 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
 - 当前功能主线：**先完成 Goal、Runtime/Environment、Trigger/Delivery 与 Relay 的代码闭环**；真实双机、缓存性能和生产验收放在候选范围冻结之后。CI Trigger/Delivery 的 CLI 适配器和本地交付记录已合入，真实 CI→Server 验收仍待完成；隔离 Environment 不能由宿主机 CLI 虚报执行边界
 - 自托管 HTTP Runtime：`codex_http` / `claude_http` 的 Unix-socket Provider、HTTP 服务和固定版本 OCI 镜像已实现，服务为每个 Attempt 启动独立 Docker 容器；Container EnvironmentProvider 已接入持久引用、恢复检查与清理证明。部署与契约见 [HTTP Runtime 说明](docs/implementation/agent-http-runtime.md)。真实 CLI、Docker 隔离负向测试和双机验收仍待完成。
-- Relay/P2P 当前进度：Transport seam、实验性 TLS Relay fixture、direct-first fallback 与 Worker 双 Job 恢复 Gate 已合入；Broker 侧短期一次性票据签发/领取接口和 Server 直连/隧道共用 gRPC 服务的接入点已实现。`direct` 仍为默认路径，Server/Worker 自动领取与显式配置接线、真实 NAT/长任务验收未完成
+- Relay/P2P 当前进度：Transport seam、实验性 TLS Relay fixture、direct-first fallback 与 Worker 双 Job 恢复 Gate 已合入；Broker 侧短期一次性票据签发/领取接口和 Server 直连/隧道共用 gRPC 服务的接入点已实现。Server/Worker 的自动签发、领取与连接循环已提供显式 `direct_then_relay` 配置，`direct` 仍为默认路径；真实 NAT/长任务验收未完成
 - Relay 设计与实施计划：[ADR-021](docs/adr/0021-relay-assisted-p2p-transport.md) / [v0.4.x Relay 传输计划](docs/implementation/relay-p2p-transport-plan.md)
-- 下一步 Relay：将票据接口接入 Server/Worker 的显式 opt-in 连接循环，再做流量优先级、运维和真实网络验收
+- 下一步 Relay：补齐 Control/Lease/Cancel 与 Bulk 的流量优先级、运维指标/手册，再做真实网络验收
 - Goal-oriented Computing：Legacy Job 的 synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 证据评估和 Control 治理审计已接入执行路径；内部显式提议可原子发布新 Plan/Job，自动 Re-plan 仍关闭
 - RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费和可强制的 Runtime token/cost 上限未完成，RPG-4 仍为 PARTIAL；完成后关闭，不新增 RPG-5
 - 当前 main Server schema：**v16**（Goal 执行与治理迁移）（v0.4.6 tag 为 v13）；Worker schema：**v6**
