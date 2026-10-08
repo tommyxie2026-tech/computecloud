@@ -1,5 +1,16 @@
 # 版本记录
 
+## 0.4.7-rc.2 — Goal 治理与 Runtime 预算预览
+
+本候选版在 v0.4.7-rc.1 之上纳入受治理的 Goal Re-plan 提议入口、Guard → Plan/Job 原子发布、一次性批准消费，以及限定自托管 `claude_http` 的客户端估算费用强制边界。
+
+- Runtime budget 使用微美元整数记账、Assignment 剩余额度冻结、单在途 Attempt 和完成交易原子结算；缺失用量 fail closed。
+- `runtime-budget` CI 使用真实 Docker 与无凭据假 Claude OCI 验证正常完成、预算终止、容器失败、流中断和缺失 final。
+- 单次 API 调用可能越过阈值；该能力不是供应商账单硬上限。Claude token、Codex token/cost 与混合 Provider 有限预算仍 fail closed。
+- 自动 Re-plan 仍关闭；真实 Runtime、独立主机、Relay 运营和签名 Mobile 验收仍是候选版之外的独立 Gate。
+
+发布范围、验证证据和限制见 [v0.4.7-rc.2 发布记录](docs/implementation/v0.4.7-rc.2-release-status.md)与[部署/回退指南](docs/deployment/production-v0.4.7-rc.2.md)。
+
 ## 0.4.7-rc.1 — 限定范围集成预览（prerelease 已发布）
 
 基于 v0.4.6 的累积候选：Prepared Workspace 缓存与并发命中、readiness 观测、synthetic Goal 执行/评估与 Control 决策审计、产物文本预览，以及实验性 Relay seam/TLS fixture/direct-first fallback。`direct` 仍是默认路径，Goal 自动 Re-plan 仍关闭。本候选版不宣称缓存 P50 达标、真实多机生产基线、生产 Relay 或签名 Mobile Beta。
