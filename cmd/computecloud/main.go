@@ -126,6 +126,9 @@ func run(ctx context.Context, args []string) error {
 		}
 		defer l.Close()
 		slog.Info("server listening", "address", l.Addr(), "version", version)
+		if c.Server.Transport.Enabled() {
+			return s.ServeWithConfiguredRelay(ctx, l)
+		}
 		return s.Serve(ctx, l)
 	case "worker":
 		w, e := worker.New(c.Worker)
