@@ -74,6 +74,9 @@ produce a new result without overwriting the earlier verdict.
 idempotent submission/evaluation, transaction rollback, adoption across restart,
 stale graph fences, missing artifact proof, manual retry and deadline regression.
 The complete server/store/goal test suites pass locally. This is fixture evidence,
-not real Runtime/MCP or production acceptance. Runtime token/cost enforcement
-and external proposal acceptance against real Runtimes remain unimplemented;
-`automatic_replan_enabled` remains false and RPG integration remains PARTIAL.
+not real Runtime/MCP or production acceptance. The explicit governed proposal
+path and cost-only `claude_http` estimated-cost boundary are implemented and
+covered by CI, including credential-free Docker/OCI scenarios. Token limits,
+Codex cost limits, real Runtime acceptance and independent-host recovery remain
+open; `automatic_replan_enabled` remains false and RPG integration remains
+PARTIAL until those acceptance gates close.

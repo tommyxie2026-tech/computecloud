@@ -1,6 +1,6 @@
 # computecloud 3–5 人并行开发计划
 
-> 2026-10-09 执行更新：P0、缓存及 provider fixture P50、readiness 观测、synthetic Goal 执行、治理审计、Control 产物审阅及 `claude_http` 估算费用强制边界已完成代码与 CI Gate。真实 Runtime、Worker/Job 与独立主机生产验收、完整 Relay 与 Mobile Beta 尚未完成；当前证据与剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 为准。
+> 2026-10-09 执行更新：P0、缓存及 provider fixture P50、readiness 观测、synthetic Goal 执行、治理审计、Control 产物审阅及 `claude_http` 估算费用强制边界已完成代码与 CI Gate；PR #125 CI 37803798658 含真实 Docker/假 Claude OCI 矩阵并全部通过。真实 Runtime、Worker/Job 与独立主机生产验收、完整 Relay 与 Mobile Beta 尚未完成；当前证据与剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 为准。
 当前执行台账：[P0–P2 实施与验收](p0-p2-execution.md)（2026-10-06）。
 
 - 日期：2026-09-29

@@ -1,6 +1,7 @@
 # Goal governance contract
 
-Status: implementation staged; RPG remains PARTIAL.
+Status: implementation and CI contract complete for the bounded code slice;
+real-provider and independent-host acceptance remain PARTIAL.
 
 Only a server-configured human governance identity with `goals:approve` may decide.
 Actor identity is derived from authentication, never supplied by a Planner,
@@ -41,6 +42,11 @@ together. The HTTP caller needs `goals:propose`, `jobs:submit`, `jobs:read`,
 `jobs:control`, and the current Job write lease. This scope grants no human
 approval authority; a required one-use approval is still consumed in the same
 transaction. Automatic Re-plan remains disabled and RPG remains PARTIAL.
+
+PR #125 CI 37803798658 validates capability fencing, exact micro-USD
+conversion, single in-flight admission, atomic settlement, terminal budget
+exhaustion and fail-closed incomplete usage. Its OCI cases use real Docker with
+a credential-free fake Claude executable; `real_model_calls` remains false.
 
 `POST /v1/jobs/{job}/goal/replans` accepts bounded JSON with `proposal`,
 `job_spec`, and optional `approval_operation_id`. Proposal fields use snake_case:

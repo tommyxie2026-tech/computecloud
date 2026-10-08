@@ -1,6 +1,6 @@
 # P0–P2 execution ledger
 
-Initial baseline: main `8540e06` (2026-09-30). Current merged baseline: `7f9de5d` (2026-10-07).
+Initial baseline: main `8540e06` (2026-09-30). Current pre-PR baseline: `dd36008` (2026-10-08).
 Product: Agent-aware Distributed Job Execution Platform / Agent Job Executor.
 
 This ledger separates implementation, automated validation, merge/release, and
@@ -19,7 +19,7 @@ ecosystem, Goal, Relay and real-acceptance slices against explicit release gates
 | P1-A | Workspace cache, bounded GC, warm materialization, metrics and benchmark | PR #93, #109 and #111 merged. Bounded parallel file copies plus overlapped integrity validation give three local macOS fixture P50 ratios of 20.2%, 20.1% and 20.7%. Linux single-runner simulation Gate passed in full matrix 37564049429, including cached/cold P50 <=40%; representative Linux Worker/real Job acceptance remains pending |
 | P1-B | Readiness advertisement, stale/unknown handling and explainability | PR #94 merged; full matrix 37436461912 PASS. Observation-only signals; scheduling scoring remains disabled |
 | P1-C | Production Baseline | BLOCKED on external environment: two independent Linux Workers, pinned real Runtime/MCP versions, accounts/budgets and a 24h+ window; #1/#9 remain open |
-| P1-D | Goal compatibility, persistence, execution/evaluation integration, RPG-4 and Control bridge | PR #95–100 merged; full matrices 37442929805 / 37450161254 PASS. Synthetic execution, atomic reservations, artifact evaluation, human decisions and Control audit projection implemented. Atomic Guard → new Plan/Job publication, permission consumption and enforceable Runtime token/cost caps still pending; RPG remains PARTIAL |
+| P1-D | Goal compatibility, persistence, execution/evaluation integration, RPG-4 and Control bridge | PR #95–100 and #124 merged; PR #125 completes the current code/CI slice. Synthetic execution, atomic reservations, artifact evaluation, human decisions, Control audit projection, atomic Guard → Plan/Job publication, one-use permission consumption and cost-only `claude_http` enforcement are implemented. PR #125 CI 37803798658 passed, including real Docker/fake-Claude OCI coverage; real Provider and independent-host acceptance remain pending, so RPG remains PARTIAL |
 | P2-A | Experimental relay | PR #102–104 merged; full matrices 37465996087 / 37468359266 / 37468567184 PASS. Explicit operator TLS rendezvous fixture, direct-first connector and dual Worker Job recovery Gate are implemented. Unattended ticket provisioning, default-config opt-in wiring, control/event/bulk priority, full operations and real NAT acceptance remain pending |
 | P2-B | Control review UX | PR #101 merged; full matrix 37465407006 PASS. Authenticated bounded report/patch text preview with full hash and Attempt provenance; no patch execution |
 | P2-C | Mobile follow-ups | Existing foundation preserved. Pairing/push implementation, platform signing and device acceptance remain pending; no signed native package is claimed |
@@ -48,15 +48,14 @@ RPG closure may be inferred from fixture tests or a prepared deployment guide.
 
 ## Remaining work in priority order
 
-1. P1: implement atomic Guard/Plan/Job publication and one-use governance permission
-   consumption. Obtain enforceable adapter token/cost ceilings before claiming
-   bounded autonomous spend; current finite policies fence unsupported execution.
-2. v0.4 ecosystem: implement a real API-backed Runtime, a second isolated
-   Environment Provider and one authenticated Trigger/Delivery adapter. Keep
-   each contract and its negative/restart Gate independently reviewable.
-3. P2: complete ticket distribution and explicit Worker/Server Relay configuration
-   and traffic priority/operations. Keep `direct` the default.
-4. Last: measure cache targets on representative Linux Worker workloads and
+1. v0.4 ecosystem: validate the implemented self-hosted HTTP Runtime, isolated
+   Container Environment Provider and authenticated Trigger/Delivery adapter
+   against fixed real versions. Keep each negative/restart Gate independently
+   reviewable. Token limits, Codex cost limits and mixed-provider finite budgets
+   remain fail-closed.
+2. P2: complete Relay traffic priority, metrics and operations. Keep `direct`
+   the default and validate real NAT/fault/long-task behavior separately.
+3. Last: measure cache targets on representative Linux Worker workloads and
    complete the real Production Baseline with independent hosts and authorized
    real-runtime budgets. The local ten-Attempt concurrency Gate and CI
    provider-fixture P50 target do not substitute for real Job acceptance.
