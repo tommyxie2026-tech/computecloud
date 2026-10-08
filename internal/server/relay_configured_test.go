@@ -57,6 +57,11 @@ func TestConfiguredRelayDirectAndFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	issuerHTTP := httptest.NewUnstartedServer(issuer)
+	_ = issuerHTTP.Listener.Close()
+	issuerHTTP.Listener, err = net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
 	issuerHTTP.TLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate}}
 	issuerHTTP.StartTLS()
 	t.Cleanup(issuerHTTP.Close)
