@@ -87,6 +87,7 @@ func (s *Server) HTTPHandler() http.Handler {
 	mux.HandleFunc("GET /v1/jobs/{id}/artifacts/{artifact}/review", s.httpArtifactReview)
 	mux.HandleFunc("GET /v1/jobs/{id}/goal", s.httpJobGoal)
 	mux.HandleFunc("POST /v1/jobs/{id}/goal/decisions", s.httpGoalDecision)
+	mux.HandleFunc("POST /v1/jobs/{id}/goal/replans", s.httpGoalProposal)
 	mux.HandleFunc("GET /v1/jobs", s.httpControlJobs)
 	mux.HandleFunc("GET /v1/workers", s.httpControlWorkers)
 

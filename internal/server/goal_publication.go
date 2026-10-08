@@ -23,6 +23,9 @@ import (
 // canonical hash is committed in the proposed Plan.
 func (s *Server) PublishGoalReplan(ctx context.Context, priorJobID string, in goal.ReplanRequest, approvalOperationID string, rawSpec []byte) (*Job, goal.ReplanDecision, error) {
 	var empty goal.ReplanDecision
+	if _, err := rpcutil.Require(ctx, "goals:propose", false); err != nil {
+		return nil, empty, err
+	}
 	p, err := rpcutil.Require(ctx, "jobs:submit", false)
 	if err != nil {
 		return nil, empty, err
@@ -48,8 +51,11 @@ func (s *Server) PublishGoalReplan(ctx context.Context, priorJobID string, in go
 	if in.ProposedPlan.JobSpecHash == "" || in.ProposedPlan.JobSpecHash != requestHash {
 		return nil, empty, status.Error(codes.InvalidArgument, "REPLAN_JOB_SPEC_MISMATCH")
 	}
-	if in.GoalID == "" || in.EvaluationID == "" {
+	if in.ID == "" || in.GoalID == "" || in.EvaluationID == "" || in.ExpectedPlanRevision < 1 || in.ExpectedGraphGeneration < 1 {
 		return nil, empty, status.Error(codes.InvalidArgument, "replan Goal and evaluation required")
+	}
+	if in.Evidence.Validate() != nil || in.ProposedPlan.Validate() != nil || in.StrategyDelta.Validate() != nil || in.Progress.Validate() != nil {
+		return nil, empty, status.Error(codes.InvalidArgument, "INVALID_GOAL_PROPOSAL")
 	}
 	if prior.State != "FAILED" || in.EvaluationID != fmt.Sprintf("%s:%d", prior.ID, prior.Version) {
 		return nil, empty, status.Error(codes.FailedPrecondition, "REPLAN_EVALUATION_UNVERIFIED")
@@ -184,6 +190,14 @@ func (s *Server) PublishGoalReplan(ctx context.Context, priorJobID string, in go
 		return appendJobEvent(ctx, q, jobID, "job.created", map[string]any{"mode": spec.Mode, "goal_id": in.GoalID, "plan_revision": d.NextPlanRevision}, "", "")
 	})
 	if err != nil {
+		switch err.Error() {
+		case "IDEMPOTENCY_CONFLICT":
+			return nil, decision, status.Error(codes.AlreadyExists, err.Error())
+		case "STALE_GOAL_JOB_BINDING", "REPLAN_EVALUATION_STALE":
+			return nil, decision, status.Error(codes.Aborted, err.Error())
+		case "INVALID_REPLAN_PERMISSION", "REPLAN_PERMISSION_UNAVAILABLE", "REPLAN_PERMISSION_NOT_REQUIRED", "REPLAN_PUBLICATION_REPLAY_UNVERIFIED", "GOAL_RUNTIME_BUDGET_UNSUPPORTED", "GOAL_DEADLINE_EXCEEDED":
+			return nil, decision, status.Error(codes.FailedPrecondition, err.Error())
+		}
 		return nil, decision, dbErr(err)
 	}
 	if !decision.Allowed {
