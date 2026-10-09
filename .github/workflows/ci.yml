@@ -44,7 +44,7 @@ jobs:
         with:
           go-version: '1.27.1'
           cache: true
-      - run: make ci-relay-contract ci-relay-security-negative ci-relay-direct-fallback ci-relay-restart-recovery
+      - run: make ci-relay-contract ci-relay-security-negative ci-relay-direct-fallback ci-relay-restart-recovery ci-relay-flow-control
   transport-seam:
     runs-on: ubuntu-latest
     timeout-minutes: 10

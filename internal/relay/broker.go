@@ -39,6 +39,7 @@ type Broker struct {
 	pairs   map[string]*pendingPair
 	workers map[string]int
 	spent   map[string]int64
+	stats   brokerStats
 }
 
 func New(key []byte, limits Limits) (*Broker, error) {
@@ -85,6 +86,7 @@ func (b *Broker) Serve(ctx context.Context, l net.Listener, config *tls.Config) 
 			wg.Add(1)
 			go func() { defer wg.Done(); defer func() { <-b.slots }(); b.handle(ctx, conn) }()
 		default:
+			b.recordRejected(rejectionCapacity)
 			conn.Close()
 		}
 	}
@@ -124,16 +126,19 @@ func (b *Broker) handle(ctx context.Context, conn net.Conn) {
 	conn.SetDeadline(time.Now().Add(b.limits.PairTimeout))
 	raw, err := readLine(conn, MaxTicketBytes+64)
 	if err != nil {
+		b.recordRejected(rejectionInvalid)
 		return
 	}
 	var request struct {
 		Ticket string `json:"ticket"`
 	}
 	if json.Unmarshal(raw, &request) != nil {
+		b.recordRejected(rejectionInvalid)
 		return
 	}
 	ticket, err := Verify(b.key, request.Ticket, time.Now())
 	if err != nil {
+		b.recordRejected(rejectionInvalid)
 		return
 	}
 	pair, first, err := b.attach(conn, ticket)
@@ -155,11 +160,14 @@ func (b *Broker) handle(ctx context.Context, conn net.Conn) {
 	select {
 	case mate = <-pair.mate:
 	case <-timeout.C:
+		b.recordRejected(rejectionTimeout)
 		return
 	case <-ctx.Done():
 		return
 	}
 	defer mate.Close()
+	b.recordPairOpened()
+	defer b.recordPairClosed()
 	if err = writeReady(conn); err != nil {
 		return
 	}
@@ -181,6 +189,7 @@ func (b *Broker) attach(conn net.Conn, t Ticket) (*pendingPair, bool, error) {
 	defer b.mu.Unlock()
 	now := time.Now().UnixMilli()
 	if t.RelayEpoch != b.epoch {
+		b.recordRejected(rejectionInvalid)
 		return nil, false, errors.New("stale relay epoch")
 	}
 	for key, expiry := range b.spent {
@@ -188,12 +197,18 @@ func (b *Broker) attach(conn net.Conn, t Ticket) (*pendingPair, bool, error) {
 			delete(b.spent, key)
 		}
 	}
-	if b.spent["nonce:"+t.Nonce] > now || b.spent["pair:"+t.PairID] > now || len(b.spent)+2 > 4096 {
+	if b.spent["nonce:"+t.Nonce] > now || b.spent["pair:"+t.PairID] > now {
+		b.recordRejected(rejectionReplay)
+		return nil, false, errors.New("relay ticket replay or capacity")
+	}
+	if len(b.spent)+2 > 4096 {
+		b.recordRejected(rejectionCapacity)
 		return nil, false, errors.New("relay ticket replay or capacity")
 	}
 	if pair := b.pairs[t.PairID]; pair != nil {
 		old := pair.ticket
 		if old.ServerID != t.ServerID || old.WorkerID != t.WorkerID || old.Epoch != t.Epoch || old.Role == t.Role || old.ExpiresMS <= now {
+			b.recordRejected(rejectionInvalid)
 			return nil, false, errors.New("relay pair identity mismatch")
 		}
 		b.spent["nonce:"+t.Nonce] = t.ExpiresMS
@@ -203,6 +218,7 @@ func (b *Broker) attach(conn net.Conn, t Ticket) (*pendingPair, bool, error) {
 		return pair, false, nil
 	}
 	if b.workers[t.WorkerID] >= b.limits.PairsPerWorker {
+		b.recordRejected(rejectionQuota)
 		return nil, false, errors.New("relay worker quota")
 	}
 	pair := &pendingPair{ticket: t, conn: conn, mate: make(chan net.Conn, 1), done: make(chan struct{})}
@@ -241,7 +257,9 @@ func (b *Broker) copy(ctx context.Context, dst, src net.Conn) error {
 				}
 			}
 			// One bounded buffer burst, followed by pacing; no unbounded forwarding queue.
-			timer := time.NewTimer(time.Duration(int64(n) * int64(time.Second) / b.limits.BytesPerSecond))
+			delay := time.Duration(int64(n) * int64(time.Second) / b.limits.BytesPerSecond)
+			b.recordForwarded(n, delay >= time.Millisecond)
+			timer := time.NewTimer(delay)
 			select {
 			case <-timer.C:
 			case <-ctx.Done():
