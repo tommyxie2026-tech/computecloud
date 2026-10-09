@@ -86,6 +86,7 @@ func (i *Issuer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	identity, server := i.principal(r)
 	if identity == "" {
+		i.broker.recordRejected(rejectionInvalid)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -94,12 +95,14 @@ func (i *Issuer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/v1/relay/pairs":
 		if !server {
+			i.broker.recordRejected(rejectionInvalid)
 			http.Error(w, "server role required", http.StatusForbidden)
 			return
 		}
 		i.issue(w, r)
 	case "/v1/relay/pairs/claim":
 		if server {
+			i.broker.recordRejected(rejectionInvalid)
 			http.Error(w, "worker role required", http.StatusForbidden)
 			return
 		}
@@ -133,6 +136,7 @@ func (i *Issuer) issue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !known {
+		i.broker.recordRejected(rejectionInvalid)
 		http.Error(w, "unknown Worker", http.StatusForbidden)
 		return
 	}
@@ -145,10 +149,12 @@ func (i *Issuer) issue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(i.pending) >= 1024 {
+		i.broker.recordRejected(rejectionCapacity)
 		http.Error(w, "issuer capacity", http.StatusTooManyRequests)
 		return
 	}
 	if i.pending[input.WorkerID].ExpiresMS > now.UnixMilli() {
+		i.broker.recordRejected(rejectionReplay)
 		http.Error(w, "pair already pending", http.StatusConflict)
 		return
 	}
@@ -188,6 +194,7 @@ func (i *Issuer) claim(w http.ResponseWriter, workerID string) {
 	pending := i.pending[workerID]
 	if pending.ExpiresMS <= time.Now().UnixMilli() || pending.Ticket == "" {
 		delete(i.pending, workerID)
+		i.broker.recordRejected(rejectionNotReady)
 		http.Error(w, "no pending pair", http.StatusNotFound)
 		return
 	}

@@ -18,7 +18,7 @@ v0.4.x 的 Relay 仍是实验性、显式 opt-in 能力。没有真实双机/NAT
 
 - RLY-0 设计、ADR-021、路线图归属：已完成并进入 `main`。
 - RLY-1 Transport seam：PR #102 已合入；直接路径保持原 gRPC dial 行为，替代路径强制内层 TLS。
-- RLY-2：PR #103 提供实验性配对/转发 fixture；RLY-3/4：后续分支提供 opt-in 连接器及本地双 Worker 重启恢复测试。无人值守票据分发、流量优先级、真实 NAT/故障验收和完整 RLY-5 运维仍待完成。
+- RLY-2：PR #103 提供实验性配对/转发 fixture；RLY-3 提供 opt-in 连接器及本地双 Worker 重启恢复测试。RLY-4 已增加真实 Relay、内层 TLS 与 HTTP/2 Bulk 背压下的 control progress Gate；RLY-5 的固定字段指标与运维手册正在收尾。真实 NAT/故障/长任务验收仍待完成。
 - Schema：无 SQLite migration；Relay 不保存 Job/Task/Attempt，不成为第二事实源。
 
 ## 1. Current State

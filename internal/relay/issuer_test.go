@@ -92,6 +92,10 @@ func TestIssuerPairClaimBoundedAndRoleSeparated(t *testing.T) {
 	if status, _ := issuerRequest(t, service.Client(), issueURL, "invalid-token-0123456789-abcdefghi", map[string]string{"worker_id": "worker-a"}); status != http.StatusUnauthorized {
 		t.Fatalf("invalid auth status=%d", status)
 	}
+	stats := broker.Stats()
+	if stats.RejectedInvalid != 4 || stats.RejectedReplay != 1 || stats.RejectedNotReady != 2 {
+		t.Fatalf("issuer rejection stats=%+v", stats)
+	}
 }
 
 func TestIssuerRequiresTLSAndStrongDistinctCredentials(t *testing.T) {

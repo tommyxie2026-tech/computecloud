@@ -216,9 +216,14 @@ func TestRelayOpaqueInnerTLSAndShutdown(t *testing.T) {
 		t.Fatal("relay shutdown leaked")
 	}
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	if len(b.pairs) != 0 || len(b.workers) != 0 {
+		b.mu.Unlock()
 		t.Fatal("pair quota leaked")
+	}
+	b.mu.Unlock()
+	stats := b.Stats()
+	if stats.ActiveConnections != 0 || stats.AcceptedPairs != 1 || stats.BytesIn < uint64(2*len(payload)) || stats.BytesOut != stats.BytesIn || stats.RejectedReplay == 0 {
+		t.Fatalf("relay stats=%+v", stats)
 	}
 }
 func TestRelayRejectsUnverifiedTLS(t *testing.T) {

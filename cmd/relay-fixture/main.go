@@ -41,7 +41,11 @@ func run() error {
 	issuerServerID := flag.String("issuer-server-id", "", "Server identity permitted to issue pairs")
 	issuerServerToken := flag.String("issuer-server-token-file", "", "private Server issuer token file")
 	issuerWorkerTokens := flag.String("issuer-worker-tokens-file", "", "private JSON map of Worker IDs to issuer tokens")
+	metricsInterval := flag.Duration("metrics-interval", 30*time.Second, "structured transport metrics interval (1s-1h)")
 	flag.Parse()
+	if *metricsInterval < time.Second || *metricsInterval > time.Hour {
+		return fmt.Errorf("metrics interval must be between 1s and 1h")
+	}
 	key, err := readPrivate(*signingFile)
 	if err != nil {
 		return fmt.Errorf("ticket signing key: %w", err)
@@ -109,7 +113,26 @@ func run() error {
 		return fmt.Errorf("issuer listener required when issuer credentials are configured")
 	}
 	slog.Info("experimental relay fixture listening", "address", listener.Addr().String(), "relay_epoch", broker.Epoch())
+	metricsDone := make(chan struct{})
+	go func() {
+		defer close(metricsDone)
+		ticker := time.NewTicker(*metricsInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				logMetrics(broker, false)
+			case <-ctx.Done():
+				logMetrics(broker, true)
+				return
+			}
+		}
+	}()
 	err = broker.Serve(ctx, listener, &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}})
+	if ctx.Err() == nil {
+		cancel()
+	}
+	<-metricsDone
 	if issuerServer != nil {
 		_ = issuerServer.Close()
 		issuerErr := <-issuerDone
@@ -121,6 +144,24 @@ func run() error {
 		return nil
 	}
 	return err
+}
+
+func logMetrics(broker *relay.Broker, final bool) {
+	m := broker.Stats()
+	slog.Info("relay transport metrics",
+		"final", final,
+		"active_connections", m.ActiveConnections,
+		"accepted_pairs", m.AcceptedPairs,
+		"bytes_in", m.BytesIn,
+		"bytes_out", m.BytesOut,
+		"backpressure_total", m.BackpressureTotal,
+		"rejected_invalid", m.RejectedInvalid,
+		"rejected_replay", m.RejectedReplay,
+		"rejected_capacity", m.RejectedCapacity,
+		"rejected_quota", m.RejectedQuota,
+		"rejected_timeout", m.RejectedTimeout,
+		"rejected_not_ready", m.RejectedNotReady,
+	)
 }
 
 func readPrivate(path string) ([]byte, error) {
