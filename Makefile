@@ -125,6 +125,8 @@ ci-relay-security-negative:
 ci-relay-direct-fallback:
 	$(GO) test -race ./internal/rpcutil -run 'TestDirectFirst|TestTLS|TestConnector' -count=1
 
-.PHONY: ci-relay-restart-recovery
+.PHONY: ci-relay-restart-recovery ci-relay-flow-control
 ci-relay-restart-recovery:
 	$(GO) test -race ./internal/server -run 'TestRelayJobRestartRecovery|TestStageAndGeneration|TestStaleQueued' -count=1
+ci-relay-flow-control:
+	$(GO) test -race ./internal/server -run '^TestRelayControlProgressDuringBulkTransfer$$' -count=1
