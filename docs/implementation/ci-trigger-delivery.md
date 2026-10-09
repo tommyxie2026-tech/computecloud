@@ -15,6 +15,12 @@ final Artifact IDs/SHA-256 values. Failure and timeout also write a bounded
 record and return nonzero. The report omits Job summary text, tokens and raw
 CLI errors. It never auto-cancels a Job on CI timeout.
 
+The record also emits bounded `v047_acceptance_evidence` booleans after a
+successful authenticated submission and after result provenance is checked.
+These facts are inputs to the
+[`v0.4.7 integration acceptance`](../validation/v0.4.7-integration-acceptance.md)
+procedure; one adapter invocation is not the complete real-environment Gate.
+
 Example on a trusted CI runner with a provisioned client config:
 
 ```sh

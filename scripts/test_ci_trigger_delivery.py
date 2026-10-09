@@ -48,6 +48,13 @@ class CITriggerDeliveryTest(unittest.TestCase):
         self.assertNotIn("summary", report)
         self.assertEqual(self.args.out.stat().st_mode & 0o777, 0o600)
         self.assertEqual(invoke.call_args_list[0].kwargs["key"], report["submission_key"])
+        self.assertEqual(report["v047_acceptance_evidence"], {
+            "authenticated_submission": True,
+            "artifact_provenance_verified": True,
+            "duplicate_delivery_existing": False,
+            "failed_delivery_recorded": False,
+            "source_provenance_verified": True,
+        })
 
     def test_failed_job_still_delivers_bounded_result(self):
         with patch("ci_trigger_delivery.invoke", side_effect=[
@@ -59,6 +66,9 @@ class CITriggerDeliveryTest(unittest.TestCase):
         report = json.loads(self.args.out.read_text(encoding="utf-8"))
         self.assertEqual(report["status"], "JOB_FAILED")
         self.assertTrue(report["existing"])
+        self.assertTrue(report["v047_acceptance_evidence"]["authenticated_submission"])
+        self.assertTrue(report["v047_acceptance_evidence"]["duplicate_delivery_existing"])
+        self.assertTrue(report["v047_acceptance_evidence"]["failed_delivery_recorded"])
 
     def test_submission_error_has_no_raw_cli_output(self):
         with patch("ci_trigger_delivery.invoke", side_effect=RuntimeError("SUBMIT_FAILED")):
@@ -66,6 +76,7 @@ class CITriggerDeliveryTest(unittest.TestCase):
         report = json.loads(self.args.out.read_text(encoding="utf-8"))
         self.assertEqual(report["error_code"], "SUBMIT_FAILED")
         self.assertNotIn("job_id", report)
+        self.assertFalse(report["v047_acceptance_evidence"]["authenticated_submission"])
 
     def test_commit_mismatch_never_submits(self):
         self.args.source_commit = "b" * 40

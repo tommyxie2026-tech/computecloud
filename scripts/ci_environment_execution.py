@@ -82,6 +82,17 @@ def main():
         "schema_version": "ci-environment-execution.v1",
         "real_model_calls": False,
         "status": status,
+        "v047_acceptance_fixture": {
+            "evidence_class": "fixture",
+            "eligible_for_real_acceptance": False,
+            "required_case_ids": ["ENV01", "ENV02", "ENV03", "ENV04", "ENV05"],
+            "environment_provider": "process",
+            "target_docker_host": False,
+            "file_escape_tested": False,
+            "network_escape_tested": False,
+            "container_crash_tested": False,
+            "controller_restart_tested": False,
+        },
         "coverage": {
             "provider_owned_environment_lifecycle": True,
             "durable_environment_ref": True,
