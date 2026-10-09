@@ -139,6 +139,7 @@ func TestRelayControlProgressDuringBulkTransfer(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
+		release()
 		clientConn.Close()
 		workerConn.Close()
 		serverSide.conn.Close()
