@@ -1,6 +1,6 @@
 # 版本记录
 
-## 0.4.7-rc.2 — Goal 治理与 Runtime 预算预览
+## 0.4.7-rc.2 — Goal 治理与 Runtime 预算预览（prerelease 已发布）
 
 本候选版在 v0.4.7-rc.1 之上纳入受治理的 Goal Re-plan 提议入口、Guard → Plan/Job 原子发布、一次性批准消费，以及限定自托管 `claude_http` 的客户端估算费用强制边界。
 
