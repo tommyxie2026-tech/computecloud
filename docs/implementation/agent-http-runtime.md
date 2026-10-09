@@ -139,7 +139,12 @@ responses and Docker command construction. Its GitHub CI job additionally runs
 a credential-free fake Claude executable in OCI for normal completion, native
 budget termination, container failure, stream interruption and missing-final
 handling. It makes real Docker calls but no real model calls. Fixed-version
-real-provider validation remains part of VAL-01.
+real-provider validation remains part of VAL-01. The stable v0.4.7 Runtime and
+Goal budget evidence format, fixed cases, sanitization rules, and fail-closed
+command are defined in
+[`../validation/v0.4.7-runtime-acceptance.md`](../validation/v0.4.7-runtime-acceptance.md).
+The report validator is repository-ready, but its Gate remains blocked until an
+authorized real-provider run supplies the report.
 
 This is an implementation and fixture-test result, **not isolation
 certification**. Docker-backed file/network escape, crash/restart and
