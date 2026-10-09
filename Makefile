@@ -2,7 +2,7 @@ GO ?= go
 VERSION ?= 0.4.7-rc.2
 V047_CANDIDATE_SHA ?= $(shell git rev-parse HEAD)
 
-.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-prepared-workspace-contract ci-prepared-workspace-recovery ci-long-run-flow ci-fair-flow ci-runtime-contract-flow ci-runtime-execution-flow ci-tool-contract-flow ci-environment-contract-flow ci-environment-execution-flow ci-agent-control-schema ci-agent-control-read ci-runtime-adapter-contract ci-runtime-budget ci-agent-control-fencing ci-agent-control-negative ci-agent-control-dispatch ci-agent-control-approval ci-agent-control-resume ci-control-client-check ci-control-client-e2e ci-control-mobile-check ci-manual-retry-negative ci-container-image ci-v047-stable-gate-contract ci-v047-stable-gate container-build capacity capacity-check release-package generate
+.PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-prepared-workspace-contract ci-prepared-workspace-recovery ci-long-run-flow ci-fair-flow ci-runtime-contract-flow ci-runtime-execution-flow ci-tool-contract-flow ci-environment-contract-flow ci-environment-execution-flow ci-agent-control-schema ci-agent-control-read ci-runtime-adapter-contract ci-runtime-budget ci-agent-control-fencing ci-agent-control-negative ci-agent-control-dispatch ci-agent-control-approval ci-agent-control-resume ci-control-client-check ci-control-client-e2e ci-control-mobile-check ci-manual-retry-negative ci-container-image ci-v047-stable-gate-contract ci-v047-release-transition-contract ci-v047-stable-gate container-build capacity capacity-check release-package generate
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w -X main.version=$(VERSION)' -o bin/computecloud ./cmd/computecloud
 test:
@@ -67,6 +67,8 @@ ci-manual-retry-negative:
 	python3 scripts/ci_manual_retry_negative.py --output dist/ci-manual-retry-negative/report.json
 ci-v047-stable-gate-contract:
 	python3 -m unittest scripts.test_v047_stable_gate
+ci-v047-release-transition-contract:
+	python3 -m unittest scripts.test_validate_v047_release_transition
 ci-v047-stable-gate:
 	python3 scripts/v047_stable_gate.py \
 		--candidate-sha "$(V047_CANDIDATE_SHA)" \

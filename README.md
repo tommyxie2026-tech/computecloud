@@ -13,13 +13,14 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - 限定范围预览版 **[v0.4.7-rc.1](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7-rc.1) 已发布**（prerelease，非生产认证）；范围与证据见 [发布记录](docs/implementation/v0.4.7-rc.1-release-status.md)
 - 限定范围预览版 **[v0.4.7-rc.2](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7-rc.2) 已发布**（prerelease，非生产认证）；它纳入原子 Goal Plan/Job 发布、一次性批准消费和限定 `claude_http` 估算费用强制，仍不宣称真实模型、独立双机或生产认证；范围、产物与 CI 证据见 [发布记录](docs/implementation/v0.4.7-rc.2-release-status.md)
 - v0.4.6 已通过完整 CI、package、multi-arch container 与 release；发布范围和升级步骤见 [v0.4.6 部署指南](docs/deployment/production-v0.4.6.md)，验收证据见 [v0.4.6 发布记录](docs/implementation/v0.4.6-release-status.md)
+- v0.4.7 稳定版准备：Relay Control/Bulk 隔离、定长指标与运维手册已完成；Runtime、Container/Trigger、独立双机升级恢复、缓存与真实 NAT Relay 的 fail-closed 验收器，以及 exact-SHA 聚合门禁和候选到发布提交的防漂移校验已完成。真实报告尚未生成，稳定发布保持阻塞，详见 [稳定版台账](docs/implementation/v0.4.7-stable-tracker.md)
 - main 功能基线：**v0.4.x Runtime / Tool / Environment + Prepared Workspace、synthetic Goal 与实验性 Relay**（尚未发布为新的稳定版本）
 - 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
-- 当前功能主线：Goal 的原子 Plan/Job 发布、一次性批准消费和限定 `claude_http` 费用上限已完成代码与 CI 闭环；下一步是 Relay 运维闭环、真实 Runtime/Environment/Trigger 验收与独立双机基线。CI Trigger/Delivery 的 CLI 适配器和本地交付记录已合入，真实 CI→Server 验收仍待完成；隔离 Environment 不能由宿主机 CLI 虚报执行边界
+- 当前功能主线：Goal 的原子 Plan/Job 发布、一次性批准消费和限定 `claude_http` 费用上限已完成代码与 CI 闭环；Relay 运维代码闭环已完成。下一步是在固定候选 SHA 上完成真实 Runtime/Environment/Trigger、独立双机、缓存与 NAT Relay 验收。CI Trigger/Delivery 的 CLI 适配器和本地交付记录已合入，真实 CI→Server 验收仍待完成；隔离 Environment 不能由宿主机 CLI 虚报执行边界
 - 自托管 HTTP Runtime：`codex_http` / `claude_http` 的 Unix-socket Provider、HTTP 服务和固定版本 OCI 镜像已实现，服务为每个 Attempt 启动独立 Docker 容器；Container EnvironmentProvider 已接入持久引用、恢复检查与清理证明。部署与契约见 [HTTP Runtime 说明](docs/implementation/agent-http-runtime.md)。真实 CLI、Docker 隔离负向测试和双机验收仍待完成。
 - Relay/P2P 当前进度：Transport seam、实验性 TLS Relay fixture、direct-first fallback 与 Worker 双 Job 恢复 Gate 已合入；Broker 侧短期一次性票据签发/领取接口和 Server 直连/隧道共用 gRPC 服务的接入点已实现。Server/Worker 的自动签发、领取与连接循环已提供显式 `direct_then_relay` 配置，`direct` 仍为默认路径；真实 NAT/长任务验收未完成
 - Relay 设计与实施计划：[ADR-021](docs/adr/0021-relay-assisted-p2p-transport.md) / [v0.4.x Relay 传输计划](docs/implementation/relay-p2p-transport-plan.md)
-- 下一步 Relay：补齐 Control/Lease/Cancel 与 Bulk 的流量优先级、运维指标/手册，再做真实网络验收
+- 下一步 Relay：按运维手册完成真实 NAT、direct fallback、Relay 重启重连、事件水位和 Attempt 去重验收；`direct` 继续为默认路径
 - Goal-oriented Computing：Legacy Job 的 synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 证据评估和 Control 治理审计已接入执行路径；显式提议可通过受控 HTTP 入口原子发布新 Plan/Job，自动 Re-plan 仍关闭
 - Runtime 预算：自托管 `claude_http` 已支持 Claude 客户端估算费用的微美元硬停止边界，包含能力协商、Assignment 冻结、单在途 Attempt、原子 usage 结算和未知用量 fail-closed。一次 API 调用可能越过阈值；它不是供应商账单上限。Codex token/cost 与 Claude token 上限仍不支持。
 - RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费、显式提议入口和限定范围 Runtime cost enforcement 已实现。固定版本真实 Runtime 与独立主机验收仍待完成，RPG-4 保持 PARTIAL；完成后关闭，不新增 RPG-5

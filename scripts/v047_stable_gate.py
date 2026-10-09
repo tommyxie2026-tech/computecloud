@@ -30,6 +30,7 @@ REPORT_VALIDATORS = {
 REQUIRED_CI_JOBS = (
     "relay-fixture",
     "v047-stable-gate-contract",
+    "v047-release-transition",
     "transport-seam",
     "control-review",
     "goal-governance",
