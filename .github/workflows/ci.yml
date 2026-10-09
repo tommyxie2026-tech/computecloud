@@ -54,6 +54,50 @@ jobs:
         with:
           python-version: '3.13'
       - run: make ci-v047-stable-gate-contract
+  v047-release-transition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: make ci-v047-release-transition-contract
+      - name: Validate v0.4.7 release transition when requested
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          TRANSITION_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          request=release/v0.4.7.json
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            candidate_sha="$BASE_SHA"
+          elif git rev-parse "$TRANSITION_SHA^" >/dev/null 2>&1; then
+            candidate_sha="$(git rev-parse "$TRANSITION_SHA^")"
+          else
+            exit 0
+          fi
+          changed_files="$RUNNER_TEMP/v047-changed-files.txt"
+          git diff --name-only "$candidate_sha" "$TRANSITION_SHA" > "$changed_files"
+          if ! grep -Fxq "$request" "$changed_files"; then
+            exit 0
+          fi
+          project_version="$(awk '$1 == "VERSION" && $2 == "?=" { print $3; exit }' Makefile)"
+          candidate_makefile="$RUNNER_TEMP/v047-candidate-Makefile"
+          git show "$candidate_sha:Makefile" > "$candidate_makefile"
+          python3 scripts/validate_v047_release_transition.py \
+            --request "$request" \
+            --gate release/evidence/v0.4.7-stable-gate.json \
+            --project-version "$project_version" \
+            --release-sha "$TRANSITION_SHA" \
+            --parent-sha "$candidate_sha" \
+            --changed-files "$changed_files" \
+            --candidate-makefile "$candidate_makefile" \
+            --release-makefile Makefile
   transport-seam:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -701,7 +745,7 @@ jobs:
 
   package:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [relay-fixture, v047-stable-gate-contract, transport-seam, control-review, goal-governance, goal-execution, scheduler-readiness, prepared-workspace-cache, verify-macos, verify, task-flow, retry-flow, manual-retry-negative, artifact-flow, workspace-flow, prepared-workspace-contract, prepared-workspace-recovery, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, runtime-budget, agent-control-fencing, agent-control-negative, agent-control-dispatch, agent-control-approval, agent-control-resume, control-client-check, control-client-e2e, control-mobile-check, container-image]
+    needs: [relay-fixture, v047-stable-gate-contract, v047-release-transition, transport-seam, control-review, goal-governance, goal-execution, scheduler-readiness, prepared-workspace-cache, verify-macos, verify, task-flow, retry-flow, manual-retry-negative, artifact-flow, workspace-flow, prepared-workspace-contract, prepared-workspace-recovery, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, runtime-budget, agent-control-fencing, agent-control-negative, agent-control-dispatch, agent-control-approval, agent-control-resume, control-client-check, control-client-e2e, control-mobile-check, container-image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -750,7 +794,7 @@ jobs:
               changed_files="$(git show --pretty= --name-only "$GITHUB_SHA")"
             fi
             if grep -Fxq "$request" <<<"$changed_files"; then
-              requested_version="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); assert set(d) == {"schema_version", "version"}; assert d["schema_version"] == "release-request.v1"; print(d["version"])' "$request")"
+              requested_version="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); expected="release-request.v2" if d.get("version") == "0.4.7" else "release-request.v1"; assert d.get("schema_version") == expected; print(d["version"])' "$request")"
               if [[ "$requested_version" != "$project_version" ]]; then
                 echo "release request version does not match Makefile VERSION" >&2
                 exit 2

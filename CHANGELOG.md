@@ -1,5 +1,12 @@
 # 版本记录
 
+## 未发布 — v0.4.7 稳定版验收与发布闭环
+
+- Relay Control/Bulk 隔离、定长指标和运维/回退手册已完成并纳入 CI。
+- 新增 Runtime、Container/Trigger、独立双机升级恢复、缓存及真实 NAT Relay 的 fail-closed 真实证据契约；fixture 不能满足稳定版 Gate。
+- 新增 exact-SHA 聚合 Gate，以及 `release-request.v2` 候选到发布提交校验；发布提交只允许固定发版元数据和文档变化，拒绝源码、工作流和构建逻辑漂移。
+- 真实双机、Provider、Docker/OCI、24h、缓存与 NAT 报告尚未生成；本节不表示 v0.4.7 已发布。
+
 ## 0.4.7-rc.2 — Goal 治理与 Runtime 预算预览（prerelease 已发布）
 
 本候选版在 v0.4.7-rc.1 之上纳入受治理的 Goal Re-plan 提议入口、Guard → Plan/Job 原子发布、一次性批准消费，以及限定自托管 `claude_http` 的客户端估算费用强制边界。
