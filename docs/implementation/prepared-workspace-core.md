@@ -144,6 +144,14 @@ Template GC                    WS-B
 
 WS-A 的 correctness contract 完成后，WS-B 可以在不修改 public contract 的前提下优化 materialization/cache。
 
+## v0.4.7 representative performance Gate
+
+本地 `ci_workspace_cache.py --benchmark` 继续用于实现回归，不关闭真实性能目标。
+稳定版要求在三个固定 commit 的代表性 Linux 仓库上分别采集至少 10 个冷样本和
+10 个热样本，记录完整 Job 与 preparation 时间、负载和唯一 Attempt ID。
+[`v0.4.7 performance acceptance`](../validation/v0.4.7-performance-results.md)
+从原始样本重算 P50/P95，并要求每个仓库 warm P50 / cold P50 不高于 `0.40`。
+
 发布证据：[main CI 36575512360](https://github.com/tommyxie2026-tech/computecloud/actions/runs/36575512360)，`prepared-workspace-contract` / `prepared-workspace-recovery` 以及完整发布矩阵均通过。模板清理权限与 Runtime identity fixture 的旧阻塞已修复，不能继续作为当前 BLOCKED 原因。
 
 当前存储是文件系统 manifest，不存在 `prepared_workspaces` 表；Worker v6 用于 control ledger，不是本 WS migration。Worker 级模板复用证明 correctness，不替代 WS-B 的 Job 级命中率与冷/热耗时 benchmark。下一轮见[实施台账](v0.4.5-roadmap-reconciliation.md)。

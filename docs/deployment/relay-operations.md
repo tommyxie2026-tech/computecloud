@@ -79,4 +79,6 @@ Run and retain evidence for:
 
 Loopback, one-host containers and GitHub Actions fixtures do not satisfy this
 acceptance. Keep Relay experimental and opt-in until the sanitized real-network
-report passes the v0.4.7 stable Gate.
+report passes the v0.4.7 stable Gate. The fixed `RLY01`–`RLY05` fields and
+fail-closed command are defined in
+[`../validation/v0.4.7-performance-results.md`](../validation/v0.4.7-performance-results.md).
