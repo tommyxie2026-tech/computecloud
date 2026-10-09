@@ -101,6 +101,13 @@ def run(args):
         "spec_sha256": hashlib.sha256(raw).hexdigest(),
         "submission_key": submission_key(args.delivery_id, args.source_commit),
         "status": "STARTED",
+        "v047_acceptance_evidence": {
+            "authenticated_submission": False,
+            "artifact_provenance_verified": False,
+            "duplicate_delivery_existing": False,
+            "failed_delivery_recorded": False,
+            "source_provenance_verified": False,
+        },
     }
     try:
         submitted = invoke(binary, config, "submit", file=spec, key=report["submission_key"])
@@ -109,6 +116,8 @@ def run(args):
             raise RuntimeError("SUBMIT_INVALID_RESPONSE")
         report["job_id"] = job_id
         report["existing"] = submitted.get("existing") is True
+        report["v047_acceptance_evidence"]["authenticated_submission"] = True
+        report["v047_acceptance_evidence"]["duplicate_delivery_existing"] = report["existing"]
         deadline = time.monotonic() + args.timeout_seconds
         while True:
             current = invoke(binary, config, "get", id=job_id)
@@ -123,13 +132,19 @@ def run(args):
         result = invoke(binary, config, "result", id=job_id)
         if result.get("job_id") != job_id or result.get("state") != state or result.get("base_commit") != args.source_commit:
             raise RuntimeError("RESULT_PROVENANCE_MISMATCH")
+        artifacts = artifact_provenance(result)
         report.update({
             "status": "COMPLETE" if state == "SUCCEEDED" else "JOB_FAILED",
             "job_state": state,
             "trace_id": result.get("trace_id", ""),
             "manifest_sha256": result.get("manifest_sha256", ""),
             "result_sha256": hashlib.sha256(json.dumps(result, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
-            "final_artifacts": artifact_provenance(result),
+            "final_artifacts": artifacts,
+        })
+        report["v047_acceptance_evidence"].update({
+            "artifact_provenance_verified": True,
+            "failed_delivery_recorded": state != "SUCCEEDED",
+            "source_provenance_verified": True,
         })
     except RuntimeError as exc:
         report["status"] = "INCOMPLETE"
