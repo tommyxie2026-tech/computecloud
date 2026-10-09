@@ -166,7 +166,9 @@ func TestRelayControlProgressDuringBulkTransfer(t *testing.T) {
 	}()
 	select {
 	case <-bulkStarted:
-	case <-time.After(2 * time.Second):
+	// Startup is only a hang guard. The two-second product bound starts after
+	// the Bulk stream is established and applies to the control request below.
+	case <-time.After(10 * time.Second):
 		t.Fatal("Bulk stream did not reach Relay-backed server")
 	}
 	select {
