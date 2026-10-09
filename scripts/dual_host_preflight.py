@@ -152,11 +152,24 @@ def verify_records(records):
             if left is not right and left["machine_id_sha256"] == right["machine_id_sha256"] and left.get("data_dir") == right.get("data_dir"):
                 fail("Server and Worker on one host cannot share a data directory")
     server = next(record for record in records if record["role"] == "server")
+    production_hosts = []
+    for record in sorted(records, key=lambda item: (item["role"] != "server", item["node_id"])):
+        production_hosts.append({
+            "role": record["role"],
+            "node_id": record["node_id"],
+            "machine_id_sha256": record["machine_id_sha256"],
+            "binary_sha256": record["binary_sha256"],
+            "source_sha": record["source_sha"],
+            "os": record["os"],
+            "runtime_versions": record.get("runtime_versions", {}),
+            "mcp_version": record.get("mcp_version"),
+        })
     return {
         "run_id": server["run_id"],
         "source_sha": server["source_sha"],
         "worker_hosts_independent": True,
         "server_host_independent": all(server["machine_id_sha256"] != worker["machine_id_sha256"] for worker in workers),
+        "v047_production_hosts": production_hosts,
         "scope": "preflight metadata only; no Job, fault, upgrade or performance acceptance",
     }
 

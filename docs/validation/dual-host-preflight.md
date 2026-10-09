@@ -48,6 +48,11 @@ independence on their own: record VM/hypervisor placement or host inventory
 separately. The output certifies **only preflight metadata**, never actual
 Jobs, fault recovery, real upgrade, or cache performance.
 
+The verifier also emits `v047_production_hosts`, a sanitized three-record array
+with the fields consumed by the v0.4.7 production validator. It omits data
+directory paths and remains identity metadata only; copy it into the report
+described by [`v0.4.7-production-results.md`](v0.4.7-production-results.md).
+
 Attach the three files and the comparison output to the run evidence. Continue
 with case-level results, timestamps, Task/Attempt IDs, artifact hashes, fault
 timeline, SQLite checks, capacity samples, and upgrade/rollback records from
