@@ -40,6 +40,12 @@ class DualHostPreflightTest(unittest.TestCase):
         result = verify_records(self.records)
         self.assertTrue(result["worker_hosts_independent"])
         self.assertTrue(result["server_host_independent"])
+        self.assertEqual(len(result["v047_production_hosts"]), 3)
+        self.assertEqual(
+            {item["node_id"] for item in result["v047_production_hosts"]},
+            {"server", "worker-a", "worker-b"},
+        )
+        self.assertNotIn("data_dir", result["v047_production_hosts"][0])
 
     def test_shared_server_host_is_disclosed(self):
         records = copy.deepcopy(self.records)
