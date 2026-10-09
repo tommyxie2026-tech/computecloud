@@ -6,8 +6,10 @@ Product: Agent-aware Distributed Job Execution Platform / Agent Job Executor.
 This ledger separates implementation, automated validation, merge/release, and
 real-environment acceptance. A role assignment is not proof of delivery.
 
-The scoped preview `v0.4.7-rc.1` was published as a prerelease; its release gates
-and limitations are tracked in [the release record](v0.4.7-rc.1-release-status.md).
+The scoped previews `v0.4.7-rc.1` and `v0.4.7-rc.2` were published as
+prereleases. The latter freezes Goal governance and the bounded Runtime budget
+slice; its release gates, artifacts and limitations are tracked in
+[the release record](v0.4.7-rc.2-release-status.md).
 The [certification simulation gate](../validation/certification-simulation.md)
 collects repeatable CI evidence, but cannot close the real-environment baseline.
 The [v0.4.x closeout plan](v0.4-closeout-plan.md) now tracks the remaining
@@ -19,7 +21,7 @@ ecosystem, Goal, Relay and real-acceptance slices against explicit release gates
 | P1-A | Workspace cache, bounded GC, warm materialization, metrics and benchmark | PR #93, #109 and #111 merged. Bounded parallel file copies plus overlapped integrity validation give three local macOS fixture P50 ratios of 20.2%, 20.1% and 20.7%. Linux single-runner simulation Gate passed in full matrix 37564049429, including cached/cold P50 <=40%; representative Linux Worker/real Job acceptance remains pending |
 | P1-B | Readiness advertisement, stale/unknown handling and explainability | PR #94 merged; full matrix 37436461912 PASS. Observation-only signals; scheduling scoring remains disabled |
 | P1-C | Production Baseline | BLOCKED on external environment: two independent Linux Workers, pinned real Runtime/MCP versions, accounts/budgets and a 24h+ window; #1/#9 remain open |
-| P1-D | Goal compatibility, persistence, execution/evaluation integration, RPG-4 and Control bridge | PR #95–100 and #124 merged; PR #125 completes the current code/CI slice. Synthetic execution, atomic reservations, artifact evaluation, human decisions, Control audit projection, atomic Guard → Plan/Job publication, one-use permission consumption and cost-only `claude_http` enforcement are implemented. PR #125 CI 37803798658 passed, including real Docker/fake-Claude OCI coverage; real Provider and independent-host acceptance remain pending, so RPG remains PARTIAL |
+| P1-D | Goal compatibility, persistence, execution/evaluation integration, RPG-4 and Control bridge | PR #95–100 and #124–125 merged; the current code/CI slice was published in prerelease v0.4.7-rc.2. Synthetic execution, atomic reservations, artifact evaluation, human decisions, Control audit projection, atomic Guard → Plan/Job publication, one-use permission consumption and cost-only `claude_http` enforcement are implemented. PR #125 exact-head CI 37805837985 and release CI 37858141897 passed, including real Docker/fake-Claude OCI coverage; real Provider and independent-host acceptance remain pending, so RPG remains PARTIAL |
 | P2-A | Experimental relay | PR #102–104 merged; full matrices 37465996087 / 37468359266 / 37468567184 PASS. Explicit operator TLS rendezvous fixture, direct-first connector and dual Worker Job recovery Gate are implemented. Unattended ticket provisioning, default-config opt-in wiring, control/event/bulk priority, full operations and real NAT acceptance remain pending |
 | P2-B | Control review UX | PR #101 merged; full matrix 37465407006 PASS. Authenticated bounded report/patch text preview with full hash and Attempt provenance; no patch execution |
 | P2-C | Mobile follow-ups | Existing foundation preserved. Pairing/push implementation, platform signing and device acceptance remain pending; no signed native package is claimed |
