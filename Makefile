@@ -15,6 +15,12 @@ smoke: build
 	python3 scripts/smoke.py --binary bin/computecloud
 ci-flow: build
 	python3 scripts/ci_task_flow.py --binary bin/computecloud --output dist/ci-task-flow/report.json
+
+.PHONY: ci-conversation-jobs
+ci-conversation-jobs:
+	$(GO) test -race ./internal/config ./internal/conversation ./internal/store ./internal/server -run 'TestConversation|TestDecode' -count=1 -timeout=90s
+	$(GO) test ./internal/server -run '^TestConversationRetryRecoversSubmitBeforeMappingAfterRestart$$' -count=1
+	GO="$(GO)" python3 scripts/ci_conversation_jobs.py --output dist/ci-conversation-jobs/report.json
 ci-retry-flow: build
 	python3 scripts/ci_retry_flow.py --binary bin/computecloud --output dist/ci-retry-flow/report.json
 ci-artifact-flow:

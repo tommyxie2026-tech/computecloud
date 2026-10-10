@@ -154,6 +154,12 @@ Goal / Plan / Execution Graph
 - Runtime / Tool / Environment 解耦
 - Worker capability advertisement
 
+### 原生 Claude / Codex Job 客户端（实验性，默认关闭）
+
+`/agent/v1/messages` 和 `/agent/v1/responses` 将受限的纯文本对话提交为持久化 Worker Job。每个 API Key 绑定一个固定执行档案；仓库、提交、Runtime、模型、凭据、工具策略和项目都由 Server 配置，客户端不能覆盖。客户端的工具声明仅作为元数据，不会在客户端重复执行；Worker 继续按既有 Job 策略执行。断开 SSE 只停止观察，显式取消请求会进入既有 Job 清理流程。
+
+HTTPS 路径要求 TLS 1.3 和正常证书验证。也可单独启用只绑定 loopback 的 HTTP 监听，并通过校验 SSH 主机密钥的本地端口转发访问；此选项不会放宽 Worker TLS。响应字节上限按 UTF-8 边界截断，客户端的 token 上限不会被伪装成 Runtime 硬预算。协议范围、配置样例和验收状态见[原生对话 Job 合约](docs/contracts/native-conversation-jobs.md)与[客户端部署指南](docs/deployment/native-conversation-clients.md)。
+
 ### Agent Control
 
 Control 客户端是现有执行系统的产品表面，不是第二个调度器，也不建立独立事实源。

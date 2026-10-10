@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -58,9 +59,13 @@ type ConversationProfile struct {
 	Execution       job.Execution `yaml:"execution"`
 	Limits          job.Limits    `yaml:"limits"`
 	MaxOutputTokens int           `yaml:"max_output_tokens"`
+	MaxOutputBytes  int           `yaml:"max_output_bytes"`
 	MaxInputBytes   int           `yaml:"max_input_bytes"`
 	MaxActive       int           `yaml:"max_active"`
 }
+
+var conversationAliasRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+
 type CodexCLI struct {
 	Executable string `yaml:"executable"`
 	Version    string `yaml:"version"`
@@ -231,10 +236,10 @@ func (c Server) ValidateV02() error {
 			}
 		}
 		for _, p := range cj.Profiles {
-			if !job.Ref(p.ID) || !job.Ref(p.PublicModel) || !job.Ref(p.ExecutionOwner) || !job.Ref(p.ProjectID) || profiles[p.ID].ID != "" {
+			if !job.Ref(p.ID) || !conversationAliasRE.MatchString(p.PublicModel) || !job.Ref(p.ExecutionOwner) || !job.Ref(p.ProjectID) || profiles[p.ID].ID != "" {
 				return fmt.Errorf("invalid or duplicate conversation profile")
 			}
-			if p.MaxInputBytes < 1 || int64(p.MaxInputBytes) > j.MaxRequestBytes || p.MaxOutputTokens < 1 || p.MaxOutputTokens > 1_000_000 || p.MaxActive < 1 || p.MaxActive > 1024 {
+			if p.MaxInputBytes < 1 || int64(p.MaxInputBytes) > j.MaxRequestBytes || p.MaxOutputTokens < 1 || p.MaxOutputTokens > 1_000_000 || p.MaxOutputBytes < 1 || p.MaxOutputBytes > 16<<20 || p.MaxActive < 1 || p.MaxActive > 1024 {
 				return fmt.Errorf("invalid conversation profile limits")
 			}
 			if p.Workspace.RepositoryRef == "" || (len(p.Workspace.BaseCommit) != 40 && len(p.Workspace.BaseCommit) != 64) || func() bool { _, err := hex.DecodeString(p.Workspace.BaseCommit); return err != nil }() {
@@ -292,11 +297,19 @@ func (c Server) ValidateV02() error {
 		conversationScopes := Contains(id.Scopes, "conversations:submit") || Contains(id.Scopes, "conversations:read") || Contains(id.Scopes, "conversations:cancel")
 		if conversationScopes {
 			p, ok := profiles[id.ConversationProfile]
-			if !c.ConversationJobs.Enabled || !ok || Contains(id.Scopes, "jobs:submit") || Contains(id.Scopes, "jobs:read") || Contains(id.Scopes, "jobs:cancel") {
+			if !c.ConversationJobs.Enabled || !ok {
 				return fmt.Errorf("conversation identity requires a configured profile and conversation-only scopes")
+			}
+			for _, scope := range id.Scopes {
+				if !Contains([]string{"conversations:submit", "conversations:read", "conversations:cancel"}, scope) {
+					return fmt.Errorf("conversation identity cannot hold general API scopes")
+				}
 			}
 			if !Contains(id.Scopes, "conversations:submit") {
 				return fmt.Errorf("conversation identity requires conversations:submit")
+			}
+			if !Contains(id.Scopes, "conversations:read") {
+				return fmt.Errorf("conversation identity requires conversations:read")
 			}
 			if !Contains(id.Projects, p.ProjectID) {
 				return fmt.Errorf("conversation identity project must match profile")

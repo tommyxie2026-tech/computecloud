@@ -140,6 +140,26 @@ func (s *Server) serve(ctx context.Context, l, tunnel net.Listener) error {
 			}
 		}()
 	}
+	var conversationDone chan error
+	if s.cfg.ConversationJobs.Enabled && s.cfg.ConversationJobs.LoopbackListen != "" {
+		cl, e := net.Listen("tcp", s.cfg.ConversationJobs.LoopbackListen)
+		if e != nil {
+			return e
+		}
+		if !rpcutil.Loopback(cl.Addr().String()) {
+			cl.Close()
+			return errors.New("conversation plaintext listener must bind loopback")
+		}
+		defer cl.Close()
+		conversationDone = make(chan error, 1)
+		go func() {
+			e := s.serveConversationHTTP(ctx, cl)
+			conversationDone <- e
+			if e != nil {
+				cancel()
+			}
+		}()
+	}
 	g := grpc.NewServer(tls, grpc.UnaryInterceptor(s.auth.Unary), grpc.StreamInterceptor(s.auth.Stream), grpc.MaxRecvMsgSize(8<<20), grpc.MaxSendMsgSize(8<<20))
 	s.grpc = g
 	pb.RegisterRuntimeServiceServer(g, s)
@@ -169,6 +189,11 @@ func (s *Server) serve(ctx context.Context, l, tunnel net.Listener) error {
 	if httpDone != nil {
 		if he := <-httpDone; he != nil {
 			return he
+		}
+	}
+	if conversationDone != nil {
+		if ce := <-conversationDone; ce != nil {
+			return ce
 		}
 	}
 	if errors.Is(e, grpc.ErrServerStopped) || stopping {

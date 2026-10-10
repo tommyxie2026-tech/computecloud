@@ -60,6 +60,7 @@ func (s *Server) beginConversationRequest(ctx context.Context, r conversation.Re
 		return conversationRecord{}, status.Error(codes.ResourceExhausted, "conversation profile limit exceeded")
 	}
 	requestHash := job.Hash(job.JSON(r))
+	profileHash := job.Hash(job.JSON(p))
 	if idem == "" {
 		idem = "auto_" + requestHash
 	}
@@ -70,9 +71,10 @@ func (s *Server) beginConversationRequest(ctx context.Context, r conversation.Re
 	err = s.db.Tx(ctx, func(q store.Query) error {
 		var raw []byte
 		var oldHash string
-		e := q.QueryRowContext(ctx, "SELECT request_id,owner,profile_id,protocol,request_blob,job_id,state,request_hash FROM conversation_requests WHERE owner=? AND profile_id=? AND idem_key=?", caller.Identity.Owner, p.ID, idem).Scan(&existing.ID, &existing.Owner, &existing.Profile, &existing.Protocol, &raw, &existing.JobID, &existing.State, &oldHash)
+		var oldProfileHash string
+		e := q.QueryRowContext(ctx, "SELECT request_id,owner,profile_id,protocol,request_blob,job_id,state,request_hash,profile_hash FROM conversation_requests WHERE owner=? AND profile_id=? AND idem_key=?", caller.Identity.Owner, p.ID, idem).Scan(&existing.ID, &existing.Owner, &existing.Profile, &existing.Protocol, &raw, &existing.JobID, &existing.State, &oldHash, &oldProfileHash)
 		if e == nil {
-			if oldHash != requestHash {
+			if oldHash != requestHash || oldProfileHash != profileHash {
 				return status.Error(codes.AlreadyExists, "IDEMPOTENCY_CONFLICT")
 			}
 			return json.Unmarshal(raw, &existing.Request)
@@ -80,8 +82,15 @@ func (s *Server) beginConversationRequest(ctx context.Context, r conversation.Re
 		if !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
+		var active int
+		if e = q.QueryRowContext(ctx, `SELECT count(*) FROM conversation_requests cr LEFT JOIN jobs j ON j.id=cr.job_id WHERE cr.owner=? AND cr.profile_id=? AND ((cr.job_id='' AND cr.state='PENDING') OR (cr.job_id<>'' AND (j.id IS NULL OR j.state NOT IN ('SUCCEEDED','FAILED','CANCELED'))))`, caller.Identity.Owner, p.ID).Scan(&active); e != nil {
+			return e
+		}
+		if active >= p.MaxActive {
+			return status.Error(codes.ResourceExhausted, "CONVERSATION_LIMIT")
+		}
 		existing = conversationRecord{ID: "cnv_" + store.ID(), Owner: caller.Identity.Owner, Profile: p.ID, Protocol: r.Protocol, State: "PENDING", Request: r}
-		_, e = q.ExecContext(ctx, `INSERT INTO conversation_requests(request_id,owner,profile_id,protocol,idem_key,request_hash,request_blob,state,created,updated) VALUES(?,?,?,?,?,?,?,'PENDING',?,?)`, existing.ID, existing.Owner, p.ID, r.Protocol, idem, requestHash, job.JSON(r), store.Now(), store.Now())
+		_, e = q.ExecContext(ctx, `INSERT INTO conversation_requests(request_id,owner,profile_id,protocol,idem_key,request_hash,profile_hash,request_blob,state,created,updated) VALUES(?,?,?,?,?,?,?,?,'PENDING',?,?)`, existing.ID, existing.Owner, p.ID, r.Protocol, idem, requestHash, profileHash, job.JSON(r), store.Now(), store.Now())
 		return e
 	})
 	if err != nil {

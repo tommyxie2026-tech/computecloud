@@ -91,7 +91,9 @@ if os.environ.get('COMPUTECLOUD_MODEL_TOKEN'):
 emit({'type':'thread.started' if codex else 'system','thread_id':'fixture','session_id':'fixture'})
 if 'slow-job' in prompt: time.sleep(60)
 if 'long-job' in prompt: time.sleep(4)
+if 'fail-job' in prompt: sys.exit(2)
 result = 'single fixture completed'
+if 'long-output' in prompt: result = 'x' * 6000
 if 'COMPUTECLOUD JOB CONTRACT:' in prompt:
     meta = json.loads(prompt.splitlines()[-1])
     if 'report' in prompt.split('COMPUTECLOUD JOB CONTRACT:')[1].lower() or 'findings' in prompt.split('COMPUTECLOUD JOB CONTRACT:')[1]:

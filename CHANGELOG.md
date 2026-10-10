@@ -1,5 +1,11 @@
 # 版本记录
 
+## 未发布 — 原生对话 Job API
+
+- 新增默认关闭的 Claude Messages / Codex Responses 文本接口，将请求持久化映射到既有 Worker Job，并支持 SSE、查询、幂等重试和显式取消。
+- 新增隔离的 conversation scopes、固定执行 profile、SQLite v17 迁移、TLS 1.3 路由保护和 loopback-only SSH 隧道模式；CI 用真实 Worker CLI fixture 验证执行。
+- 真实 Claude/Codex 安装验证、独立主机部署和生产证书/SSH 运维验收仍待完成；不代表稳定版发布。
+
 ## 未发布 — v0.4.7 稳定版验收与发布闭环
 
 - Relay Control/Bulk 隔离、定长指标和运维/回退手册已完成并纳入 CI。

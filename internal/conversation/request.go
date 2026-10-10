@@ -2,13 +2,15 @@
 package conversation
 
 import (
-	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/jsonutil"
 )
+
+var ErrUnsupported = errors.New("CAPABILITY_UNSUPPORTED")
 
 type Message struct {
 	Role string `json:"role"`
@@ -20,6 +22,7 @@ type Request struct {
 	Transcript      []Message `json:"transcript"`
 	MaxOutputTokens int       `json:"max_output_tokens"`
 	IdempotencyKey  string    `json:"idempotency_key,omitempty"`
+	Stream          bool      `json:"stream,omitempty"`
 }
 
 type messagesRequest struct {
@@ -56,10 +59,13 @@ func DecodeMessages(b []byte, maxBytes int, maxOutput int) (Request, error) {
 	if err := jsonutil.Decode(b, &in); err != nil {
 		return Request{}, err
 	}
-	if in.Stream || in.ToolChoice != nil || in.MaxTokens < 1 || in.MaxTokens > maxOutput || in.Model == "" {
+	if !supportedToolChoice(in.ToolChoice) {
+		return Request{}, ErrUnsupported
+	}
+	if in.MaxTokens < 1 || in.MaxTokens > maxOutput || in.Model == "" {
 		return Request{}, fmt.Errorf("invalid or unsupported Messages request")
 	}
-	r := Request{Protocol: "messages", Model: in.Model, MaxOutputTokens: in.MaxTokens}
+	r := Request{Protocol: "messages", Model: in.Model, MaxOutputTokens: in.MaxTokens, Stream: in.Stream}
 	if len(in.System) > 0 {
 		s, e := contentText(in.System)
 		if e != nil {
@@ -71,7 +77,7 @@ func DecodeMessages(b []byte, maxBytes int, maxOutput int) (Request, error) {
 	}
 	for _, m := range in.Messages {
 		if m.Role != "user" && m.Role != "assistant" {
-			return Request{}, fmt.Errorf("unsupported message role")
+			return Request{}, ErrUnsupported
 		}
 		s, e := contentText(m.Content)
 		if e != nil {
@@ -93,10 +99,16 @@ func DecodeResponses(b []byte, maxBytes int, maxOutput int) (Request, error) {
 	if err := jsonutil.Decode(b, &in); err != nil {
 		return Request{}, err
 	}
-	if in.Stream || in.ToolChoice != nil || in.PreviousResponseID != "" || in.Model == "" || in.MaxOutputTokens < 1 || in.MaxOutputTokens > maxOutput {
+	if in.MaxOutputTokens == 0 {
+		in.MaxOutputTokens = maxOutput
+	}
+	if !supportedToolChoice(in.ToolChoice) || in.PreviousResponseID != "" || (in.Store != nil && *in.Store) || len(in.Include) > 0 {
+		return Request{}, ErrUnsupported
+	}
+	if in.Model == "" || in.MaxOutputTokens < 1 || in.MaxOutputTokens > maxOutput {
 		return Request{}, fmt.Errorf("invalid or unsupported Responses request")
 	}
-	r := Request{Protocol: "responses", Model: in.Model, MaxOutputTokens: in.MaxOutputTokens}
+	r := Request{Protocol: "responses", Model: in.Model, MaxOutputTokens: in.MaxOutputTokens, Stream: in.Stream}
 	if in.Instructions != "" {
 		r.Transcript = append(r.Transcript, Message{Role: "system", Text: in.Instructions})
 	}
@@ -115,22 +127,31 @@ func DecodeResponses(b []byte, maxBytes int, maxOutput int) (Request, error) {
 			return Request{}, err
 		}
 	} else {
-		return Request{}, fmt.Errorf("unsupported input shape")
+		return Request{}, ErrUnsupported
 	}
 	for _, item := range raw {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(item, &fields); err != nil {
+			return Request{}, err
+		}
+		for key := range fields {
+			if key != "role" && key != "content" {
+				return Request{}, ErrUnsupported
+			}
+		}
 		var m struct {
 			Role    string          `json:"role"`
 			Content json.RawMessage `json:"content"`
 			Type    string          `json:"type"`
 		}
-		if err := jsonutil.Decode(item, &m); err != nil {
+		if err := json.Unmarshal(item, &m); err != nil {
 			return Request{}, err
 		}
 		if m.Type != "" {
-			return Request{}, fmt.Errorf("unsupported input item type")
+			return Request{}, ErrUnsupported
 		}
 		if m.Role != "user" && m.Role != "assistant" {
-			return Request{}, fmt.Errorf("unsupported input role")
+			return Request{}, ErrUnsupported
 		}
 		s, e := contentText(m.Content)
 		if e != nil {
@@ -142,6 +163,24 @@ func DecodeResponses(b []byte, maxBytes int, maxOutput int) (Request, error) {
 		return Request{}, err
 	}
 	return r, nil
+}
+
+func supportedToolChoice(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	var name string
+	if json.Unmarshal(raw, &name) == nil {
+		return name == "auto" || name == "none"
+	}
+	var choice struct {
+		Type string `json:"type"`
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(raw, &choice) != nil {
+		return false
+	}
+	return choice.Name == "" && (choice.Type == "auto" || choice.Type == "none")
 }
 
 func mustJSON(v any) []byte { b, _ := json.Marshal(v); return b }
@@ -163,12 +202,12 @@ func contentText(raw json.RawMessage) (string, error) {
 		ToolUseID string          `json:"tool_use_id,omitempty"`
 	}
 	if e := json.Unmarshal(raw, &parts); e != nil {
-		return "", fmt.Errorf("unsupported content")
+		return "", ErrUnsupported
 	}
 	var out []string
 	for _, p := range parts {
 		if p.Type != "text" || len(p.Source) > 0 || p.ToolUseID != "" {
-			return "", fmt.Errorf("only text content is supported")
+			return "", ErrUnsupported
 		}
 		out = append(out, p.Text)
 	}
@@ -185,5 +224,3 @@ func validateTranscript(ms []Message) error {
 	}
 	return nil
 }
-
-var _ = bytes.MinRead
