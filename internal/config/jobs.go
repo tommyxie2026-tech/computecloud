@@ -234,7 +234,7 @@ func (c Server) ValidateV02() error {
 			if !job.Ref(p.ID) || !job.Ref(p.PublicModel) || !job.Ref(p.ExecutionOwner) || !job.Ref(p.ProjectID) || profiles[p.ID].ID != "" {
 				return fmt.Errorf("invalid or duplicate conversation profile")
 			}
-			if p.MaxInputBytes < 1 || p.MaxInputBytes > 16<<20 || p.MaxOutputTokens < 1 || p.MaxOutputTokens > 1_000_000 || p.MaxActive < 1 || p.MaxActive > 1024 {
+			if p.MaxInputBytes < 1 || int64(p.MaxInputBytes) > j.MaxRequestBytes || p.MaxOutputTokens < 1 || p.MaxOutputTokens > 1_000_000 || p.MaxActive < 1 || p.MaxActive > 1024 {
 				return fmt.Errorf("invalid conversation profile limits")
 			}
 			if p.Workspace.RepositoryRef == "" || (len(p.Workspace.BaseCommit) != 40 && len(p.Workspace.BaseCommit) != 64) || func() bool { _, err := hex.DecodeString(p.Workspace.BaseCommit); return err != nil }() {
