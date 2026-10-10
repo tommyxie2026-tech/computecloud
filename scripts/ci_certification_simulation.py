@@ -9,7 +9,7 @@ import sys
 
 
 EXPECTED = {
-    ("github.com/tommyxie2026-tech/computecloud/internal/store", "TestReleaseV13ToV16AndSnapshotRestore"): "upgrade_restore_fixture",
+    ("github.com/tommyxie2026-tech/computecloud/internal/store", "TestReleaseV13ToV17AndSnapshotRestore"): "upgrade_restore_fixture",
     ("github.com/tommyxie2026-tech/computecloud/internal/maintenance", "TestOfflineBackupRestoresDatabaseAndArtifacts"): "offline_backup_fixture",
     ("github.com/tommyxie2026-tech/computecloud/internal/server", "TestJobHTTPMCPAndTwoWorkerStrategies"): "two_worker_same_runner",
     ("github.com/tommyxie2026-tech/computecloud/internal/server", "TestTwoWorkersLifecycle"): "two_worker_lifecycle_same_runner",
@@ -24,7 +24,7 @@ def main() -> int:
     correctness_command = [
         "go", "test", "-json", "-race", "-count=1",
         "./internal/store", "./internal/maintenance", "./internal/server", "./internal/workspace",
-        "-run", "^(TestReleaseV13ToV16AndSnapshotRestore|TestOfflineBackupRestoresDatabaseAndArtifacts|TestJobHTTPMCPAndTwoWorkerStrategies|TestTwoWorkersLifecycle|TestRelayJobRestartRecovery)$",
+        "-run", "^(TestReleaseV13ToV17AndSnapshotRestore|TestOfflineBackupRestoresDatabaseAndArtifacts|TestJobHTTPMCPAndTwoWorkerStrategies|TestTwoWorkersLifecycle|TestRelayJobRestartRecovery)$",
     ]
     performance_command = ["go", "test", "-json", "-count=1", "./internal/workspace", "-run", "^TestCachePerformanceReport$"]
     env = dict(os.environ)
