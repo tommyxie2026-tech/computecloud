@@ -22,17 +22,18 @@ type TLS struct {
 	InsecureLoopback bool   `yaml:"insecure_loopback"`
 }
 type Identity struct {
-	GoalActorID   string   `yaml:"goal_actor_id"`
-	GoalActorKind string   `yaml:"goal_actor_kind"`
-	TraceOwner    string   `yaml:"trace_owner"`
-	TokenFile     string   `yaml:"token_file"`
-	Owner         string   `yaml:"owner"`
-	Projects      []string `yaml:"projects"`
-	Credentials   []string `yaml:"credentials"`
-	WorkerID      string   `yaml:"worker_id"`
-	Scopes        []string `yaml:"scopes"`
-	ModelProject  string   `yaml:"model_project"`
-	ModelRoute    string   `yaml:"model_route"`
+	GoalActorID         string   `yaml:"goal_actor_id"`
+	GoalActorKind       string   `yaml:"goal_actor_kind"`
+	TraceOwner          string   `yaml:"trace_owner"`
+	TokenFile           string   `yaml:"token_file"`
+	Owner               string   `yaml:"owner"`
+	Projects            []string `yaml:"projects"`
+	Credentials         []string `yaml:"credentials"`
+	WorkerID            string   `yaml:"worker_id"`
+	Scopes              []string `yaml:"scopes"`
+	ModelProject        string   `yaml:"model_project"`
+	ModelRoute          string   `yaml:"model_route"`
+	ConversationProfile string   `yaml:"conversation_profile"`
 }
 type Server struct {
 	Listen           string            `yaml:"listen"`
@@ -51,6 +52,7 @@ type Server struct {
 	Jobs             Jobs              `yaml:"jobs"`
 	MCP              MCP               `yaml:"mcp"`
 	ModelGateway     ModelGateway      `yaml:"model_gateway"`
+	ConversationJobs ConversationJobs  `yaml:"conversation_jobs"`
 	Transport        RelayTransport    `yaml:"transport"`
 }
 type RelayTransport struct {

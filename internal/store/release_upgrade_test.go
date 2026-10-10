@@ -9,7 +9,7 @@ import (
 
 // Exercise the published v0.4.6 Server schema as the source of the next
 // release, then prove rollback uses an untouched pre-upgrade snapshot.
-func TestReleaseV13ToV16AndSnapshotRestore(t *testing.T) {
+func TestReleaseV13ToV17AndSnapshotRestore(t *testing.T) {
 	source := t.TempDir()
 	raw, err := sql.Open("sqlite", filepath.Join(source, "state.db"))
 	if err != nil {
@@ -39,13 +39,13 @@ func TestReleaseV13ToV16AndSnapshotRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version, count int
-	if err = upgraded.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 16 {
+	if err = upgraded.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 17 {
 		t.Fatalf("upgraded version=%d err=%v", version, err)
 	}
 	if err = upgraded.SQL.QueryRow("SELECT count(*) FROM jobs WHERE id='release-job' AND state='SUCCEEDED'").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("historical job count=%d err=%v", count, err)
 	}
-	for _, table := range []string{"goal_job_bindings", "goal_plans", "goal_governance_decisions", "goal_usage"} {
+	for _, table := range []string{"goal_job_bindings", "goal_plans", "goal_governance_decisions", "goal_usage", "conversation_requests"} {
 		if err = upgraded.SQL.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&count); err != nil || count != 1 {
 			t.Fatalf("new table %s count=%d err=%v", table, count, err)
 		}

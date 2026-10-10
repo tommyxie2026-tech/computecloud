@@ -17,6 +17,23 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 jobs:
+  native-conversation-jobs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - run: make ci-conversation-jobs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-conversation-jobs-${{ github.run_id }}
+          path: dist/ci-conversation-jobs/
+          if-no-files-found: error
+          retention-days: 30
   certification-simulation:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.run_slow)
     runs-on: ubuntu-latest

@@ -70,6 +70,30 @@ func (a *Auth) Bearer(ctx context.Context, header string) (context.Context, erro
 func WithPrincipal(ctx context.Context, p Principal) context.Context {
 	return context.WithValue(ctx, contextKey{}, p)
 }
+
+// ConversationJobContext permits a conversation-scoped identity to submit only
+// through the execution identity selected by its already-validated profile.
+// It deliberately exposes no generic principal replacement operation.
+func ConversationJobContext(ctx context.Context, execution config.Identity, profile, operation string) (context.Context, error) {
+	caller, ok := PrincipalFrom(ctx)
+	conversationScope, jobScope := "conversations:submit", "jobs:submit"
+	switch operation {
+	case "read":
+		conversationScope, jobScope = "conversations:read", "jobs:read"
+	case "cancel":
+		conversationScope, jobScope = "conversations:cancel", "jobs:cancel"
+	case "submit":
+	default:
+		return ctx, status.Error(codes.PermissionDenied, "conversation operation not authorized")
+	}
+	if !ok || caller.Worker || !config.Contains(caller.Identity.Scopes, conversationScope) || caller.Identity.ConversationProfile != profile || profile == "" {
+		return ctx, status.Error(codes.PermissionDenied, "conversation submission not authorized")
+	}
+	if execution.Owner == "" || !config.Contains(execution.Scopes, jobScope) {
+		return ctx, status.Error(codes.PermissionDenied, "conversation execution identity invalid")
+	}
+	return context.WithValue(ctx, contextKey{}, Principal{Identity: execution}), nil
+}
 func PrincipalFrom(ctx context.Context) (Principal, bool) {
 	p, ok := ctx.Value(contextKey{}).(Principal)
 	return p, ok

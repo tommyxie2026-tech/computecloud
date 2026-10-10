@@ -52,6 +52,8 @@ func httpError(w http.ResponseWriter, e error) {
 		code = 413
 	case codes.Unavailable:
 		code = 503
+	case codes.Unimplemented:
+		code = 501
 	case codes.DeadlineExceeded:
 		code = 504
 	case codes.Canceled:
@@ -234,6 +236,9 @@ func (s *Server) HTTPHandler() http.Handler {
 	})
 	if s.cfg.MCP.Enabled {
 		mux.Handle("/mcp", s.mcpHandler())
+	}
+	if s.cfg.ConversationJobs.Enabled {
+		mux.Handle("/agent/", s.conversationHTTP(false))
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Request-ID", store.ID())

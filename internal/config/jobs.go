@@ -1,10 +1,12 @@
 package config
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -26,13 +28,13 @@ type JobTemplate struct {
 	Digest            string `yaml:"digest" json:"digest"`
 }
 type Jobs struct {
-	Enabled                bool          `yaml:"enabled"`
-	MaxPartitions          int           `yaml:"max_partitions"`
-	MaxParallelism         int           `yaml:"max_parallelism"`
-	RecommendedParallelism int           `yaml:"recommended_parallelism"`
-	MaxRequestBytes        int64         `yaml:"max_request_bytes"`
-	MaxManifestBytes       int64         `yaml:"max_manifest_bytes"`
-	MaxReduceInputBytes    int64         `yaml:"max_reduce_input_bytes"`
+	Enabled                  bool          `yaml:"enabled"`
+	MaxPartitions            int           `yaml:"max_partitions"`
+	MaxParallelism           int           `yaml:"max_parallelism"`
+	RecommendedParallelism   int           `yaml:"recommended_parallelism"`
+	MaxRequestBytes          int64         `yaml:"max_request_bytes"`
+	MaxManifestBytes         int64         `yaml:"max_manifest_bytes"`
+	MaxReduceInputBytes      int64         `yaml:"max_reduce_input_bytes"`
 	MaxAttemptsPerTask       int           `yaml:"max_attempts_per_task"`
 	MaxTotalRuntimeSeconds   int64         `yaml:"max_total_runtime_seconds"`
 	MaxDeadlineExtendSeconds int64         `yaml:"max_deadline_extend_seconds"`
@@ -42,6 +44,28 @@ type Jobs struct {
 	MaxQueuedTasksPerProject int           `yaml:"max_queued_tasks_per_project"`
 	Templates                []JobTemplate `yaml:"templates"`
 }
+type ConversationJobs struct {
+	Enabled         bool                  `yaml:"enabled"`
+	LoopbackListen  string                `yaml:"loopback_listen"`
+	MaxRequestBytes int64                 `yaml:"max_request_bytes"`
+	Profiles        []ConversationProfile `yaml:"profiles"`
+}
+type ConversationProfile struct {
+	ID              string        `yaml:"id"`
+	PublicModel     string        `yaml:"public_model"`
+	ExecutionOwner  string        `yaml:"execution_owner"`
+	ProjectID       string        `yaml:"project_id"`
+	Workspace       job.Workspace `yaml:"workspace"`
+	Execution       job.Execution `yaml:"execution"`
+	Limits          job.Limits    `yaml:"limits"`
+	MaxOutputTokens int           `yaml:"max_output_tokens"`
+	MaxOutputBytes  int           `yaml:"max_output_bytes"`
+	MaxInputBytes   int           `yaml:"max_input_bytes"`
+	MaxActive       int           `yaml:"max_active"`
+}
+
+var conversationAliasRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+
 type CodexCLI struct {
 	Executable string `yaml:"executable"`
 	Version    string `yaml:"version"`
@@ -113,6 +137,9 @@ func (c *Server) DefaultV02() {
 		c.MCP.Path = "/mcp"
 	}
 	g := &c.ModelGateway
+	if c.ConversationJobs.MaxRequestBytes == 0 {
+		c.ConversationJobs.MaxRequestBytes = 1 << 20
+	}
 	if g.MaxRequestBytes == 0 {
 		g.MaxRequestBytes = 16 << 20
 	}
@@ -140,6 +167,7 @@ func (c *Server) DefaultV02() {
 }
 func (c Server) ValidateV02() error {
 	j := c.Jobs
+	profiles := map[string]ConversationProfile{}
 	if j.Enabled {
 		if j.MaxPartitions < 1 || j.MaxPartitions > 32 || j.MaxParallelism < 1 || j.MaxParallelism > 8 || j.MaxRequestBytes < 1 || j.MaxRequestBytes > job.MaxRequestBytes || j.MaxManifestBytes < 1 || j.MaxManifestBytes > job.MaxManifestBytes || j.MaxReduceInputBytes < 1 || j.MaxReduceInputBytes > job.MaxInputBytes || j.MaxAttemptsPerTask != 1 || j.MaxTotalRuntimeSeconds < 86400 || j.MaxTotalRuntimeSeconds > 30*24*60*60 || j.MaxDeadlineExtendSeconds < 1 || j.MaxDeadlineExtendSeconds > 24*60*60 || j.MaxDeadlineExtendSeconds > j.MaxTotalRuntimeSeconds || j.MaxTaskEvents < 100 || j.MaxTaskEvents > 100000 || j.SchedulerAgingSeconds < 1 || j.SchedulerAgingSeconds > 86400 || j.MaxQueuedTasks < 1 || j.MaxQueuedTasks > 100000 || j.MaxQueuedTasksPerProject < 1 || j.MaxQueuedTasksPerProject > j.MaxQueuedTasks {
 			return fmt.Errorf("invalid job limits")
@@ -195,6 +223,60 @@ func (c Server) ValidateV02() error {
 			}
 		}
 	}
+	if c.ConversationJobs.Enabled {
+		cj := c.ConversationJobs
+		if !j.Enabled || cj.MaxRequestBytes < 1024 || cj.MaxRequestBytes > 16<<20 {
+			return fmt.Errorf("conversation jobs require enabled jobs and bounded request size")
+		}
+		if cj.LoopbackListen != "" {
+			host, _, err := net.SplitHostPort(cj.LoopbackListen)
+			ip := net.ParseIP(host)
+			if err != nil || ip == nil || !ip.IsLoopback() {
+				return fmt.Errorf("conversation plaintext listener must bind a literal loopback address")
+			}
+		}
+		for _, p := range cj.Profiles {
+			if !job.Ref(p.ID) || !conversationAliasRE.MatchString(p.PublicModel) || !job.Ref(p.ExecutionOwner) || !job.Ref(p.ProjectID) || profiles[p.ID].ID != "" {
+				return fmt.Errorf("invalid or duplicate conversation profile")
+			}
+			if p.MaxInputBytes < 1 || int64(p.MaxInputBytes) > j.MaxRequestBytes || p.MaxOutputTokens < 1 || p.MaxOutputTokens > 1_000_000 || p.MaxOutputBytes < 1 || p.MaxOutputBytes > 16<<20 || p.MaxActive < 1 || p.MaxActive > 1024 {
+				return fmt.Errorf("invalid conversation profile limits")
+			}
+			if p.Workspace.RepositoryRef == "" || (len(p.Workspace.BaseCommit) != 40 && len(p.Workspace.BaseCommit) != 64) || func() bool { _, err := hex.DecodeString(p.Workspace.BaseCommit); return err != nil }() {
+				return fmt.Errorf("conversation profile requires fixed repository and commit")
+			}
+			if err := p.Execution.Validate(); err != nil {
+				return fmt.Errorf("invalid conversation execution: %w", err)
+			}
+			if p.Limits.TimeoutSeconds < 1 || p.Limits.TimeoutSeconds > 86400 || p.Limits.MaxAttemptsPerTask != 1 {
+				return fmt.Errorf("invalid conversation execution limits")
+			}
+			profiles[p.ID] = p
+		}
+		if len(profiles) == 0 {
+			return fmt.Errorf("conversation profiles required")
+		}
+		for _, p := range profiles {
+			delegateOK := false
+			for _, id := range c.Users {
+				if id.Owner == p.ExecutionOwner && Contains(id.Projects, p.ProjectID) && Contains(id.Credentials, p.Execution.CredentialRef) && Contains(id.Scopes, "jobs:submit") && Contains(id.Scopes, "jobs:read") && Contains(id.Scopes, "jobs:cancel") {
+					delegateOK = true
+				}
+			}
+			if !delegateOK {
+				return fmt.Errorf("conversation execution owner must have fixed project, credential and job permissions")
+			}
+			found := false
+			for _, t := range j.Templates {
+				if t.RuntimeProfile == p.Execution.RuntimeProfile && t.PolicyRef == p.Execution.PolicyRef && t.AcceptanceProfile == p.Execution.AcceptanceProfile && t.Digest != "" {
+					found = true
+				}
+			}
+			if !found {
+				return fmt.Errorf("conversation execution must match a trusted job template")
+			}
+		}
+	}
 	for _, id := range c.Users {
 		if id.TraceOwner != "" {
 			valid := false
@@ -208,8 +290,29 @@ func (c Server) ValidateV02() error {
 			}
 		}
 		for _, scope := range id.Scopes {
-			if !Contains([]string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:extend", "jobs:control", "jobs:retry", "models:invoke", "tasks:submit", "tasks:read", "tasks:cancel", "goals:approve", "goals:budget", "goals:constraints", "goals:propose"}, scope) {
+			if !Contains([]string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:extend", "jobs:control", "jobs:retry", "models:invoke", "tasks:submit", "tasks:read", "tasks:cancel", "goals:approve", "goals:budget", "goals:constraints", "goals:propose", "conversations:submit", "conversations:read", "conversations:cancel"}, scope) {
 				return fmt.Errorf("unknown identity scope")
+			}
+		}
+		conversationScopes := Contains(id.Scopes, "conversations:submit") || Contains(id.Scopes, "conversations:read") || Contains(id.Scopes, "conversations:cancel")
+		if conversationScopes {
+			p, ok := profiles[id.ConversationProfile]
+			if !c.ConversationJobs.Enabled || !ok {
+				return fmt.Errorf("conversation identity requires a configured profile and conversation-only scopes")
+			}
+			for _, scope := range id.Scopes {
+				if !Contains([]string{"conversations:submit", "conversations:read", "conversations:cancel"}, scope) {
+					return fmt.Errorf("conversation identity cannot hold general API scopes")
+				}
+			}
+			if !Contains(id.Scopes, "conversations:submit") {
+				return fmt.Errorf("conversation identity requires conversations:submit")
+			}
+			if !Contains(id.Scopes, "conversations:read") {
+				return fmt.Errorf("conversation identity requires conversations:read")
+			}
+			if !Contains(id.Projects, p.ProjectID) {
+				return fmt.Errorf("conversation identity project must match profile")
 			}
 		}
 		if Contains(id.Scopes, "models:invoke") && (!Contains(id.Projects, id.ModelProject) || !c.ModelGateway.Routes[id.ModelRoute].Configured()) {
