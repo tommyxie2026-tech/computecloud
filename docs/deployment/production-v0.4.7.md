@@ -1,6 +1,6 @@
 # computecloud v0.4.7 稳定版部署指南
 
-本指南适用于 Agent-aware Distributed Job Execution Platform / Agent Job Executor。v0.4.7 的正式归档、`SHA256SUMS`、`CONTAINER_IMAGES.txt` 和 GHCR 镜像 digest 以 GitHub Release 页面为准；发布完成后请从 [v0.4.7 Release](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7) 获取，并核对归档校验和、Release tag 与源代码 SHA。
+本指南适用于 Agent-aware Distributed Job Execution Platform / Agent Job Executor。v0.4.7 已正式发布，归档、`SHA256SUMS`、`CONTAINER_IMAGES.txt` 和 GHCR 镜像 digest 可从 [v0.4.7 Release](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7) 获取，并核对归档校验和、Release tag 与源代码 SHA。发布记录列有已核验的归档 SHA-256 和 Server/Worker 多架构镜像 digest；部署时建议固定 digest 而不是使用可变标签。
 
 ## 版本边界
 
@@ -8,6 +8,15 @@
 - Worker 软评分默认关闭；只有显式启用 `prepared_workspace_score_enabled` 才参与排序。硬能力/环境资格过滤仍先执行。
 - `direct` 仍为默认传输；`direct_then_relay` 是显式 opt-in。Goal 自动 Re-plan 保持关闭。
 - 真实 Runtime、独立双机升级恢复、生产 Docker 隔离、代表性缓存和 NAT Relay 尚未完成生产验收。CI 成功不代表这些环境验证通过。
+
+## 已发布产物校验
+
+- Linux amd64 归档 SHA-256：`83e3077bfa2592d58a9cfc883b669d1f19dae083c608d65d0bef9a7a0f276176`
+- Linux arm64 归档 SHA-256：`0e86f3a029410ded94958152bf833433960a728ab255de06a6e3ba364f605c32`
+- Server multi-arch digest：`sha256:477488d772c5f1a442ae39fe59a391ef06d6f06409f22fae9bfa3a5e0040ee58`
+- Worker multi-arch digest：`sha256:8cea4e5efacbcbf3fc814f475f3a3ac36d64cdf6f1758bf0dd5141ac209fd311`
+
+完整 CI 与产物信息见[发布记录](../implementation/v0.4.7-release-status.md)。
 
 ## 从 v0.4.6 升级
 
