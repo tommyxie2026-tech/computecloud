@@ -77,6 +77,23 @@ class ReleaseTransitionTest(unittest.TestCase):
         self.assertEqual(result["candidate_sha"], CANDIDATE_SHA)
         self.assertEqual(result["release_sha"], RELEASE_SHA)
 
+    def test_accepts_ci_only_release_without_real_environment_reports(self):
+        changed = CHANGED_FILES - {
+            "release/evidence/v0.4.7/runtime-report.json",
+            "release/evidence/v0.4.7/integration-report.json",
+            "release/evidence/v0.4.7/production-report.json",
+            "release/evidence/v0.4.7/performance-report.json",
+        }
+        gate = evaluate_gate(CANDIDATE_SHA, {}, CI_EVIDENCE)
+        result = self.validate(
+            gate=gate,
+            request=request(gate),
+            gate_content=gate_bytes(gate),
+            evidence_reports={},
+            changed_files=changed,
+        )
+        self.assertEqual(result["status"], "PASSED")
+
     def test_rejects_candidate_or_parent_drift(self):
         bad = request()
         bad["candidate_sha"] = "9" * 40

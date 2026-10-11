@@ -16,7 +16,15 @@ preventing valid lease renewal. Reconnect/restart starts with unknown signals.
 Scheduler preserves all existing capability, credential, security, concurrency
 and fairness decisions. It records bounded candidate explanations at successful
 dispatch in the same transaction as Attempt creation. Stale/unknown signals never
-improve suitability and cannot override hard filters. No scoring is enabled.
+improve suitability and cannot override hard filters. Optional deterministic
+scoring is controlled by `prepared_workspace_score_enabled`, which defaults to
+`false`; when off, the existing least-active/tie-rotation decision is unchanged.
+When enabled, formula version `readiness-v1` uses runtime/environment warmth,
+repository affinity, recent aggregate preparation cost and live Server
+load/slot headroom. The aggregate preparation metric is a coarse Worker-level
+hint, not a repository/runtime-specific performance claim.
+Dispatch explanations distinguish `UNKNOWN` (no signal received) from
+`STALE_OR_INVALID` (a received signal failed freshness/shape validation).
 
 Acceptance: compatibility roundtrip, stale/future/oversize rejection, received-time
 expiry, reconnect reset, capability rejection despite affinity, existing fairness

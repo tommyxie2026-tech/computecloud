@@ -36,24 +36,25 @@ type Identity struct {
 	ConversationProfile string   `yaml:"conversation_profile"`
 }
 type Server struct {
-	Listen           string            `yaml:"listen"`
-	DataDir          string            `yaml:"data_dir"`
-	TLS              TLS               `yaml:"tls"`
-	Users            []Identity        `yaml:"users"`
-	Workers          []Identity        `yaml:"workers"`
-	Models           map[string]string `yaml:"models"`
-	Credentials      map[string]int    `yaml:"credentials"`
-	LeaseSeconds     int               `yaml:"lease_seconds"`
-	TickMS           int               `yaml:"tick_ms"`
-	MaxArtifactBytes int64             `yaml:"max_artifact_bytes"`
-	MaxProjectTasks  int               `yaml:"max_project_tasks"`
-	Maintenance      bool              `yaml:"maintenance"`
-	HTTP             HTTP              `yaml:"http"`
-	Jobs             Jobs              `yaml:"jobs"`
-	MCP              MCP               `yaml:"mcp"`
-	ModelGateway     ModelGateway      `yaml:"model_gateway"`
-	ConversationJobs ConversationJobs  `yaml:"conversation_jobs"`
-	Transport        RelayTransport    `yaml:"transport"`
+	Listen                        string            `yaml:"listen"`
+	DataDir                       string            `yaml:"data_dir"`
+	TLS                           TLS               `yaml:"tls"`
+	Users                         []Identity        `yaml:"users"`
+	Workers                       []Identity        `yaml:"workers"`
+	Models                        map[string]string `yaml:"models"`
+	Credentials                   map[string]int    `yaml:"credentials"`
+	LeaseSeconds                  int               `yaml:"lease_seconds"`
+	TickMS                        int               `yaml:"tick_ms"`
+	MaxArtifactBytes              int64             `yaml:"max_artifact_bytes"`
+	MaxProjectTasks               int               `yaml:"max_project_tasks"`
+	Maintenance                   bool              `yaml:"maintenance"`
+	PreparedWorkspaceScoreEnabled bool              `yaml:"prepared_workspace_score_enabled"`
+	HTTP                          HTTP              `yaml:"http"`
+	Jobs                          Jobs              `yaml:"jobs"`
+	MCP                           MCP               `yaml:"mcp"`
+	ModelGateway                  ModelGateway      `yaml:"model_gateway"`
+	ConversationJobs              ConversationJobs  `yaml:"conversation_jobs"`
+	Transport                     RelayTransport    `yaml:"transport"`
 }
 type RelayTransport struct {
 	Mode            string `yaml:"mode"`

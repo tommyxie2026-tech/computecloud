@@ -19,7 +19,7 @@ ecosystem, Goal, Relay and real-acceptance slices against explicit release gates
 | --- | --- | --- |
 | P0 | Retry storage gate, deterministic process-stop fixture, schema documentation | COMPLETE: PR #92 merged; full matrix and main CI 37435035493 PASS |
 | P1-A | Workspace cache, bounded GC, warm materialization, metrics and benchmark | PR #93, #109 and #111 merged. Bounded parallel file copies plus overlapped integrity validation give three local macOS fixture P50 ratios of 20.2%, 20.1% and 20.7%. Linux single-runner simulation Gate passed in full matrix 37564049429, including cached/cold P50 <=40%; representative Linux Worker/real Job acceptance remains pending |
-| P1-B | Readiness advertisement, stale/unknown handling and explainability | PR #94 merged; full matrix 37436461912 PASS. Observation-only signals; scheduling scoring remains disabled |
+| P1-B | Readiness advertisement, stale/unknown handling, explainability and deterministic scoring | PR #94 observer merged; opt-in `readiness-v1` scoring is implemented locally and defaults off. Remote CI/merge and performance evidence remain pending |
 | P1-C | Production Baseline | BLOCKED on external environment: two independent Linux Workers, pinned real Runtime/MCP versions, accounts/budgets and a 24h+ window; #1/#9 remain open |
 | P1-D | Goal compatibility, persistence, execution/evaluation integration, RPG-4 and Control bridge | PR #95–100 and #124–125 merged; the current code/CI slice was published in prerelease v0.4.7-rc.2. Synthetic execution, atomic reservations, artifact evaluation, human decisions, Control audit projection, atomic Guard → Plan/Job publication, one-use permission consumption and cost-only `claude_http` enforcement are implemented. PR #125 exact-head CI 37805837985 and release CI 37858141897 passed, including real Docker/fake-Claude OCI coverage; real Provider and independent-host acceptance remain pending, so RPG remains PARTIAL |
 | P2-A | Experimental relay | PR #102–104 merged; full matrices 37465996087 / 37468359266 / 37468567184 PASS. Explicit operator TLS rendezvous fixture, direct-first connector and dual Worker Job recovery Gate are implemented. Unattended ticket provisioning, default-config opt-in wiring, control/event/bulk priority, full operations and real NAT acceptance remain pending |
@@ -45,8 +45,7 @@ ecosystem, Goal, Relay and real-acceptance slices against explicit release gates
 Keep changes in independently reviewable PRs. Public contracts and migrations
 are separate from dependent feature changes. Preserve existing CI gates and
 run the full main/release matrix before claiming a new stable baseline.
-No release, production certification, signed mobile distribution, or completed
-RPG closure may be inferred from fixture tests or a prepared deployment guide.
+不得根据 fixture 测试或部署指南推断已完成生产认证、移动端签名分发或 RPG 闭环。稳定版可按上文规则依据精确候选 CI 全绿授权发版，但不得声称待办的生产验收项已完成。
 
 ## Remaining work in priority order
 
@@ -65,6 +64,4 @@ RPG closure may be inferred from fixture tests or a prepared deployment guide.
 Mobile pairing/push, signing and device acceptance remain in the v0.5.x C3
 Mobile Beta lane, separate from v0.4.x exit gates.
 
-These are outstanding implementation/acceptance items, not completed merely by
-merging the foundations. The scoped prerelease does not create a new stable
-release or production certification.
+发版策略更新（2026-10-11）：精确候选 SHA 的所有必需 CI 任务通过，即可授权稳定版发版。真实 Runtime、独立主机、生产网络和代表性性能验收仍未完成，必须继续标记为待办；CI/fixture 通过不会关闭这些验收项，也不代表生产就绪。这些事项不再阻塞发版；限定范围的预览版本身仍不等于稳定版。

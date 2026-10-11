@@ -24,8 +24,8 @@ func TestReadinessCannotOverrideHardFilter(t *testing.T) {
 		t.Fatal("fresh hint missing")
 	}
 	p.readinessReceived = now - 31000
-	if s.observeCandidate(p, task, "ELIGIBLE").SignalState != "UNKNOWN" {
-		t.Fatal("stale signal accepted")
+	if s.observeCandidate(p, task, "ELIGIBLE").SignalState != "STALE_OR_INVALID" {
+		t.Fatal("stale signal state was not explained")
 	}
 	p.identity.Projects = nil
 	if s.observeCandidate(p, task, "ELIGIBLE").WorkerID != "" {

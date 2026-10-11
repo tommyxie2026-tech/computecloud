@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -239,6 +240,7 @@ func TestSpecificReadinessAndCapabilityBlockers(t *testing.T) {
 		s, uc, _, peer := offlineJobServer(t)
 		defer s.Close()
 		s.cfg.Credentials["account"] = 8
+		s.cfg.PreparedWorkspaceScoreEnabled = true
 		peer.hello.Runtimes = nil
 		spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
 		j, err := s.SubmitJob(uc, "capability-mismatch", job.JSON(spec))
@@ -297,6 +299,23 @@ func TestChooseWorkerIgnoresPeerOrder(t *testing.T) {
 	}
 }
 
+func TestChooseHighestScoredWorkerUsesScoreThenLoadAndRotatesExactTies(t *testing.T) {
+	mk := func(id string, active int, total int) workerLoad {
+		return workerLoad{peer: &session{hello: &pb.WorkerHello{WorkerId: id}}, active: active, score: workerScore{Total: total}}
+	}
+	loads := []workerLoad{mk("worker-b", 0, 80), mk("worker-c", 1, 90), mk("worker-a", 0, 90)}
+	got, cursor := chooseHighestScoredWorker(loads, "")
+	if got.hello.WorkerId != "worker-a" || cursor != "worker-a" {
+		t.Fatalf("expected highest score with lower active load, got %s cursor %s", got.hello.WorkerId, cursor)
+	}
+	tied := []workerLoad{mk("worker-b", 0, 90), mk("worker-a", 0, 90)}
+	first, cursor := chooseHighestScoredWorker(tied, "")
+	second, _ := chooseHighestScoredWorker(tied, cursor)
+	if first.hello.WorkerId != "worker-a" || second.hello.WorkerId != "worker-b" {
+		t.Fatalf("exact score/load ties did not rotate: %s then %s", first.hello.WorkerId, second.hello.WorkerId)
+	}
+}
+
 func TestAssignRotatesEqualLoadWorkers(t *testing.T) {
 	s, uc, _, workerA := offlineJobServer(t)
 	defer s.Close()
@@ -329,6 +348,79 @@ func TestAssignRotatesEqualLoadWorkers(t *testing.T) {
 		if got != want {
 			t.Fatalf("assignment %d chose %q, want %q", i+1, got, want)
 		}
+	}
+}
+
+func TestAssignUsesReadinessScoreOnlyWhenEnabled(t *testing.T) {
+	s, uc, _, workerA := offlineJobServer(t)
+	defer s.Close()
+	s.cfg.Credentials["account"] = 8
+	s.cfg.PreparedWorkspaceScoreEnabled = true
+	workerA.hello.Slots = 4
+	workerBHello := proto.Clone(workerA.hello).(*pb.WorkerHello)
+	workerBHello.WorkerId = "worker-b"
+	workerBHello.Epoch = "epoch-b"
+	now := store.Now()
+	workerB := &session{hello: workerBHello, identity: workerA.identity}
+	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(workerBHello), now); err != nil {
+		t.Fatal(err)
+	}
+	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
+	workerB.readiness = &pb.ExecutionSignal{ObservedAtMs: now, MeasuredAtMs: now, RuntimeReady: []string{spec.Execution.RuntimeProfile}, EnvironmentReady: []string{"process"}, RepositoryRefs: []string{spec.Workspace.RepositoryRef}, WorkspacePrepareP50Ms: 1}
+	workerB.readinessReceived = now
+	j, err := s.SubmitJob(uc, "worker-readiness-score", job.JSON(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var task string
+	if err = s.db.SQL.QueryRow("SELECT id FROM tasks WHERE job_id=?", j.ID).Scan(&task); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.assign(uc, task, []*session{workerA, workerB}); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err = s.db.SQL.QueryRow("SELECT worker FROM tasks WHERE id=?", task).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != "worker-b" {
+		t.Fatalf("readiness scoring chose %q, want worker-b", got)
+	}
+	rows, err := s.db.SQL.Query("SELECT body FROM events WHERE task=? ORDER BY seq DESC", task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var observation *pb.Event
+	for rows.Next() {
+		var raw []byte
+		if err = rows.Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		event := &pb.Event{}
+		if err = decode(raw, event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Type == "scheduler.observation" {
+			observation = event
+			break
+		}
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if observation == nil {
+		t.Fatal("scheduler observation was not persisted")
+	}
+	var evidence map[string]any
+	if err = json.Unmarshal(observation.PayloadJson, &evidence); err != nil {
+		t.Fatal(err)
+	}
+	if evidence["score_version"] != workerScoreVersion || evidence["scoring_enabled"] != true {
+		t.Fatalf("scoring metadata missing from evidence: %s", observation.PayloadJson)
+	}
+	if strings.Contains(string(observation.PayloadJson), `"`+spec.Workspace.RepositoryRef+`"`) {
+		t.Fatalf("scheduler score evidence leaked repository identity: %s", observation.PayloadJson)
 	}
 }
 
