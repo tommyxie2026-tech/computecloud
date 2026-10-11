@@ -55,7 +55,7 @@ server:
 
 The profile must match an existing configured Job template and fixed execution identity. The conversation-facing Key is a high-entropy random token (at least 256 bits), stored in a file readable only by the Server service account. The configuration loader does not mint keys. Provision the token through the existing secure operator process; do not copy it into this document, shell history, a URL, or logs.
 
-`max_output_tokens` is the largest client-declared output cap accepted by this profile. It is not enforced as a Runtime token/cost limit. `max_output_bytes` is the enforced response size bound; truncation is UTF-8 safe and reported. For actual token/cost limits, configure the existing Worker Runtime enforcement independently.
+Client-declared `max_tokens` / `max_output_tokens` values above the profile limit are clamped to the Server profile limit. Claude Code may send a default of 32000 even when the profile is lower; the fixed profile remains authoritative. This value is not enforced as a Runtime token/cost limit. `max_output_bytes` is the enforced response size bound; truncation is UTF-8 safe and reported. For actual token/cost limits, configure the existing Worker Runtime enforcement independently.
 
 ## SSH loopback tunnel
 
@@ -79,4 +79,4 @@ Responses include `X-ComputeCloud-Request-ID` and `X-ComputeCloud-Job-ID`. Use `
 
 `Idempotency-Key` makes client retries explicit. Without it, the canonical request digest is the replay key; submitting the exact same request again will return its previous Job. Supply a new key when a deliberate repeat execution is intended. A network disconnect, including an interrupted SSE stream, stops observation but leaves the durable Job running.
 
-Only text Messages and Responses inputs are supported. Tool schemas are ignored; forced tool selection, tool result/function call inputs, media, previous-response state and unsupported fields are rejected. No real Claude/Codex account is needed for fixture CI. Live CLI validation against separately configured client installations and two independent hosts remains an operator acceptance step.
+Only text Messages and Responses inputs are supported. Tool schemas are ignored; forced tool selection, tool result/function call inputs, media, previous-response state and unsupported fields are rejected. Claude Code compatibility metadata (`context_management`, `output_config`, and `thinking`) is accepted and ignored: the Server profile remains authoritative for execution model, strategy, and limits. Text `system` messages in the Messages array are retained as conversation context. No real Claude/Codex account is needed for fixture CI. Live CLI validation against separately configured client installations and two independent hosts remains an operator acceptance step.
