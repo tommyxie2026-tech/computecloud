@@ -9,11 +9,11 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 
 ## 当前状态
 
-- 稳定发布基线：**[v0.4.6 Post-0.4.5 Stabilization](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.6)**；v0.4.7 稳定版已通过精确候选 SHA 的完整 main CI，当前正在执行正式发布转换。
+- 稳定发布基线：**[v0.4.7](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7)**，tag 指向 `74104d5811ac1e375984158badc28430386dffbb`；正式 Release、归档和多架构容器已发布。
 - 限定范围预览版 **[v0.4.7-rc.1](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7-rc.1) 已发布**（prerelease，非生产认证）；范围与证据见 [发布记录](docs/implementation/v0.4.7-rc.1-release-status.md)
 - 限定范围预览版 **[v0.4.7-rc.2](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7-rc.2) 已发布**（prerelease，非生产认证）；它纳入原子 Goal Plan/Job 发布、一次性批准消费和限定 `claude_http` 估算费用强制，仍不宣称真实模型、独立双机或生产认证；范围、产物与 CI 证据见 [发布记录](docs/implementation/v0.4.7-rc.2-release-status.md)
 - v0.4.6 已通过完整 CI、package、multi-arch container 与 release；发布范围和升级步骤见 [v0.4.6 部署指南](docs/deployment/production-v0.4.6.md)，验收证据见 [v0.4.6 发布记录](docs/implementation/v0.4.6-release-status.md)
-- v0.4.7 稳定版：发布候选 `1ee96aa5d12cebe0f555447c46483273ea64af8b` 的 38 项必需 CI、认证模拟、package 与多架构镜像任务均通过；发布转换 PR 合并后由 GitHub Actions 创建 Release。真实 Runtime、独立双机升级恢复、代表性缓存和 NAT Relay 仍是发布后生产验收，详见[稳定版台账](docs/implementation/v0.4.7-stable-tracker.md)
+- v0.4.7 稳定版已发布：[GitHub Release](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7)，发布 CI [#1559](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38151088330) 成功。真实 Runtime、独立双机升级恢复、代表性缓存和 NAT Relay 仍是发布后生产验收，详见[稳定版台账](docs/implementation/v0.4.7-stable-tracker.md)
 - main 功能基线：**v0.4.x Runtime / Tool / Environment + Prepared Workspace、synthetic Goal 与实验性 Relay**（尚未发布为新的稳定版本）
 - 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
 - 当前功能主线：Goal 的原子 Plan/Job 发布、一次性批准消费和限定 `claude_http` 费用上限已完成代码与 CI 闭环；Relay 运维代码闭环已完成。真机 Runtime/Environment/Trigger、独立双机、缓存与 NAT Relay 验收继续跟踪为生产验收，不阻塞 CI 全绿后的稳定发布。CI Trigger/Delivery 的 CLI 适配器和本地交付记录已合入，真实 CI→Server 验收仍待完成；隔离 Environment 不能由宿主机 CLI 虚报执行边界
