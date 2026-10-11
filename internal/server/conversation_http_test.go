@@ -246,6 +246,11 @@ func TestConversationMessagesExecutesDurableWorkerJob(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	expiredObserverCtx, cancelExpiredObserver := context.WithDeadline(observerCtx, time.Now().Add(-time.Second))
+	defer cancelExpiredObserver()
+	if _, e = h.s.waitConversation(expiredObserverCtx, slowRecord, *slowProfile, 500*time.Millisecond); status.Code(e) != codes.DeadlineExceeded {
+		t.Fatalf("expired observer context returned %v, want deadline exceeded", e)
+	}
 	if _, e = h.s.waitConversation(observerCtx, slowRecord, *slowProfile, 500*time.Millisecond); status.Code(e) != codes.DeadlineExceeded {
 		t.Fatalf("observer deadline not honored: %v", e)
 	}

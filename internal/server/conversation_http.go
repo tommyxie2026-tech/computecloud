@@ -187,6 +187,17 @@ func (s *Server) observeConversation(ctx context.Context, rec conversationRecord
 	return ctx, status.Error(codes.FailedPrecondition, "conversation execution identity unavailable")
 }
 
+func conversationWaitContextError(ctx context.Context) error {
+	switch ctx.Err() {
+	case context.DeadlineExceeded:
+		return status.Error(codes.DeadlineExceeded, "conversation observation timed out")
+	case context.Canceled:
+		return status.Error(codes.Canceled, "conversation observation stopped")
+	default:
+		return nil
+	}
+}
+
 func (s *Server) waitConversation(ctx context.Context, rec conversationRecord, p config.ConversationProfile, timeout time.Duration) (string, error) {
 	if rec.JobID == "" {
 		return "", status.Error(codes.FailedPrecondition, "CONVERSATION_JOB_NOT_CREATED")
@@ -198,8 +209,14 @@ func (s *Server) waitConversation(ctx context.Context, rec conversationRecord, p
 	waitCtx, cancel := context.WithTimeout(readCtx, timeout)
 	defer cancel()
 	for {
+		if err := conversationWaitContextError(waitCtx); err != nil {
+			return "", err
+		}
 		j, e := s.GetJob(waitCtx, rec.JobID)
 		if e != nil {
+			if err := conversationWaitContextError(waitCtx); err != nil {
+				return "", err
+			}
 			if errors.Is(e, context.DeadlineExceeded) {
 				return "", status.Error(codes.DeadlineExceeded, "conversation observation timed out")
 			}
