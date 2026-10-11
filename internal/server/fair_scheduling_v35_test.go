@@ -10,6 +10,7 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestFairGroupOrderRoundRobinsProjectsAndGroups(t *testing.T) {
@@ -301,11 +302,11 @@ func TestAssignRotatesEqualLoadWorkers(t *testing.T) {
 	defer s.Close()
 	s.cfg.Credentials["account"] = 8
 	workerA.hello.Slots = 4
-	workerBHello := *workerA.hello
+	workerBHello := proto.Clone(workerA.hello).(*pb.WorkerHello)
 	workerBHello.WorkerId = "worker-b"
 	workerBHello.Epoch = "epoch-b"
-	workerB := &session{hello: &workerBHello, identity: workerA.identity}
-	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(&workerBHello), store.Now()); err != nil {
+	workerB := &session{hello: workerBHello, identity: workerA.identity}
+	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(workerBHello), store.Now()); err != nil {
 		t.Fatal(err)
 	}
 	for i, want := range []string{"w", "worker-b", "w"} {
@@ -336,11 +337,11 @@ func TestAssignSkipsWorkerAtCapacity(t *testing.T) {
 	defer s.Close()
 	s.cfg.Credentials["account"] = 8
 	workerA.hello.Slots = 1
-	workerBHello := *workerA.hello
+	workerBHello := proto.Clone(workerA.hello).(*pb.WorkerHello)
 	workerBHello.WorkerId = "worker-b"
 	workerBHello.Epoch = "epoch-b"
-	workerB := &session{hello: &workerBHello, identity: workerA.identity}
-	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(&workerBHello), store.Now()); err != nil {
+	workerB := &session{hello: workerBHello, identity: workerA.identity}
+	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(workerBHello), store.Now()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -377,12 +378,12 @@ func TestAssignExcludesIncompatibleWorkerFromRotation(t *testing.T) {
 	defer s.Close()
 	s.cfg.Credentials["account"] = 8
 	workerA.hello.Slots = 4
-	workerBHello := *workerA.hello
+	workerBHello := proto.Clone(workerA.hello).(*pb.WorkerHello)
 	workerBHello.WorkerId = "worker-b"
 	workerBHello.Epoch = "epoch-b"
 	workerBHello.Runtimes = nil
-	workerB := &session{hello: &workerBHello, identity: workerA.identity}
-	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(&workerBHello), store.Now()); err != nil {
+	workerB := &session{hello: workerBHello, identity: workerA.identity}
+	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(workerBHello), store.Now()); err != nil {
 		t.Fatal(err)
 	}
 	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
@@ -411,11 +412,11 @@ func TestAssignDoesNotAdvanceCursorOnFailure(t *testing.T) {
 	defer s.Close()
 	s.cfg.Credentials["account"] = 8
 	workerA.hello.Slots = 3
-	workerBHello := *workerA.hello
+	workerBHello := proto.Clone(workerA.hello).(*pb.WorkerHello)
 	workerBHello.WorkerId = "worker-b"
 	workerBHello.Epoch = "epoch-b"
-	workerB := &session{hello: &workerBHello, identity: workerA.identity}
-	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(&workerBHello), store.Now()); err != nil {
+	workerB := &session{hello: workerBHello, identity: workerA.identity}
+	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(workerBHello), store.Now()); err != nil {
 		t.Fatal(err)
 	}
 	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
