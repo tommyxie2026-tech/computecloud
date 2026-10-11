@@ -19,7 +19,7 @@ Owner: core implementation complete; follow-up ownership remains WS-A
 Status: DONE for v0.4.5 core scope; prepared-workspace-contract/recovery release CI PASS
 
 WS-B: PARTIAL — cache/warm/GC/benchmark merged; representative performance and independent-host acceptance pending
-WS-C: PARTIAL — readiness contract/observer/explain merged; scheduling scoring intentionally disabled
+WS-C: PARTIAL — readiness contract/observer/explain merged; deterministic scoring is implemented locally behind `prepared_workspace_score_enabled=false`; remote CI/merge and performance evidence pending
 WS-D: PARTIAL — synthetic Goal execution/evaluation、atomic Guard → Plan/Job publication、one-use approval consumption 与 `claude_http` estimated-cost enforcement 已实现；真实 Provider/独立主机验收待完成
 WS-E: PARTIAL — Runtime Approval/ACK and Goal Control decision/audit bridge merged; Mobile pairing/push pending
 ~~~
@@ -514,15 +514,13 @@ worker-b:
 
 ### SIG-4 Feature flag scoring
 
-第二阶段才允许：
+第二阶段评分代码已在当前工作分支实现：
 
 ~~~text
 prepared_workspace_score_enabled=false
 ~~~
 
-默认关闭。
-
-CI 验证后再打开实验模式。
+默认关闭；远端 CI/合并后，先在 fixture/可控环境验证评分与开销，再决定是否开放实验模式。
 
 ## 5.5 CI Gate
 
@@ -797,7 +795,7 @@ C5 Control Approval envelope
 C6 schema target version
 ~~~
 
-截至当前 main，C1/C2、C3 readiness 观测、C4 Goal 决策审计桥接和 C5 Runtime control/approval 已合入；C3 readiness scoring 与 C4 自动 Re-plan 发布仍未开放。C6 记录当前 main Server v16 / Worker v6，不预占下一版本。这里 C1～C6 是共享契约编号，与客户端 C1～C5 里程碑不是同一组编号。
+截至当前 main，C1/C2、C3 readiness 观测、C4 Goal 决策审计桥接和 C5 Runtime control/approval 已合入；C3 确定性 readiness scoring 已在当前工作分支实现，默认关闭，待远端 CI/合并与性能观测后再决定是否开放；C4 自动 Re-plan 发布仍未开放。C6 记录当前 main Server v16 / Worker v6，不预占下一版本。这里 C1～C6 是共享契约编号，与客户端 C1～C5 里程碑不是同一组编号。
 
 ## 8.1 Contract Change PR
 
@@ -1000,7 +998,7 @@ Week 1 原则：
 
 - scheduler explainability；
 - stale signal handling；
-- feature flag scoring skeleton。
+- default-off readiness scoring implementation; remote CI/merge and performance evidence remain pending。
 
 ### WS-D
 

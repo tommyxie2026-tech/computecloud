@@ -5,6 +5,7 @@ import "sort"
 type workerLoad struct {
 	peer   *session
 	active int
+	score  workerScore
 }
 
 // chooseLeastLoadedWorker selects from the minimum-load workers in stable ID

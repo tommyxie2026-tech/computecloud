@@ -14,7 +14,7 @@
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
 - 当前实现依据：[v0.4.6 发布记录](v0.4.6-release-status.md)、[Prepared Workspace Core](prepared-workspace-core.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[P0–P2 实施台账](p0-p2-execution.md)；当前 main Server v16 / Worker v6；v0.4.6 tag Server v13
-- 当前实施跟踪：WS-A Core、WS-B 缓存基础及 provider fixture P50 Gate、WS-C readiness 观测、synthetic Goal 执行/评估、Goal 治理审计、一次性审批消费、Server Plan/Job 原子发布、限定 `claude_http` cost enforcement、CI Trigger/Delivery 首个适配器和 C1 Observe PWA 已完成代码与 CI Gate。完整 Relay、Mobile Beta、真实 Worker/Job 性能与独立主机生产验收仍待完成，继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
+- 当前实施跟踪：WS-A Core、WS-B 缓存基础及 provider fixture P50 Gate、WS-C readiness 观测与默认关闭的确定性评分代码、synthetic Goal 执行/评估、Goal 治理审计、一次性审批消费、Server Plan/Job 原子发布、限定 `claude_http` cost enforcement、CI Trigger/Delivery 首个适配器和 C1 Observe PWA 已完成代码；readiness 评分远端 CI/合并与性能观测待完成。完整 Relay、Mobile Beta、真实 Worker/Job 性能与独立主机生产验收继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
 - 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
 

@@ -8,11 +8,13 @@ import (
 )
 
 type candidateObservation struct {
-	WorkerID           string `json:"worker_id,omitempty"`
-	Reason             string `json:"reason"`
-	SignalState        string `json:"signal_state"`
-	RepositoryAffinity bool   `json:"repository_affinity"`
-	PrepareP50MS       *int64 `json:"prepare_p50_ms,omitempty"`
+	WorkerID           string       `json:"worker_id,omitempty"`
+	Reason             string       `json:"reason"`
+	SignalState        string       `json:"signal_state"`
+	RepositoryAffinity bool         `json:"repository_affinity"`
+	PrepareP50MS       *int64       `json:"prepare_p50_ms,omitempty"`
+	Score              *workerScore `json:"score,omitempty"`
+	SelectedReason     string       `json:"selected_reason,omitempty"`
 }
 
 func (s *Server) observeCandidate(p *session, t *pb.Task, reason string) candidateObservation {
@@ -23,9 +25,13 @@ func (s *Server) observeCandidate(p *session, t *pb.Task, reason string) candida
 		return out
 	}
 	s.mu.Lock()
-	signal := readiness.Fresh(p.readiness, p.readinessReceived, store.Now())
+	rawSignal := p.readiness
+	signal := readiness.Fresh(rawSignal, p.readinessReceived, store.Now())
 	s.mu.Unlock()
 	if signal == nil {
+		if rawSignal != nil {
+			out.SignalState = "STALE_OR_INVALID"
+		}
 		return out
 	}
 	out.SignalState = "FRESH"

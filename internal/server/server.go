@@ -635,6 +635,8 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		blocker := "NO_READY_WORKER"
 		var chosen *session
 		workerLoads := make([]workerLoad, 0, len(peers))
+		scoringEnabled := s.cfg.PreparedWorkspaceScoreEnabled
+		scores := make(map[string]workerScore, len(peers))
 		observations := make([]candidateObservation, 0, 32)
 		observe := func(p *session, reason string) {
 			if len(observations) < 32 {
@@ -679,7 +681,35 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 				observe(p, "ELIGIBLE")
 				workerLoads = append(workerLoads, workerLoad{peer: p, active: active})
 			}
-			chosen, selectedWorkerID = chooseLeastLoadedWorker(workerLoads, s.workerCursor)
+			if scoringEnabled {
+				scoreNow := store.Now()
+				type signalSnapshot struct {
+					signal   *pb.ExecutionSignal
+					received int64
+				}
+				snapshots := make(map[string]signalSnapshot, len(workerLoads))
+				s.mu.Lock()
+				for _, load := range workerLoads {
+					snapshots[load.peer.hello.WorkerId] = signalSnapshot{signal: load.peer.readiness, received: load.peer.readinessReceived}
+				}
+				s.mu.Unlock()
+				for i := range workerLoads {
+					p := workerLoads[i].peer
+					snapshot := snapshots[p.hello.WorkerId]
+					value := scoreWorker(workerScoreInput{now: scoreNow, receivedAt: snapshot.received, active: workerLoads[i].active, slots: int(p.hello.Slots), runtimeProfile: t.Spec.RuntimeProfile, environmentName: requiredEnvironmentName(t.Spec), repositoryRef: t.Spec.Workspace.GetRepositoryRef(), signal: snapshot.signal})
+					workerLoads[i].score = value
+					scores[p.hello.WorkerId] = value
+					for j := range observations {
+						if observations[j].WorkerID == p.hello.WorkerId && observations[j].Reason == "ELIGIBLE" {
+							observations[j].Score = &value
+							break
+						}
+					}
+				}
+				chosen, selectedWorkerID = chooseHighestScoredWorker(workerLoads, s.workerCursor)
+			} else {
+				chosen, selectedWorkerID = chooseLeastLoadedWorker(workerLoads, s.workerCursor)
+			}
 			if chosen == nil {
 				if !sawReadyWorker {
 					blocker = "NO_READY_WORKER"
@@ -745,7 +775,18 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 				return e
 			}
 		}
-		if e = appendEvent(ctx, q, &pb.Event{TaskId: id, AttemptId: a.AttemptId, Generation: a.Generation, Type: "scheduler.observation", PayloadJson: config.JSON(map[string]any{"selected_worker": chosen.hello.WorkerId, "selected": s.observeCandidate(chosen, t, "ELIGIBLE"), "candidates": observations, "candidates_truncated": len(peers) > 32, "scoring_enabled": false})}, nil); e != nil {
+		selectedObservation := s.observeCandidate(chosen, t, "ELIGIBLE")
+		if score, ok := scores[chosen.hello.WorkerId]; ok {
+			selectedObservation.Score = &score
+			selectedObservation.SelectedReason = "HIGHEST_SCORE_THEN_LOWEST_ACTIVE_THEN_ROTATION"
+		} else {
+			selectedObservation.SelectedReason = "LOWEST_ACTIVE_THEN_ROTATION"
+		}
+		payload := map[string]any{"selected_worker": chosen.hello.WorkerId, "selected": selectedObservation, "candidates": observations, "candidates_truncated": len(peers) > 32, "scoring_enabled": scoringEnabled}
+		if scoringEnabled {
+			payload["score_version"] = workerScoreVersion
+		}
+		if e = appendEvent(ctx, q, &pb.Event{TaskId: id, AttemptId: a.AttemptId, Generation: a.Generation, Type: "scheduler.observation", PayloadJson: config.JSON(payload)}, nil); e != nil {
 			return e
 		}
 		return saveCommand(ctx, q, chosen.hello.WorkerId, "start", a)

@@ -9,9 +9,9 @@ import re
 import sys
 
 try:
-    from scripts.v047_stable_gate import GateError, evaluate_gate
+    from scripts.v047_stable_gate import GateError, evaluate_gate, load_supplemental_report
 except ModuleNotFoundError:
-    from v047_stable_gate import GateError, evaluate_gate
+    from v047_stable_gate import GateError, evaluate_gate, load_supplemental_report
 
 
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -39,7 +39,20 @@ ALLOWED_CHANGED_FILES = frozenset(
         "docs/implementation/v0.4-closeout-plan.md",
     }
 )
-REQUIRED_CHANGED_FILES = ALLOWED_CHANGED_FILES
+REQUIRED_CHANGED_FILES = frozenset(
+    {
+        "Makefile",
+        "README.md",
+        "CHANGELOG.md",
+        "release/v0.4.7.json",
+        GATE_PATH,
+        CI_EVIDENCE_PATH,
+        "docs/deployment/production-v0.4.7.md",
+        "docs/implementation/v0.4.7-release-status.md",
+        "docs/implementation/v0.4.7-stable-tracker.md",
+        "docs/implementation/v0.4-closeout-plan.md",
+    }
+)
 
 
 class TransitionError(ValueError):
@@ -103,10 +116,15 @@ def validate_transition(
     except (TypeError, json.JSONDecodeError) as exc:
         raise TransitionError(f"stable Gate report is invalid JSON: {exc}") from exc
     require(parsed_gate == gate, "stable Gate content does not match the parsed report")
-    require(gate.get("schema_version") == "computecloud.v0.4.7.stable-gate.v1", "stable Gate schema is unsupported")
+    require(gate.get("schema_version") == "computecloud.v0.4.7.stable-gate.v2", "stable Gate schema is unsupported")
     require(gate.get("version") == project_version, "stable Gate version does not match project version")
     require(gate.get("status") == "PASSED", "stable Gate status must be PASSED")
     require(gate.get("release_request_allowed") is True, "stable Gate must allow the release request")
+    require(gate.get("release_basis") == "EXACT_SHA_CI", "stable Gate must identify exact-SHA CI as release basis")
+    require(
+        gate.get("real_environment_status") in {"NOT_RUN_OR_PENDING", "SUPPLEMENTAL_PRESENT_NOT_GATING"},
+        "real environment status must remain explicitly pending or supplemental-only",
+    )
     require(gate.get("candidate_sha") == candidate_sha, "stable Gate candidate does not match the release request")
     gate_ci = gate.get("ci")
     require(isinstance(gate_ci, dict), "stable Gate CI evidence is missing")
@@ -120,7 +138,7 @@ def validate_transition(
         regenerated_gate = evaluate_gate(candidate_sha, evidence_reports, ci_evidence)
     except (TypeError, ValueError, GateError) as exc:
         raise TransitionError(f"committed stable evidence was rejected: {exc}") from exc
-    require(regenerated_gate == gate, "committed evidence does not reproduce the stable Gate report")
+    require(regenerated_gate == gate, "committed stable evidence does not reproduce the stable Gate report")
 
     changed = set(changed_files)
     unexpected = sorted(changed - ALLOWED_CHANGED_FILES)
@@ -157,7 +175,11 @@ def main(argv=None):
             request=json.loads(args.request.read_text(encoding="utf-8")),
             gate=json.loads(gate_content),
             gate_content=gate_content,
-            evidence_reports={name: json.loads(pathlib.Path(path).read_text(encoding="utf-8")) for name, path in EVIDENCE_PATHS.items()},
+            evidence_reports={
+                name: report
+                for name, path in EVIDENCE_PATHS.items()
+                if (report := load_supplemental_report(pathlib.Path(path))) is not None
+            },
             ci_evidence=json.loads(pathlib.Path(CI_EVIDENCE_PATH).read_text(encoding="utf-8")),
             project_version=args.project_version,
             release_sha=args.release_sha,

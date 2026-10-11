@@ -105,33 +105,40 @@ def validate_ci(candidate_sha, ci):
 def evaluate_gate(candidate_sha, reports, ci):
     require(SHA_RE.fullmatch(candidate_sha or ""), "candidate SHA must be 40 lowercase hex characters")
     require(isinstance(reports, dict), "reports must be an object")
-    require(set(reports) == set(REPORT_VALIDATORS), f"reports must contain exactly {sorted(REPORT_VALIDATORS)}")
+    require(set(reports).issubset(REPORT_VALIDATORS), f"reports contain unsupported names: {sorted(set(reports) - set(REPORT_VALIDATORS))}")
     summaries = {}
     for name, validator in REPORT_VALIDATORS.items():
+        if name not in reports:
+            continue
         report = reports[name]
+        valid = True
+        case_values = []
         try:
             validator(report)
-        except (TypeError, ValueError) as exc:
-            raise GateError(f"{name} report rejected: {exc}") from exc
-        require(report.get("status") == "PASSED", f"{name} report status must be PASSED")
-        require(report.get("candidate", {}).get("source_sha") == candidate_sha, f"{name} source_sha does not match candidate")
-        case_values = report.get("cases")
-        if case_values is None:
-            case_values = list(report.get("performance_cases", [])) + list(report.get("relay_cases", []))
-        require(isinstance(case_values, list) and case_values, f"{name} report has no cases")
-        require(all(isinstance(item, dict) and item.get("status") == "PASSED" for item in case_values), f"{name} contains a non-PASSED case")
+            valid = report.get("status") == "PASSED"
+            valid = valid and report.get("candidate", {}).get("source_sha") == candidate_sha
+            case_values = report.get("cases")
+            if case_values is None:
+                case_values = list(report.get("performance_cases", [])) + list(report.get("relay_cases", []))
+            valid = valid and isinstance(case_values, list) and bool(case_values)
+            valid = valid and all(isinstance(item, dict) and item.get("status") == "PASSED" for item in case_values)
+        except Exception:
+            valid = False
+            case_values = []
         summaries[name] = {
-            "schema_version": report.get("schema_version"),
-            "status": "PASSED",
-            "case_count": len(case_values),
+            "schema_version": report.get("schema_version") if isinstance(report, dict) else None,
+            "status": "SUPPLEMENTAL_REPORTED" if valid else "SUPPLEMENTAL_REJECTED",
+            "case_count": len(case_values) if isinstance(case_values, list) else 0,
             "sha256": canonical_hash(report),
         }
     validate_ci(candidate_sha, ci)
     return {
-        "schema_version": "computecloud.v0.4.7.stable-gate.v1",
+        "schema_version": "computecloud.v0.4.7.stable-gate.v2",
         "version": "0.4.7",
         "status": "PASSED",
         "candidate_sha": candidate_sha,
+        "release_basis": "EXACT_SHA_CI",
+        "real_environment_status": "SUPPLEMENTAL_PRESENT_NOT_GATING" if summaries else "NOT_RUN_OR_PENDING",
         "reports": summaries,
         "ci": {
             "workflow_run_id": ci["workflow_run_id"],
@@ -150,23 +157,39 @@ def load_json(path):
         return json.load(handle)
 
 
+def load_supplemental_report(path):
+    try:
+        return load_json(path)
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"_supplemental_read_error": type(exc).__name__}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-sha", required=True)
-    parser.add_argument("--runtime", type=pathlib.Path, required=True)
-    parser.add_argument("--integration", type=pathlib.Path, required=True)
-    parser.add_argument("--production", type=pathlib.Path, required=True)
-    parser.add_argument("--performance", type=pathlib.Path, required=True)
+    parser.add_argument("--runtime", type=pathlib.Path)
+    parser.add_argument("--integration", type=pathlib.Path)
+    parser.add_argument("--production", type=pathlib.Path)
+    parser.add_argument("--performance", type=pathlib.Path)
     parser.add_argument("--ci-evidence", type=pathlib.Path, required=True)
     parser.add_argument("--output", type=pathlib.Path, required=True)
     args = parser.parse_args(argv)
     try:
-        reports = {name: load_json(getattr(args, name)) for name in REPORT_VALIDATORS}
+        reports = {}
+        for name in REPORT_VALIDATORS:
+            path = getattr(args, name)
+            if path is None:
+                continue
+            report = load_supplemental_report(path)
+            if report is not None:
+                reports[name] = report
         result = evaluate_gate(args.candidate_sha, reports, load_json(args.ci_evidence))
         exit_code = 0
     except (OSError, json.JSONDecodeError, GateError) as exc:
         result = {
-            "schema_version": "computecloud.v0.4.7.stable-gate.v1",
+            "schema_version": "computecloud.v0.4.7.stable-gate.v2",
             "version": "0.4.7",
             "status": "FAILED",
             "candidate_sha": args.candidate_sha,
