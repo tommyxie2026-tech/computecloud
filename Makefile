@@ -1,5 +1,5 @@
 GO ?= go
-VERSION ?= 0.4.7-rc.2
+VERSION ?= 0.4.7
 V047_CANDIDATE_SHA ?= $(shell git rev-parse HEAD)
 
 .PHONY: build test race vet smoke ci-flow ci-retry-flow ci-artifact-flow ci-workspace-flow ci-prepared-workspace-contract ci-prepared-workspace-recovery ci-long-run-flow ci-fair-flow ci-runtime-contract-flow ci-runtime-execution-flow ci-tool-contract-flow ci-environment-contract-flow ci-environment-execution-flow ci-agent-control-schema ci-agent-control-read ci-runtime-adapter-contract ci-runtime-budget ci-agent-control-fencing ci-agent-control-negative ci-agent-control-dispatch ci-agent-control-approval ci-agent-control-resume ci-control-client-check ci-control-client-e2e ci-control-mobile-check ci-manual-retry-negative ci-container-image ci-v047-stable-gate-contract ci-v047-release-transition-contract ci-v047-stable-gate container-build capacity capacity-check benchmark-contract release-package generate

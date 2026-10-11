@@ -6,12 +6,12 @@
 - 新增隔离的 conversation scopes、固定执行 profile、SQLite v17 迁移、TLS 1.3 路由保护和 loopback-only SSH 隧道模式；CI 用真实 Worker CLI fixture 验证执行。
 - 真实 Claude/Codex 安装验证、独立主机部署和生产证书/SSH 运维验收仍待完成；不代表稳定版发布。
 
-## 未发布 — v0.4.7 稳定版验收与发布闭环
+## 0.4.7 — Agent-aware 调度与稳定版发布
 
-- Relay Control/Bulk 隔离、定长指标和运维/回退手册已完成并纳入 CI。
-- 新增 Runtime、Container/Trigger、独立双机升级恢复、缓存及真实 NAT Relay 的 fail-closed 真实证据契约；fixture 不能满足稳定版 Gate。
-- 新增 exact-SHA 聚合 Gate，以及 `release-request.v2` 候选到发布提交校验；发布提交只允许固定发版元数据和文档变化，拒绝源码、工作流和构建逻辑漂移。
-- 真实双机、Provider、Docker/OCI、24h、缓存与 NAT 报告尚未生成；本节不表示 v0.4.7 已发布。
+- 在默认关闭条件下增加确定性 Worker 软评分，综合 Runtime/Environment 适配、仓库亲和度、准备成本与容量余量；硬资格过滤和公平轮换继续有效。
+- 稳定版发布门禁绑定精确候选 SHA 和全部必需 CI；真实 Runtime、独立双机升级恢复、代表性缓存与 NAT Relay 作为发布后的生产验收单独跟踪。
+- v0.4.7 的发布转换仅修改版本、脱敏 CI/Gate 证据与固定发布文档；发布 workflow 负责生成 Linux amd64/arm64 归档、多架构镜像和 GitHub Release。
+- 真实主机与真实模型验收仍待完成，不将 CI/fixture 结果表述为生产认证。
 
 ## 0.4.7-rc.2 — Goal 治理与 Runtime 预算预览（prerelease 已发布）
 

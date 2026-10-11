@@ -1,0 +1,18 @@
+{
+  "candidate_sha": "1ee96aa5d12cebe0f555447c46483273ea64af8b",
+  "ci": {
+    "conclusion": "success",
+    "evidence_sha256": "86bfcbc658b4dab9d2c9b3143e1d98d27e52f1018fe5ddbae4907f61c939caf3",
+    "required_job_count": 38,
+    "source_sha": "1ee96aa5d12cebe0f555447c46483273ea64af8b",
+    "workflow_run_id": 38148392153,
+    "workflow_url": "https://github.com/tommyxie2026-tech/computecloud/actions/runs/38148392153"
+  },
+  "real_environment_status": "NOT_RUN_OR_PENDING",
+  "release_basis": "EXACT_SHA_CI",
+  "release_request_allowed": true,
+  "reports": {},
+  "schema_version": "computecloud.v0.4.7.stable-gate.v2",
+  "status": "PASSED",
+  "version": "0.4.7"
+}

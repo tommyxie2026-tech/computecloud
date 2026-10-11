@@ -1,0 +1,10 @@
+{
+  "schema_version": "release-request.v2",
+  "version": "0.4.7",
+  "candidate_sha": "1ee96aa5d12cebe0f555447c46483273ea64af8b",
+  "stable_gate": {
+    "path": "release/evidence/v0.4.7-stable-gate.json",
+    "sha256": "cf7f504950dc2c8f344fc3496e6054e0603ab7379bf69dd991661af2331d02ef",
+    "workflow_run_id": 38148392153
+  }
+}
