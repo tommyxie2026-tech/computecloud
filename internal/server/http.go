@@ -29,6 +29,14 @@ func jsonResponse(w http.ResponseWriter, code int, v any) {
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
 }
+
+type requestTooLargeError struct{ limit int64 }
+
+func (e requestTooLargeError) Error() string { return "REQUEST_TOO_LARGE" }
+func (e requestTooLargeError) GRPCStatus() *status.Status {
+	return status.New(codes.ResourceExhausted, "REQUEST_TOO_LARGE")
+}
+
 func httpError(w http.ResponseWriter, e error) {
 	code := http.StatusInternalServerError
 	switch status.Code(e) {
@@ -66,7 +74,12 @@ func httpError(w http.ResponseWriter, e error) {
 	if code == 401 {
 		w.Header().Set("WWW-Authenticate", "Bearer")
 	}
-	jsonResponse(w, code, map[string]any{"error": map[string]any{"code": message, "message": message, "request_id": w.Header().Get("X-Request-ID")}})
+	errorBody := map[string]any{"code": message, "message": message, "request_id": w.Header().Get("X-Request-ID")}
+	var tooLarge requestTooLargeError
+	if errors.As(e, &tooLarge) {
+		errorBody["limit_bytes"] = tooLarge.limit
+	}
+	jsonResponse(w, code, map[string]any{"error": errorBody})
 }
 func readJSONBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, error) {
 	ct, _, e := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -78,7 +91,7 @@ func readJSONBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, 
 	if e != nil {
 		var large *http.MaxBytesError
 		if errors.As(e, &large) {
-			return nil, status.Error(codes.ResourceExhausted, "REQUEST_TOO_LARGE")
+			return nil, requestTooLargeError{limit: limit}
 		}
 		return nil, status.Error(codes.InvalidArgument, "invalid request body")
 	}

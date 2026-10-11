@@ -126,7 +126,7 @@ func (s *Server) httpConversationSubmit(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	idem := r.Header.Get("Idempotency-Key")
-	rec, e := s.beginConversationRequest(r.Context(), req, idem)
+	rec, e := s.beginConversationRequest(r.Context(), req, int64(len(body)), idem)
 	if e != nil {
 		httpError(w, e)
 		return
@@ -161,7 +161,7 @@ func (s *Server) loadConversation(ctx context.Context, id, scope string) (conver
 	}
 	var rec conversationRecord
 	var raw []byte
-	e = s.db.SQL.QueryRowContext(ctx, "SELECT request_id,owner,profile_id,protocol,request_blob,job_id,state FROM conversation_requests WHERE request_id=?", id).Scan(&rec.ID, &rec.Owner, &rec.Profile, &rec.Protocol, &raw, &rec.JobID, &rec.State)
+	e = s.db.SQL.QueryRowContext(ctx, "SELECT request_id,owner,profile_id,protocol,request_blob,job_id,state,request_bytes FROM conversation_requests WHERE request_id=?", id).Scan(&rec.ID, &rec.Owner, &rec.Profile, &rec.Protocol, &raw, &rec.JobID, &rec.State, &rec.RequestBytes)
 	if e != nil {
 		return rec, nil, dbErr(e)
 	}
@@ -310,7 +310,7 @@ func (s *Server) httpConversationRequest(w http.ResponseWriter, r *http.Request)
 	if !terminal(state) {
 		code = 202
 	}
-	jsonResponse(w, code, map[string]any{"id": rec.ID, "job_id": rec.JobID, "state": state, "result": result, "usage": usage, "truncated": truncated, "provenance": map[string]string{"job_id": rec.JobID, "profile_id": rec.Profile}})
+	jsonResponse(w, code, map[string]any{"id": rec.ID, "job_id": rec.JobID, "state": state, "result": result, "usage": usage, "truncated": truncated, "request_bytes": rec.RequestBytes, "provenance": map[string]string{"job_id": rec.JobID, "profile_id": rec.Profile}})
 }
 func (s *Server) httpConversationCancel(w http.ResponseWriter, r *http.Request) {
 	rec, p, e := s.loadConversation(r.Context(), r.PathValue("id"), "conversations:cancel")

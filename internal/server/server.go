@@ -39,6 +39,7 @@ type Server struct {
 	notify          chan struct{}
 	grpc            *grpc.Server
 	jobCursor       string
+	workerCursor    string
 	projectCursor   map[int32]string
 	groupCursor     map[string]string
 	modelHandler    http.Handler
@@ -571,7 +572,8 @@ func fitsWithCapabilities(p *session, t *pb.Task, additional []string) bool {
 	return false
 }
 func (s *Server) assign(ctx context.Context, id string, peers []*session) error {
-	return s.db.Tx(ctx, func(q store.Query) error {
+	var selectedWorkerID string
+	err := s.db.Tx(ctx, func(q store.Query) error {
 		t, _, e := readTask(ctx, q, id)
 		if e != nil {
 			return e
@@ -632,7 +634,7 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		}
 		blocker := "NO_READY_WORKER"
 		var chosen *session
-		load := int(^uint(0) >> 1)
+		workerLoads := make([]workerLoad, 0, len(peers))
 		observations := make([]candidateObservation, 0, 32)
 		observe := func(p *session, reason string) {
 			if len(observations) < 32 {
@@ -675,11 +677,9 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 					continue
 				}
 				observe(p, "ELIGIBLE")
-				if active < load {
-					chosen = p
-					load = active
-				}
+				workerLoads = append(workerLoads, workerLoad{peer: p, active: active})
 			}
+			chosen, selectedWorkerID = chooseLeastLoadedWorker(workerLoads, s.workerCursor)
 			if chosen == nil {
 				if !sawReadyWorker {
 					blocker = "NO_READY_WORKER"
@@ -750,6 +750,10 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		}
 		return saveCommand(ctx, q, chosen.hello.WorkerId, "start", a)
 	})
+	if err == nil && selectedWorkerID != "" {
+		s.workerCursor = selectedWorkerID
+	}
+	return err
 }
 func saveCommand(ctx context.Context, q store.Query, worker, kind string, a *pb.Assignment) error {
 	c := &pb.Command{CommandId: store.ID(), Kind: kind, Assignment: a}

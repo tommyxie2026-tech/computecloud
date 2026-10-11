@@ -1,9 +1,11 @@
 package server
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
+	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"google.golang.org/grpc/codes"
@@ -206,7 +208,6 @@ func TestSpecificConcurrencyBlockers(t *testing.T) {
 	}
 }
 
-
 func TestSpecificReadinessAndCapabilityBlockers(t *testing.T) {
 	t.Run("no-ready-worker", func(t *testing.T) {
 		s, uc, _, _ := offlineJobServer(t)
@@ -258,4 +259,181 @@ func TestSpecificReadinessAndCapabilityBlockers(t *testing.T) {
 			t.Fatalf("blocker=%s want=TEMPLATE_OR_CAPABILITY_MISMATCH", blocker)
 		}
 	})
+}
+
+func TestChooseWorkerRotatesEqualMinimumLoad(t *testing.T) {
+	loads := []workerLoad{{peer: &session{hello: &pb.WorkerHello{WorkerId: "worker-a"}}, active: 2}, {peer: &session{hello: &pb.WorkerHello{WorkerId: "worker-b"}}, active: 2}}
+	got, cursor := chooseLeastLoadedWorker(loads, "")
+	if got == nil || got.hello.WorkerId != "worker-a" || cursor != "worker-a" {
+		t.Fatalf("first selection=%v cursor=%q, want worker-a", got, cursor)
+	}
+	got, cursor = chooseLeastLoadedWorker(loads, cursor)
+	if got == nil || got.hello.WorkerId != "worker-b" || cursor != "worker-b" {
+		t.Fatalf("second selection=%v cursor=%q, want worker-b", got, cursor)
+	}
+}
+
+func TestChooseWorkerUsesMinimumLoadBeforeRotation(t *testing.T) {
+	loads := []workerLoad{{peer: &session{hello: &pb.WorkerHello{WorkerId: "worker-a"}}, active: 3}, {peer: &session{hello: &pb.WorkerHello{WorkerId: "worker-b"}}, active: 1}}
+	got, cursor := chooseLeastLoadedWorker(loads, "worker-b")
+	if got == nil || got.hello.WorkerId != "worker-b" || cursor != "worker-b" {
+		t.Fatalf("selection=%v cursor=%q, want lower-load worker-b", got, cursor)
+	}
+}
+
+func TestChooseWorkerIgnoresPeerOrder(t *testing.T) {
+	mk := func(ids ...string) []workerLoad {
+		loads := make([]workerLoad, 0, len(ids))
+		for _, id := range ids {
+			loads = append(loads, workerLoad{peer: &session{hello: &pb.WorkerHello{WorkerId: id}}, active: 0})
+		}
+		return loads
+	}
+	first, _ := chooseLeastLoadedWorker(mk("worker-b", "worker-a"), "")
+	second, _ := chooseLeastLoadedWorker(mk("worker-a", "worker-b"), "")
+	if first.hello.WorkerId != second.hello.WorkerId {
+		t.Fatalf("peer order changed first selection: %q vs %q", first.hello.WorkerId, second.hello.WorkerId)
+	}
+}
+
+func TestAssignRotatesEqualLoadWorkers(t *testing.T) {
+	s, uc, _, workerA := offlineJobServer(t)
+	defer s.Close()
+	s.cfg.Credentials["account"] = 8
+	workerA.hello.Slots = 4
+	workerBHello := *workerA.hello
+	workerBHello.WorkerId = "worker-b"
+	workerBHello.Epoch = "epoch-b"
+	workerB := &session{hello: &workerBHello, identity: workerA.identity}
+	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(&workerBHello), store.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"w", "worker-b", "w"} {
+		spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
+		j, err := s.SubmitJob(uc, fmt.Sprintf("worker-rotation-%d", i), job.JSON(spec))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var task string
+		if err = s.db.SQL.QueryRow("SELECT id FROM tasks WHERE job_id=?", j.ID).Scan(&task); err != nil {
+			t.Fatal(err)
+		}
+		if err = s.assign(uc, task, []*session{workerB, workerA}); err != nil {
+			t.Fatal(err)
+		}
+		var got string
+		if err = s.db.SQL.QueryRow("SELECT worker FROM tasks WHERE id=?", task).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("assignment %d chose %q, want %q", i+1, got, want)
+		}
+	}
+}
+
+func TestAssignSkipsWorkerAtCapacity(t *testing.T) {
+	s, uc, _, workerA := offlineJobServer(t)
+	defer s.Close()
+	s.cfg.Credentials["account"] = 8
+	workerA.hello.Slots = 1
+	workerBHello := *workerA.hello
+	workerBHello.WorkerId = "worker-b"
+	workerBHello.Epoch = "epoch-b"
+	workerB := &session{hello: &workerBHello, identity: workerA.identity}
+	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(&workerBHello), store.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	var tasks []string
+	for i := 0; i < 2; i++ {
+		spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
+		j, err := s.SubmitJob(uc, fmt.Sprintf("worker-capacity-%d", i), job.JSON(spec))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var task string
+		if err = s.db.SQL.QueryRow("SELECT id FROM tasks WHERE job_id=?", j.ID).Scan(&task); err != nil {
+			t.Fatal(err)
+		}
+		tasks = append(tasks, task)
+	}
+	if err := s.assign(uc, tasks[0], []*session{workerA, workerB}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.assign(uc, tasks[1], []*session{workerA, workerB}); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err := s.db.SQL.QueryRow("SELECT worker FROM tasks WHERE id=?", tasks[1]).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != "worker-b" {
+		t.Fatalf("assignment at capacity chose %q, want worker-b", got)
+	}
+}
+
+func TestAssignExcludesIncompatibleWorkerFromRotation(t *testing.T) {
+	s, uc, _, workerA := offlineJobServer(t)
+	defer s.Close()
+	s.cfg.Credentials["account"] = 8
+	workerA.hello.Slots = 4
+	workerBHello := *workerA.hello
+	workerBHello.WorkerId = "worker-b"
+	workerBHello.Epoch = "epoch-b"
+	workerBHello.Runtimes = nil
+	workerB := &session{hello: &workerBHello, identity: workerA.identity}
+	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(&workerBHello), store.Now()); err != nil {
+		t.Fatal(err)
+	}
+	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
+	j, err := s.SubmitJob(uc, "worker-compatible-only", job.JSON(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var task string
+	if err = s.db.SQL.QueryRow("SELECT id FROM tasks WHERE job_id=?", j.ID).Scan(&task); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.assign(uc, task, []*session{workerB, workerA}); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err = s.db.SQL.QueryRow("SELECT worker FROM tasks WHERE id=?", task).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != workerA.hello.WorkerId {
+		t.Fatalf("assignment chose incompatible worker %q", got)
+	}
+}
+
+func TestAssignDoesNotAdvanceCursorOnFailure(t *testing.T) {
+	s, uc, _, workerA := offlineJobServer(t)
+	defer s.Close()
+	s.cfg.Credentials["account"] = 8
+	workerA.hello.Slots = 3
+	workerBHello := *workerA.hello
+	workerBHello.WorkerId = "worker-b"
+	workerBHello.Epoch = "epoch-b"
+	workerB := &session{hello: &workerBHello, identity: workerA.identity}
+	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(&workerBHello), store.Now()); err != nil {
+		t.Fatal(err)
+	}
+	spec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
+	j, err := s.SubmitJob(uc, "worker-rotation-failure", job.JSON(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var task string
+	if err = s.db.SQL.QueryRow("SELECT id FROM tasks WHERE job_id=?", j.ID).Scan(&task); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.SQL.Exec(`CREATE TRIGGER fail_start_command BEFORE INSERT ON commands BEGIN SELECT RAISE(ABORT, 'injected command failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.assign(uc, task, []*session{workerA, workerB}); err == nil {
+		t.Fatal("expected injected transaction failure")
+	}
+	if s.workerCursor != "" {
+		t.Fatalf("cursor advanced after rollback: %q", s.workerCursor)
+	}
 }

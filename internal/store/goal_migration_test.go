@@ -24,7 +24,7 @@ func TestGoalV15MigrationRestartAndImmutableRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 17 {
+	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 18 {
 		t.Fatalf("version=%d %v", version, err)
 	}
 	for _, name := range []string{"goal_job_bindings", "goal_plans", "goal_attempt_reservations", "goal_evaluations"} {

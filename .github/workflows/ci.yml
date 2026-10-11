@@ -212,7 +212,11 @@ jobs:
         with:
           go-version: '1.27.1'
           cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - run: go mod verify
+      - run: make benchmark-contract
       - run: make vet test race smoke capacity-check
       - uses: actions/upload-artifact@v4
         if: always()

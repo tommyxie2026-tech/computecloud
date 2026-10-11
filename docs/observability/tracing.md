@@ -79,3 +79,7 @@ Server 数据库迁移到 schema 14，新增 traces、attempt_metrics，以及 j
 验证：完整 `go test ./...`、`go vet ./...`，以及针对 TestTrace/TestNative/TestCLI/TestRun 的竞态检查。覆盖身份隔离、跨项目 trace 拒绝、幂等重试、分页、未知计量、Worker 事件持久化和迁移。
 
 真实部署验证应在目标环境单独归档，记录脱敏后的 Job/Task/Attempt 标识、事件水位和指标覆盖范围，不把本机路径、凭据、网络地址或原始任务内容提交到仓库。
+
+## 阶段耗时
+
+Job Trace 还包含 `stage_durations_ms`：`queue_wait_ms` 从 Job 创建到首次分配阶段事件计算，`runtime_ms` 从最早 Attempt `started` 到最晚 Attempt `completed` 计算，`result_finalize_ms` 从最后一个完成 Attempt 到 Job 进入终态计算。事件不完整、Job 尚未结束或没有足够的起止时间时，该阶段为 `null`，不会用 0 代替未知值。并行 Attempt 的区间重叠只计入一次，因此 `runtime_ms` 表示覆盖这些 Attempt 的墙钟区间，不是 CPU 时间或尝试时长总和。
