@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://computecloud.invalid/schemas/distributed-performance-report.schema.json",
+  "title": "ComputeCloud 分布式执行性能报告",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "environment", "scenarios"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "platform": {"type": "string"},
+        "python_version": {"type": "string"},
+        "runtime": {"type": ["string", "null"]},
+        "model": {"type": ["string", "null"]}
+      }
+    },
+    "scenarios": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/scenario"}
+    }
+  },
+  "$defs": {
+    "nullableNonnegative": {"type": ["integer", "null"], "minimum": 0},
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sample_count", "success_rate", "latency_ms", "request_bytes", "input_tokens", "output_tokens", "cached_input_tokens", "peak_rss_bytes", "failures", "condition_status", "worker_count_declared"],
+      "properties": {
+        "sample_count": {"type": "integer", "minimum": 0},
+        "success_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "latency_ms": {"type": "object", "additionalProperties": false, "required": ["p50", "p95"], "properties": {"p50": {"$ref": "#/$defs/nullableNonnegative"}, "p95": {"$ref": "#/$defs/nullableNonnegative"}}},
+        "request_bytes": {"$ref": "#/$defs/nullableNonnegative"},
+        "input_tokens": {"$ref": "#/$defs/nullableNonnegative"},
+        "output_tokens": {"$ref": "#/$defs/nullableNonnegative"},
+        "cached_input_tokens": {"$ref": "#/$defs/nullableNonnegative"},
+        "peak_rss_bytes": {"$ref": "#/$defs/nullableNonnegative"},
+        "condition_status": {"enum": ["operator_confirmed", "not_confirmed", "not_applicable"]},
+        "worker_count_declared": {"type": ["integer", "null"], "minimum": 0},
+        "failures": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["error_code"], "properties": {"error_code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$"}}}}
+      }
+    }
+  }
+}

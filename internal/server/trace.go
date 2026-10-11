@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
@@ -126,6 +127,72 @@ func (s *Server) traceAttempts(ctx context.Context, jid string) ([]TraceAttempt,
 	return out, rows.Err()
 }
 
+func (s *Server) jobStageDurations(ctx context.Context, jid string) (map[string]any, error) {
+	out := map[string]any{"queue_wait_ms": nil, "runtime_ms": nil, "result_finalize_ms": nil}
+	var created, dispatched sql.NullInt64
+	if err := s.db.SQL.QueryRowContext(ctx, `SELECT min(CASE WHEN type='job.created' THEN recorded_at END), min(CASE WHEN type='job.state_changed' AND json_extract(body,'$.to') IN ('MAPPING','EXECUTING') THEN recorded_at END) FROM job_events WHERE job_id=?`, jid).Scan(&created, &dispatched); err != nil {
+		return nil, err
+	}
+	if created.Valid && dispatched.Valid && dispatched.Int64 >= created.Int64 {
+		out["queue_wait_ms"] = dispatched.Int64 - created.Int64
+	}
+	rows, err := s.db.SQL.QueryContext(ctx, `SELECT e.attempt,e.body FROM events e JOIN tasks t ON t.id=e.task WHERE t.job_id=? AND json_extract(e.body,'$.type') IN ('attempt.started','attempt.completed') ORDER BY e.seq`, jid)
+	if err != nil {
+		return nil, err
+	}
+	started := map[string]int64{}
+	var firstPairedAttemptStarted int64
+	var lastPairedAttemptCompleted int64
+	var completedCount int
+	var lastCompleted int64
+	for rows.Next() {
+		var attempt string
+		var raw []byte
+		if err = rows.Scan(&attempt, &raw); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		e := new(pb.Event)
+		if err = decode(raw, e); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		switch e.Type {
+		case "attempt.started":
+			started[attempt] = e.RecordedAtMs
+		case "attempt.completed":
+			if at, ok := started[attempt]; ok && e.RecordedAtMs >= at {
+				completedCount++
+				if firstPairedAttemptStarted == 0 || at < firstPairedAttemptStarted {
+					firstPairedAttemptStarted = at
+				}
+				if e.RecordedAtMs > lastPairedAttemptCompleted {
+					lastPairedAttemptCompleted = e.RecordedAtMs
+				}
+			}
+			if e.RecordedAtMs > lastCompleted {
+				lastCompleted = e.RecordedAtMs
+			}
+		}
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	if completedCount > 0 {
+		out["runtime_ms"] = lastPairedAttemptCompleted - firstPairedAttemptStarted
+	}
+	var terminalAt sql.NullInt64
+	if err = s.db.SQL.QueryRowContext(ctx, `SELECT min(recorded_at) FROM job_events WHERE job_id=? AND type='job.state_changed' AND json_extract(body,'$.to') IN ('SUCCEEDED','FAILED','CANCELED')`, jid).Scan(&terminalAt); err != nil {
+		return nil, err
+	}
+	if lastCompleted > 0 && terminalAt.Valid && terminalAt.Int64 >= lastCompleted {
+		out["result_finalize_ms"] = terminalAt.Int64 - lastCompleted
+	}
+	return out, nil
+}
+
 // Job usage chooses one source per attempt, never adds native and gateway counters
 // for the same inference. Retries remain separate measured attempts.
 func (s *Server) jobUsage(ctx context.Context, j *Job) (map[string]any, error) {
@@ -200,6 +267,11 @@ func (s *Server) JobTrace(ctx context.Context, id, before string, limit int) (ma
 		return nil, dbErr(err)
 	}
 	out := map[string]any{"job_id": id, "trace_id": j.TraceID, "attempts": attempts, "model_requests": []TraceRequest{}, "has_more": false, "next_cursor": "", "trace_scope": "unavailable"}
+	durations, err := s.jobStageDurations(ctx, id)
+	if err != nil {
+		return nil, dbErr(err)
+	}
+	out["stage_durations_ms"] = durations
 	usage, err := s.jobUsage(ctx, j)
 	if err != nil {
 		return nil, dbErr(err)

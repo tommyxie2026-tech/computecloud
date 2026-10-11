@@ -32,11 +32,14 @@ type messagesRequest struct {
 		Role    string          `json:"role"`
 		Content json.RawMessage `json:"content"`
 	} `json:"messages"`
-	System     json.RawMessage   `json:"system,omitempty"`
-	Tools      []json.RawMessage `json:"tools,omitempty"`
-	ToolChoice json.RawMessage   `json:"tool_choice,omitempty"`
-	Stream     bool              `json:"stream,omitempty"`
-	Metadata   json.RawMessage   `json:"metadata,omitempty"`
+	System            json.RawMessage   `json:"system,omitempty"`
+	Tools             []json.RawMessage `json:"tools,omitempty"`
+	ToolChoice        json.RawMessage   `json:"tool_choice,omitempty"`
+	Stream            bool              `json:"stream,omitempty"`
+	Metadata          json.RawMessage   `json:"metadata,omitempty"`
+	ContextManagement json.RawMessage   `json:"context_management,omitempty"`
+	OutputConfig      json.RawMessage   `json:"output_config,omitempty"`
+	Thinking          json.RawMessage   `json:"thinking,omitempty"`
 }
 type responsesRequest struct {
 	Model              string            `json:"model"`
@@ -62,8 +65,11 @@ func DecodeMessages(b []byte, maxBytes int, maxOutput int) (Request, error) {
 	if !supportedToolChoice(in.ToolChoice) {
 		return Request{}, ErrUnsupported
 	}
-	if in.MaxTokens < 1 || in.MaxTokens > maxOutput || in.Model == "" {
+	if in.MaxTokens < 1 || in.Model == "" {
 		return Request{}, fmt.Errorf("invalid or unsupported Messages request")
+	}
+	if in.MaxTokens > maxOutput {
+		in.MaxTokens = maxOutput
 	}
 	r := Request{Protocol: "messages", Model: in.Model, MaxOutputTokens: in.MaxTokens, Stream: in.Stream}
 	if len(in.System) > 0 {
@@ -76,7 +82,7 @@ func DecodeMessages(b []byte, maxBytes int, maxOutput int) (Request, error) {
 		}
 	}
 	for _, m := range in.Messages {
-		if m.Role != "user" && m.Role != "assistant" {
+		if m.Role != "user" && m.Role != "assistant" && m.Role != "system" {
 			return Request{}, ErrUnsupported
 		}
 		s, e := contentText(m.Content)
@@ -101,11 +107,13 @@ func DecodeResponses(b []byte, maxBytes int, maxOutput int) (Request, error) {
 	}
 	if in.MaxOutputTokens == 0 {
 		in.MaxOutputTokens = maxOutput
+	} else if in.MaxOutputTokens > maxOutput {
+		in.MaxOutputTokens = maxOutput
 	}
 	if !supportedToolChoice(in.ToolChoice) || in.PreviousResponseID != "" || (in.Store != nil && *in.Store) || len(in.Include) > 0 {
 		return Request{}, ErrUnsupported
 	}
-	if in.Model == "" || in.MaxOutputTokens < 1 || in.MaxOutputTokens > maxOutput {
+	if in.Model == "" || in.MaxOutputTokens < 1 {
 		return Request{}, fmt.Errorf("invalid or unsupported Responses request")
 	}
 	r := Request{Protocol: "responses", Model: in.Model, MaxOutputTokens: in.MaxOutputTokens, Stream: in.Stream}

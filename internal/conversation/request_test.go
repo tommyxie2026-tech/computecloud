@@ -15,6 +15,26 @@ func TestDecodeMessagesTextOnly(t *testing.T) {
 	}
 }
 
+func TestDecodeClaudeCodeMessagesWithMetadataAndSystemMessage(t *testing.T) {
+	body := []byte(`{"model":"deepseek-flash","max_tokens":32000,"stream":true,"context_management":{"edits":[]},"output_config":{"effort":"max"},"thinking":{"type":"adaptive"},"system":[{"type":"text","text":"client system instructions"}],"messages":[{"role":"user","content":"hello"},{"role":"system","content":"additional system context"}]}`)
+	r, err := DecodeMessages(body, 256<<10, 4096)
+	if err != nil {
+		t.Fatalf("Claude Code text request should be accepted: %v", err)
+	}
+	if r.Model != "deepseek-flash" || !r.Stream || r.MaxOutputTokens != 4096 || len(r.Transcript) != 3 {
+		t.Fatalf("unexpected request: %#v", r)
+	}
+	if r.Transcript[0].Role != "system" || r.Transcript[0].Text != "client system instructions" {
+		t.Fatalf("system field was not preserved: %#v", r.Transcript[0])
+	}
+	if r.Transcript[1].Role != "user" || r.Transcript[1].Text != "hello" {
+		t.Fatalf("user message was not preserved: %#v", r.Transcript[1])
+	}
+	if r.Transcript[2].Role != "system" || r.Transcript[2].Text != "additional system context" {
+		t.Fatalf("system message was not preserved: %#v", r.Transcript[2])
+	}
+}
+
 func TestDecodeResponsesTextAndRejectDuplicateKeys(t *testing.T) {
 	r, err := DecodeResponses([]byte(`{"model":"agent-default","instructions":"be brief","input":[{"role":"user","content":"hello"}],"max_output_tokens":100}`), 1024, 4096)
 	if err != nil {
@@ -25,6 +45,16 @@ func TestDecodeResponsesTextAndRejectDuplicateKeys(t *testing.T) {
 	}
 	if _, err = DecodeResponses([]byte(`{"model":"agent-default","model":"other","input":"hello","max_output_tokens":100}`), 1024, 4096); err == nil {
 		t.Fatal("expected duplicate JSON member to be rejected")
+	}
+}
+
+func TestDecodeResponsesClampsOutputTokensToProfile(t *testing.T) {
+	r, err := DecodeResponses([]byte(`{"model":"agent-default","input":"hello","max_output_tokens":32000}`), 1024, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.MaxOutputTokens != 4096 {
+		t.Fatalf("output token cap should be clamped to profile: got %d", r.MaxOutputTokens)
 	}
 }
 

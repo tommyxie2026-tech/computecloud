@@ -27,16 +27,20 @@ func TestConversationRequestDurableIdempotency(t *testing.T) {
 	ctx := context.Background()
 	ctx = rpcutil.WithPrincipal(ctx, rpcutil.Principal{Identity: config.Identity{Owner: "caller", Projects: []string{"p"}, ConversationProfile: "safe", Scopes: []string{"conversations:submit"}}})
 	r := conversation.Request{Protocol: "messages", Model: "agent-model", MaxOutputTokens: 20, Transcript: []conversation.Message{{Role: "user", Text: "hello"}}}
-	first, err := s.beginConversationRequest(ctx, r, "key-1")
+	first, err := s.beginConversationRequest(ctx, r, 123, "key-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := s.beginConversationRequest(ctx, r, "key-1")
+	second, err := s.beginConversationRequest(ctx, r, 999, "key-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.ID != second.ID || first.ID == "" {
+	if first.ID != second.ID || first.ID == "" || first.RequestBytes != 123 || second.RequestBytes != 123 {
 		t.Fatalf("idempotent replay created a new request: %q %q", first.ID, second.ID)
+	}
+	var persistedBytes int64
+	if err = db.SQL.QueryRow("SELECT request_bytes FROM conversation_requests WHERE request_id=?", first.ID).Scan(&persistedBytes); err != nil || persistedBytes != 123 {
+		t.Fatalf("persisted request_bytes=%d err=%v", persistedBytes, err)
 	}
 	var wg sync.WaitGroup
 	ids := make(chan string, 6)
@@ -45,7 +49,7 @@ func TestConversationRequestDurableIdempotency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			rec, e := s.beginConversationRequest(ctx, r, "key-1")
+			rec, e := s.beginConversationRequest(ctx, r, 123, "key-1")
 			if e != nil {
 				errs <- e
 				return
@@ -64,24 +68,24 @@ func TestConversationRequestDurableIdempotency(t *testing.T) {
 			t.Fatalf("concurrent idempotency created %q, want %q", id, first.ID)
 		}
 	}
-	auto1, err := s.beginConversationRequest(ctx, r, "")
+	auto1, err := s.beginConversationRequest(ctx, r, 123, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	auto2, err := s.beginConversationRequest(ctx, r, "")
+	auto2, err := s.beginConversationRequest(ctx, r, 123, "")
 	if err != nil || auto1.ID != auto2.ID {
 		t.Fatalf("automatic digest replay mismatch: %q %q err=%v", auto1.ID, auto2.ID, err)
 	}
-	if _, err = s.beginConversationRequest(ctx, r, "key-2"); status.Code(err) != codes.ResourceExhausted {
+	if _, err = s.beginConversationRequest(ctx, r, 123, "key-2"); status.Code(err) != codes.ResourceExhausted {
 		t.Fatalf("expected profile concurrency limit, got %v", err)
 	}
 	s.cfg.ConversationJobs.Profiles[0].MaxOutputTokens++
-	if _, err = s.beginConversationRequest(ctx, r, "key-1"); status.Code(err) != codes.AlreadyExists {
+	if _, err = s.beginConversationRequest(ctx, r, 123, "key-1"); status.Code(err) != codes.AlreadyExists {
 		t.Fatalf("expected profile revision conflict, got %v", err)
 	}
 	s.cfg.ConversationJobs.Profiles[0].MaxOutputTokens--
 	r.Transcript[0].Text = "different"
-	if _, err = s.beginConversationRequest(ctx, r, "key-1"); status.Code(err) != codes.AlreadyExists {
+	if _, err = s.beginConversationRequest(ctx, r, 123, "key-1"); status.Code(err) != codes.AlreadyExists {
 		t.Fatalf("expected idempotency conflict, got %v", err)
 	}
 }
@@ -103,7 +107,7 @@ func TestConversationRetryRecoversSubmitBeforeMappingAfterRestart(t *testing.T) 
 		t.Fatal(err)
 	}
 	r := conversation.Request{Protocol: "messages", Model: "remote", MaxOutputTokens: 100, Transcript: []conversation.Message{{Role: "user", Text: "recover me"}}}
-	rec, err := s1.beginConversationRequest(ctx, r, "restart-key")
+	rec, err := s1.beginConversationRequest(ctx, r, 123, "restart-key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +134,7 @@ func TestConversationRetryRecoversSubmitBeforeMappingAfterRestart(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	retry, err := s2.beginConversationRequest(ctx2, r, "restart-key")
+	retry, err := s2.beginConversationRequest(ctx2, r, 123, "restart-key")
 	if err != nil {
 		t.Fatal(err)
 	}

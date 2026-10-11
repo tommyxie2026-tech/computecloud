@@ -192,3 +192,48 @@ func TestTraceMetricsAcceptProviderProfileAndRejectSpoofedSource(t *testing.T) {
 		}
 	}
 }
+
+func TestJobTraceReportsStageDurations(t *testing.T) {
+	h := newJobHarness(t, true)
+	if err := createTrace(h.ctx, h.s.db.SQL, "trc_timing", "owner", "project", "conversation"); err != nil {
+		t.Fatal(err)
+	}
+	j, err := h.s.SubmitJob(withTrace(h.ctx, "trc_timing"), "trace-timing", job.JSON(h.spec("single")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := h.wait(t, j.ID); got.State != "SUCCEEDED" {
+		t.Fatalf("job state=%s", got.State)
+	}
+	trace, err := h.s.JobTrace(h.ctx, j.ID, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	durations := trace["stage_durations_ms"].(map[string]any)
+	for _, key := range []string{"queue_wait_ms", "runtime_ms", "result_finalize_ms"} {
+		if value, ok := durations[key].(int64); !ok || value < 0 {
+			t.Fatalf("duration %s=%#v", key, durations[key])
+		}
+	}
+}
+
+func TestJobTraceLeavesMissingDurationsNull(t *testing.T) {
+	h := newJobHarness(t, false)
+	if err := createTrace(h.ctx, h.s.db.SQL, "trc_queued", "owner", "project", "conversation"); err != nil {
+		t.Fatal(err)
+	}
+	j, err := h.s.SubmitJob(withTrace(h.ctx, "trc_queued"), "trace-queued-only", job.JSON(h.spec("single")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	trace, err := h.s.JobTrace(h.ctx, j.ID, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	durations := trace["stage_durations_ms"].(map[string]any)
+	for _, key := range []string{"queue_wait_ms", "runtime_ms", "result_finalize_ms"} {
+		if durations[key] != nil {
+			t.Fatalf("missing duration %s fabricated as %#v", key, durations[key])
+		}
+	}
+}

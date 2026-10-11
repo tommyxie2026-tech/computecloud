@@ -20,3 +20,10 @@ CREATE INDEX conversation_requests_job ON conversation_requests(job_id);
 CREATE TRIGGER conversation_request_identity_immutable BEFORE UPDATE OF request_id,owner,profile_id,protocol,idem_key,request_hash,profile_hash,request_blob ON conversation_requests
 BEGIN SELECT RAISE(ABORT,'conversation request identity immutable'); END;
 `
+
+const serverV18 = `
+ALTER TABLE conversation_requests ADD COLUMN request_bytes INTEGER NOT NULL DEFAULT 0 CHECK(request_bytes >= 0);
+DROP TRIGGER conversation_request_identity_immutable;
+CREATE TRIGGER conversation_request_identity_immutable BEFORE UPDATE OF request_id,owner,profile_id,protocol,idem_key,request_hash,profile_hash,request_blob,request_bytes ON conversation_requests
+BEGIN SELECT RAISE(ABORT,'conversation request identity immutable'); END;
+`

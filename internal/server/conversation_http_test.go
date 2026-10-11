@@ -246,6 +246,11 @@ func TestConversationMessagesExecutesDurableWorkerJob(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	expiredObserverCtx, cancelExpiredObserver := context.WithDeadline(observerCtx, time.Now().Add(-time.Second))
+	defer cancelExpiredObserver()
+	if _, e = h.s.waitConversation(expiredObserverCtx, slowRecord, *slowProfile, 500*time.Millisecond); status.Code(e) != codes.DeadlineExceeded {
+		t.Fatalf("expired observer context returned %v, want deadline exceeded", e)
+	}
 	if _, e = h.s.waitConversation(observerCtx, slowRecord, *slowProfile, 500*time.Millisecond); status.Code(e) != codes.DeadlineExceeded {
 		t.Fatalf("observer deadline not honored: %v", e)
 	}
@@ -367,4 +372,47 @@ func mustToken(t *testing.T, path string) string {
 		t.Fatal(e)
 	}
 	return v
+}
+
+func TestConversationRequestLimitIncludesExactBoundary(t *testing.T) {
+	base := []byte(`{"a":1}`)
+	for _, tc := range []struct {
+		name    string
+		body    []byte
+		limit   int64
+		wantErr bool
+	}{{"exact", base, int64(len(base)), false}, {"over-by-one", append(append([]byte(nil), base...), ' '), int64(len(base)), true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(tc.body))
+			r.Header.Set("Content-Type", "application/json")
+			_, err := readJSONBody(httptest.NewRecorder(), r, tc.limit)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error=%v wantErr=%v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestConversationOversizeChunkedRequest(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"payload":"too large"}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.ContentLength = -1
+	_, err := readJSONBody(httptest.NewRecorder(), r, 4)
+	if status.Code(err) != codes.ResourceExhausted || cleanCode(err) != "REQUEST_TOO_LARGE" {
+		t.Fatalf("chunked request error=%v", err)
+	}
+}
+
+func TestConversationOversizeErrorDoesNotEchoBody(t *testing.T) {
+	const secret = "private-attachment-marker"
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(secret))
+	r.Header.Set("Content-Type", "application/json")
+	r.ContentLength = -1
+	w := httptest.NewRecorder()
+	_, err := readJSONBody(w, r, 4)
+	httpError(w, err)
+	body := w.Body.String()
+	if w.Code != http.StatusRequestEntityTooLarge || strings.Contains(body, secret) || !strings.Contains(body, `"limit_bytes":4`) {
+		t.Fatalf("status=%d response=%q", w.Code, body)
+	}
 }
