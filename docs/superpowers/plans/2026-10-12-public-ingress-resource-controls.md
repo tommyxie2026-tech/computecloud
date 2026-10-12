@@ -56,6 +56,12 @@
 - [x] Apply the separate bounded limiter before bearer resolution on the standard HTTPS API, model gateway, and Agent conversation HTTP entry points; preserve the post-auth per-credential limiter.
 - [x] Focused regression and race tests passed locally; PR head `57e75ab` CI run [38219776567](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38219776567) passed 30/30 jobs, including Linux/macOS full verify.
 
+### Task 1b: Apply managed API-key lookup limits to gRPC
+
+- [x] Run the same bounded direct-peer-IP limiter before managed-key resolution in unary and streaming gRPC interceptors; share the HTTP source budget and ignore forwarding metadata.
+- [x] Add a regression test that rotates unknown managed keys from one peer and proves the resolver is called only once before `ResourceExhausted`.
+- [ ] Run CI verification for this gRPC extension.
+
 ### Task 2: Enforce identity/project workload budgets
 
 **Files:**
