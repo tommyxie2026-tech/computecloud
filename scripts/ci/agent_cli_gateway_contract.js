@@ -91,24 +91,25 @@ const server = http.createServer((req, res) => {
   const codexAuth = auth === `Bearer ${fixtures.codex}`;
   const claudeAuth = auth === `Bearer ${fixtures.claude}` || req.headers["x-api-key"] === fixtures.claude;
   const authKind = codexAuth ? "codex-fixture" : claudeAuth ? "claude-fixture" : auth || req.headers["x-api-key"] ? "wrong-credential" : "missing-credential";
+  const pathname = new URL(req.url, "http://localhost").pathname;
   requests.push(`${req.method} ${req.url} auth=${authKind}`);
   const parts = [];
   req.on("data", chunk => parts.push(chunk));
   req.on("end", () => {
     let body = {};
     try { body = JSON.parse(Buffer.concat(parts).toString("utf8") || "{}"); } catch {}
-    if (req.method === "POST" && req.url === "/v1/responses" && codexAuth) {
+    if (req.method === "POST" && pathname === "/v1/responses" && codexAuth) {
       if (body.model !== "fixture-model") unexpected.push("Codex sent an unexpected model");
       observed.codex = true;
       codexStream(res);
       return;
     }
-    if (req.method === "POST" && req.url === "/v1/messages/count_tokens" && claudeAuth) {
+    if (req.method === "POST" && pathname === "/v1/messages/count_tokens" && claudeAuth) {
       observed.claude = true;
       json(res, 200, { input_tokens: 1 });
       return;
     }
-    if (req.method === "POST" && req.url === "/v1/messages" && claudeAuth) {
+    if (req.method === "POST" && pathname === "/v1/messages" && claudeAuth) {
       if (typeof body.model !== "string" || !body.model) unexpected.push("Claude omitted its model");
       observed.claude = true;
       claudeStream(res, body.model);
