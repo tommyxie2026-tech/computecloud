@@ -65,6 +65,7 @@ func New(c config.Server) (*Server, error) {
 		return nil, e
 	}
 	s := &Server{cfg: c, db: d, auth: a, requestLimiter: newRequestLimiter(c.HTTP.RateLimit), peers: map[string]*session{}, workerReservations: map[string]bool{}, notify: make(chan struct{}, 1), projectCursor: map[int32]string{}, groupCursor: map[string]string{}, controlEpoch: store.ID()}
+	a.SetAPIKeyResolver(s.resolveAPIKey)
 	// Recover CLI children even when the gateway is disabled after a crash.
 	if err := (&modelGateway{s: s}).recoverCLI(); err != nil {
 		d.Close()

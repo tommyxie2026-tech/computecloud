@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -25,14 +26,19 @@ type Principal struct {
 }
 type contextKey struct{}
 type Auth struct {
-	identities    map[[32]byte]Principal
-	workerStreams chan struct{}
+	identities     map[[32]byte]Principal
+	workerStreams  chan struct{}
+	apiKeyResolver func(context.Context, string) (config.Identity, error)
 }
 
 func (a *Auth) SetWorkerStreamLimit(max int) {
 	if max > 0 {
 		a.workerStreams = make(chan struct{}, max)
 	}
+}
+
+func (a *Auth) SetAPIKeyResolver(resolve func(context.Context, string) (config.Identity, error)) {
+	a.apiKeyResolver = resolve
 }
 
 func NewAuth(users, workers []config.Identity) (*Auth, error) {
@@ -70,11 +76,19 @@ func (a *Auth) Bearer(ctx context.Context, header string) (context.Context, erro
 	if !strings.HasPrefix(header, "Bearer ") {
 		return ctx, status.Error(codes.Unauthenticated, "authentication required")
 	}
-	p, ok := a.identities[sha256.Sum256([]byte(strings.TrimPrefix(header, "Bearer ")))]
-	if !ok {
-		return ctx, status.Error(codes.Unauthenticated, "authentication required")
+	token := strings.TrimPrefix(header, "Bearer ")
+	digest := sha256.Sum256([]byte(token))
+	p, ok := a.identities[digest]
+	if ok {
+		return context.WithValue(ctx, contextKey{}, p), nil
 	}
-	return context.WithValue(ctx, contextKey{}, p), nil
+	if a.apiKeyResolver != nil && strings.HasPrefix(token, "cc_live_") {
+		identity, err := a.apiKeyResolver(ctx, hex.EncodeToString(digest[:]))
+		if err == nil {
+			return context.WithValue(ctx, contextKey{}, Principal{Identity: identity}), nil
+		}
+	}
+	return ctx, status.Error(codes.Unauthenticated, "authentication required")
 }
 func WithPrincipal(ctx context.Context, p Principal) context.Context {
 	return context.WithValue(ctx, contextKey{}, p)

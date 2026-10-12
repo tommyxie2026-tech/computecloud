@@ -99,6 +99,9 @@ func readJSONBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, 
 }
 func (s *Server) HTTPHandler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/auth/keys", s.httpCreateAPIKey)
+	mux.HandleFunc("GET /v1/auth/keys", s.httpListAPIKeys)
+	mux.HandleFunc("DELETE /v1/auth/keys/{id}", s.httpRevokeAPIKey)
 	mux.HandleFunc("GET /v1/jobs/{id}/artifacts/{artifact}/review", s.httpArtifactReview)
 	mux.HandleFunc("GET /v1/jobs/{id}/goal", s.httpJobGoal)
 	mux.HandleFunc("POST /v1/jobs/{id}/goal/decisions", s.httpGoalDecision)

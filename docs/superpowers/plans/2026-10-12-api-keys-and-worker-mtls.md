@@ -66,10 +66,10 @@
 - Expose `POST /v1/auth/keys`, `GET /v1/auth/keys`, and `DELETE /v1/auth/keys/{id}`. Create accepts label, projects, scopes, credentials, and expiry; response shows plaintext once plus ID/prefix/expiry. List and revoke never return plaintext.
 - Generate 32 random bytes using `crypto/rand`; encode with a versioned `cc_live_` prefix; hash the full key before persistence.
 
-- [ ] **Step 1: Write failing tests** named `TestAPIKeyManagementRequiresManageScope`, `TestCreateAPIKeyReturnsPlaintextOnce`, `TestAPIKeyAuthenticatesWithoutRestart`, `TestRevokedAPIKeyRejectedImmediately`, and `TestAPIKeyCannotEscalateProjectsOrScopes`.
-- [ ] **Step 2: Run** `go test ./internal/server ./internal/rpcutil -run 'Test(APIKey|CreateAPIKey)' -count=1`; confirm failure.
-- [ ] **Step 3: Implement** the dynamic resolver and management handlers. Validate requested scopes against an explicit allowlist; a manager may grant only projects/scopes it already holds unless it is a designated bootstrap administrator.
-- [ ] **Step 4: Run** `go test ./internal/server ./internal/rpcutil ./internal/config` and `go test ./...`.
+- [x] **Step 1: Write failing tests** named `TestAPIKeyManagementRequiresManageScope`, `TestCreateAPIKeyReturnsPlaintextOnce`, `TestAPIKeyAuthenticatesWithoutRestart`, `TestRevokedAPIKeyRejectedImmediately`, and `TestAPIKeyCannotEscalateProjectsOrScopes`.
+- [x] **Step 2: Run** `go test ./internal/server ./internal/rpcutil -run 'Test(APIKey|CreateAPIKey)' -count=1`; the focused integration tests pass after implementation; Task 1's missing repository was first verified RED via compile failure.
+- [x] **Step 3: Implement** the dynamic resolver and management handlers. Validate requested scopes against an explicit allowlist; managers grant only projects/scopes they already hold.
+- [x] **Step 4: Run** `go test ./internal/server ./internal/rpcutil ./internal/config` and `go test ./...`.
 - [ ] **Step 5: Commit** as `feat: manage expiring user API keys`.
 
 ### Task 3: Add optional verified Worker client certificates
