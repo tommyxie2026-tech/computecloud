@@ -46,6 +46,14 @@
 
 策略清单检查：`python3 scripts/check_public_edge_config.py`。该检查只验证仓库策略样例，不能证明云侧实际规则；目标环境仍须记录公开端口扫描、源站绕过拒绝、TLS 和限额响应证据。
 
+## 后续安全加固（未包含在 v0.4.7 发布产物中）
+
+当前安全加固工作树包含 v19 API key 元数据、managed key 管理 API、Worker mTLS 与公网上限控制。它不是已发布 v0.4.7 的功能；不要把 v0.4.7 镜像与 v19 数据目录混用。v0.4.7 的 Server schema 仍为 v18，工作树升级 v18→v19 前要停止旧服务、排空 Attempt、做并验证备份。若工作树回退到 v0.4.7，必须恢复完整 v18 Server 数据快照和旧配置。
+
+首次 key 通过离线 `computecloud keys bootstrap` 建立，秘密只写入权限为 0600 的新文件；管理 API 后续负责创建、列出和撤销子 key。创建 key 时仅可授予管理 key 已持有的项目、scope 与 credential，最长有效期 90 天。更完整的 key 生命周期命令、Worker A/B fingerprint 轮换、mTLS `optional`→`required` 迁移及回退步骤见[容器部署安全章节](container-images.md#api-key-生命周期与-worker-mtls-安全加固工作树)。
+
+在真实 A/B 证书、Server 管理入口与目标主机配置到位前，P1 不可判定为生产验收完成。CI 用例验证证书链、URI SAN、fingerprint 撤销和用户无证书兼容性，但不能证明生产 CA 签发策略、证书私钥分发权限或真实轮换回退操作。
+
 本机或目标环境可运行安全 smoke 检查；必须显式传入 HTTPS endpoint 和保护好的测试 Token 文件，不会默认访问外网：
 
 ~~~sh

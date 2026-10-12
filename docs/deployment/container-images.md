@@ -107,6 +107,64 @@ server:
 
 符合该契约的边缘策略示例见 [`public-edge.example.json`](public-edge.example.json)，可用 `python3 scripts/check_public_edge_config.py` 检查。它验证仓库中的策略清单，不会自动配置云安全组/WAF；目标环境必须另行提供源站绕过和公开端口扫描结果。
 
+### API key 生命周期与 Worker mTLS（安全加固工作树）
+
+以下能力属于 v0.4.7 之后的安全加固工作树，未包含在已发布的 v0.4.7 镜像中。工作树 Server 使用 schema v19；从 v18 升级前需停机、排空 Attempt、做可恢复备份。旧 v0.4.7 二进制不能打开 v19 数据库，回退时必须同时恢复 v18 数据快照和旧配置。
+
+首次创建受限管理 key 时，先确认 Server 已停止，并用离线命令把一次性密钥写入新建的 0600 文件；命令只打印 ID、前缀、过期时间和文件路径，不会输出密钥：
+
+~~~sh
+computecloud keys bootstrap \
+  --data-dir ./server-data \
+  --owner operator \
+  --project team-a \
+  --scope jobs:submit \
+  --scope jobs:read \
+  --scope jobs:cancel \
+  --credential codex-account \
+  --out ./secrets/operator.token \
+  --expires-in 24h
+~~~
+
+将生成的管理 key 配置为 Server 用户身份之外的运行时凭据；managed API key 的主体/项目/scope/credential 列表存于 Server SQLite，仅保留 SHA-256 digest 与短前缀。拥有 `api_keys:manage` 的 key 可调用 `POST /v1/auth/keys` 创建最多 90 天的子 key，但只能授予自身持有的项目、scope 和 credential。创建响应只显示一次明文；`GET /v1/auth/keys` 不返回明文/digest，`DELETE /v1/auth/keys/{id}` 在下一次请求即撤销。离线 bootstrap 不覆盖已有 key 文件，也不会为同一 owner 创建第二个仍有效的管理 key。
+
+Worker mTLS 使用独立 CA 与每台 Worker 的客户端证书。服务端 TLS 配置示例：
+
+~~~yaml
+server:
+  tls:
+    cert_file: /run/secrets/server.crt
+    key_file: /run/secrets/server.key
+    client_ca_file: /run/secrets/worker-client-ca.crt
+    worker_mtls_mode: optional
+  workers:
+    - worker_id: worker-a
+      client_cert_sha256: ["<worker-a-cert-sha256-hex>"]
+~~~
+
+Worker 单独挂载自己的客户端证书与私钥：
+
+~~~yaml
+worker:
+  tls:
+    ca_file: /run/secrets/server-ca.crt
+    cert_file: /run/secrets/worker-a-client.crt
+    key_file: /run/secrets/worker-a-client.key
+~~~
+
+配置 fingerprint 可用 `openssl x509 -in worker-a-client.crt -outform DER | openssl dgst -sha256` 计算并去掉前缀。证书 URI SAN 必须恰好包含 `spiffe://computecloud/workers/worker-a`。`optional` 模式允许尚未登记 fingerprint 的 Worker 在迁移窗口继续使用现有 Token；一旦登记该 Worker fingerprint，就必须同时出示匹配证书。确认每台 Worker 已连接后切换 `required`，该模式要求所有配置 Worker 均有 fingerprint。用户 gRPC 客户端仍可不带客户端证书。
+
+可先离线核验 CA 链和 URI SAN；脚本只输出 Worker ID 与通过/失败，不读取或输出私钥：
+
+~~~sh
+python3 scripts/security/verify_worker_mtls.py \
+  --ca-file ./secrets/worker-client-ca.crt \
+  --certificate-file ./secrets/worker-a-client.crt \
+  --worker-id worker-a
+~~~
+
+逐台轮换时，服务端 fingerprint 列表同时保留旧/新证书 hash；先部署新证书，再逐台重启 Worker 并确认连接，然后移除旧 hash 并重启 Server。移除的 hash 即时失效。回滚时先恢复 Server/Worker 旧证书与旧配置；若回滚到 v0.4.7，还必须恢复升级前 v18 数据快照。任何已撤销的 token/fingerprint 都不得重新加入回滚配置。
+
 ### 3.1 证书与密钥准备
 
 生产环境应从组织 PKI 获取 Server 证书。证书的 SAN 必须覆盖实际 IP/端口对应的主机身份；端口不写入 SAN。Server 容器只挂载私钥和证书，Worker/客户端只挂载 CA，不复制 Server 私钥：

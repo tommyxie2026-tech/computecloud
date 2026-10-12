@@ -17,3 +17,10 @@ Task 3: Ruling: gRPC TLS requests but does not globally require client certifica
 Task 3: RED→GREEN: mTLS tests initially failed to compile because config fields, TLS hooks, and client certificate support were absent. Added valid/invalid SAN, unpinned thumbprint, no certificate, unknown CA, expired cert, and user no-cert/user-cert cases; all focused tests pass.
 Task 3: Verification: `go test ./internal/rpcutil ./internal/server ./internal/worker`, `go test -race ./internal/rpcutil ./internal/server`, and `GOCACHE=/private/tmp/computecloud-public-security-gocache go test ./...` passed.
 Task 3: pending commit `feat: authenticate workers with per-node mTLS`.
+
+Task 3: complete — commit `cfb5403` (`feat: authenticate workers with per-node mTLS`).
+
+Task 4: Ruling: offline bootstrap refuses an existing active manager key, writes only a new mode-0600 key file, persists only its digest/prefix, and prints metadata without the plaintext. It is run while Server is stopped because opening the data directory takes its exclusive lock and may perform v18→v19 migration. Only explicit delegable job/task/goal scopes can be bootstrapped; model/conversation scopes are excluded until they have complete credential bindings.
+Task 4: Tests: bootstrap dispatch, no plaintext output, file permissions, duplicate manager and output-file refusal, and unsafe scope/expiry cases pass. Required mTLS/fingerprint and missing client key config checks pass. Four test-only certificate utility cases pass.
+Task 4: Verification: `go test ./...`, full Server/rpcutil race tests, 13 Python security tests, edge policy checker, Python bytecode compile, and `git diff --check` pass.
+Task 4: pending commit `docs: add API key and worker certificate lifecycle`.

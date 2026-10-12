@@ -105,11 +105,11 @@
 - Modify: `examples/worker.yaml`
 - Create: `scripts/security/verify_worker_mtls.py`
 
-- [ ] **Step 1: Write failing command/config tests** for key bootstrap, required mTLS validation, missing cert/key pairs, and malformed/unknown mode.
-- [ ] **Step 2: Run** `go test ./cmd/computecloud ./internal/config -run 'Test(Key|MTLS)' -count=1`; confirm expected tests fail.
-- [ ] **Step 3: Implement** an offline bootstrap command that creates the first manager key without printing secrets to logs, and document online manager API key lifecycle thereafter. Document a Worker-by-Worker mTLS rollout with overlap, rollback, and final `required` mode.
-- [ ] **Step 4: Add** a test-only certificate verification utility that reports pass/fail and Worker ID but never prints private key or token material.
-- [ ] **Step 5: Run** `go test ./...`, `go test -race ./internal/server ./internal/rpcutil`, script tests, and `git diff --check`.
+- [x] **Step 1: Write failing command/config tests** for key bootstrap, required mTLS validation, missing cert/key pairs, and malformed/unknown mode.
+- [x] **Step 2: Run** `go test ./cmd/computecloud ./internal/config -run 'Test(Key|MTLS)' -count=1`; command tests pass after implementation; Task 3 config tests cover required mode, missing cert/key, and invalid mode.
+- [x] **Step 3: Implement** an offline bootstrap command that creates the first manager key without printing secrets to logs, and document online manager API key lifecycle thereafter. Document a Worker-by-Worker mTLS rollout with overlap, rollback, and final `required` mode.
+- [x] **Step 4: Add** a test-only certificate verification utility that reports pass/fail and Worker ID but never prints private key or token material.
+- [x] **Step 5: Run** `go test ./...`, `go test -race ./internal/server ./internal/rpcutil`, script tests, and `git diff --check`.
 - [ ] **Step 6: Commit** as `docs: add API key and worker certificate lifecycle`.
 
 ---

@@ -5,6 +5,10 @@ worker:
   token_file: ../secrets/worker-a.token
   tls:
     insecure_loopback: true
+    # For a remote Server with worker_mtls_mode enabled, provide this
+    # Worker's dedicated client certificate and private key (0600, read-only).
+    # cert_file: ../secrets/worker-a-client.crt
+    # key_file: ../secrets/worker-a-client.key
   slots: 2
   stop_grace_ms: 3000
   repositories:
