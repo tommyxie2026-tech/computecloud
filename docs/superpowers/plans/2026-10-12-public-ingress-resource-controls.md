@@ -60,7 +60,7 @@
 
 - [x] Run the same bounded direct-peer-IP limiter before managed-key resolution in unary and streaming gRPC interceptors; share the HTTP source budget and ignore forwarding metadata.
 - [x] Add a regression test that rotates unknown managed keys from one peer and proves the resolver is called only once before `ResourceExhausted`.
-- [ ] Run CI verification for this gRPC extension.
+- [x] PR head `86161ae` CI run [38220975018](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38220975018) passed all 30 jobs, including Linux/macOS full verify.
 
 ### Task 2: Enforce identity/project workload budgets
 
