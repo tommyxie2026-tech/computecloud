@@ -124,10 +124,10 @@
 - Modify: `docs/implementation/v0.4.7-stable-tracker.md`
 - Modify: `docs/validation/v0.4.7-integration-acceptance.md`
 
-- [ ] **Step 1: Write acceptance checklist** that distinguishes CI fixture proof, target-host OCI proof, model credential isolation proof, and public-edge proof.
-- [ ] **Step 2: Verify** the checklist rejects release evidence that has no candidate SHA, image digest, platform, Attempt ID, secret-scrubbed output, or negative network test.
-- [ ] **Step 3: Document** staged rollout: trusted single-tenant first; mTLS and public strict mode enabled per Worker; canary with budgets; expand only after no-egress-bypass and credential-canary checks; rollback restores binaries/data while revoked keys/certs remain revoked.
-- [ ] **Step 4: Run** repository documentation/validation scripts, `go test ./...`, `git diff --check`, and validate the acceptance report schema against a sanitized fixture.
+- [x] **Step 1: Write acceptance checklist** distinguishing CI fixture proof, target-host OCI proof, Attempt credential isolation, and public-edge proof.
+- [x] **Step 2: Verify** the validator rejects missing SHA/digests/platform/Attempt, fixture-only evidence, missing network negatives, and credential-shaped data.
+- [x] **Step 3: Document** staged rollout: trusted single-tenant first; mTLS and public strict mode per Worker; low-quota canary; expand only after egress and revocation checks; rollback keeps revoked keys/certs revoked.
+- [ ] **Step 4: Run** repository documentation/validation scripts, `go test ./...`, `git diff --check`, and validate the acceptance report schema against sanitized fixtures.
 - [ ] **Step 5: Commit** as `docs: gate public tenants on runtime security evidence`.
 
 ---

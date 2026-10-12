@@ -54,6 +54,31 @@
 
 在真实 A/B 证书、Server 管理入口与目标主机配置到位前，P1 不可判定为生产验收完成。CI 用例验证证书链、URI SAN、fingerprint 撤销和用户无证书兼容性，但不能证明生产 CA 签发策略、证书私钥分发权限或真实轮换回退操作。
 
+### 不可信公网任务的准入与回退门禁
+
+P0/P1/P2 的工作树实现及回归测试不能替代目标环境证据。在双机 Linux/macOS Worker 或目标 Linux Worker 上开放不可信租户前，必须逐项记录：
+
+| 验收证据 | 必需记录 | 放行条件 |
+| --- | --- | --- |
+| 代码与产物 | candidate SHA、Server/Worker/Agent Runtime 镜像 digest、平台 | 三者来自同一候选构建，镜像按 digest 部署 |
+| 身份与密钥 | API key 创建/撤销结果，Worker ID、证书 SAN、SHA-256 指纹轮换记录 | 不含私钥/token；旧 key/指纹撤销后立即失效 |
+| OCI 隔离 | Attempt ID、Workspace escape 负向结果、容器退出/清理结果 | 没有宿主进程回退；无宿主凭据文件、Docker socket 或其他 Attempt 工作区挂载 |
+| 出站网络 | Attempt ID、实际镜像 digest、平台、模型端点可达；metadata、host gateway、私网测试点、未批准公网目标均不可达 | 每个拒绝目标都在网络层失败，结果 JSON 不含 URL 或 secret |
+| 公网边缘 | 公网端口、TLS、WAF/限流、源站直连测试 | 只开放规定入口且无法绕过 LB/WAF |
+
+strict execution 需要 Server 和每台 Worker 同时设置 `public_execution_mode: isolated_only`，并由 `codex_http`、container Environment 与 Attempt Gateway 路由组成受支持路径；Claude 等未验证 Gateway 认证的运行时会被拒绝。Agent Runtime controller 需用 `--public-strict`、operator 创建的 egress network、seccomp 文件和资源限额启动。先在隔离网络执行 `validate_worker_runtime_config.py` 与 `worker_egress_acceptance.py`，再审阅脱敏记录；不能只凭配置项或 CI 标记通过。
+
+完成上述所有目标主机验证后，将真实观测写入统一 evidence JSON，并运行以下门禁。样例 fixture 和 CI 结果不能设置 `target_host: true`，也无法替代要求的各项网络负向结果：
+
+```sh
+python3 scripts/security/validate_public_security_evidence.py \
+  dist/public-security/evidence.json
+```
+
+建议分阶段开放：先单租户可信测试并确认租户/项目隔离；启用 Worker mTLS 和 strict execution；对一个低配额 canary 租户验证正常任务、撤销、取消、预算和隔离失败；审核完整证据后再扩大流量。任一凭据撤销、网络拒绝、容器清理或 Attempt 绑定检查失败，立即停止新任务并暂停公网租户准入。
+
+回退时先关闭新租户投递、排空或停止 Attempt，再按兼容的数据快照回滚 Server/Worker 镜像和数据库。任何已吊销 API key 或证书指纹不得随数据恢复而重新启用。只有可信租户被网络策略明确隔离时，才可临时使用 `trusted_only`；否则保持服务停止，直到 strict 路径恢复并重验。
+
 本机或目标环境可运行安全 smoke 检查；必须显式传入 HTTPS endpoint 和保护好的测试 Token 文件，不会默认访问外网：
 
 ~~~sh

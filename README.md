@@ -25,6 +25,7 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - Runtime 预算：自托管 `claude_http` 已支持 Claude 客户端估算费用的微美元硬停止边界，包含能力协商、Assignment 冻结、单在途 Attempt、原子 usage 结算和未知用量 fail-closed。一次 API 调用可能越过阈值；它不是供应商账单上限。Codex token/cost 与 Claude token 上限仍不支持。
 - RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费、显式提议入口和限定范围 Runtime cost enforcement 已实现。固定版本真实 Runtime 与独立主机验收仍待完成，RPG-4 保持 PARTIAL；完成后关闭，不新增 RPG-5
 - 当前安全加固工作树 Server schema：**v19**（可撤销 API key 元数据；v0.4.7 发布基线为 v18，v0.4.6 tag 为 v13）；Worker schema：**v6**
+- 公网安全加固 P0/P1 与 P2 strict execution / Codex Attempt Gateway / OCI 边界仍在独立工作分支，尚未发布；不可信公网租户仍须等目标主机双机证书、OCI escape、egress firewall 和源站保护验收通过。状态与证据门禁见[安全实施台账](docs/implementation/public-access-security-tracker.md)和[v0.4.7 公网生产验收章节](docs/deployment/production-v0.4.7.md#不可信公网任务的准入与回退门禁)
 - 下一轮任务与缺口：[0.4.x 收尾计划](docs/implementation/v0.4-closeout-plan.md)；先推进代码与 CI，最后使用独立主机完成真实生产基线和缓存验收
 - 认证模拟 Gate：[CI 范围与证据](docs/validation/certification-simulation.md) 汇总 v13→v16 升级/恢复、单 runner 双 Worker、Relay 回退和缓存 P50；它不代表真实独立主机、真实 Runtime 或生产环境验收
 - 发布状态以 [GitHub Actions](https://github.com/tommyxie2026-tech/computecloud/actions) 与 [GitHub Releases](https://github.com/tommyxie2026-tech/computecloud/releases) 为准；代码实现完成不等于已发布
