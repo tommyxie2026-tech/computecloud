@@ -21,6 +21,9 @@
 
 - 已完成：安全审查报告与架构设计规格；规格提交 `53cb5a1`。
 - 已完成：P0/P1/P2 三份逐任务实施计划；P0 Task 1 已提交 `79cc1df`（认证 HTTP 请求限流）。
-- 已完成待提交：P0 Task 2 身份/项目作业配额与模型请求并发上限；`go test ./...` 与新增用例竞态检测通过。
-- 尚未开始：P0 Worker gRPC 入场限制、公网入口部署契约与 smoke 验证；P1 API Key 生命周期/Worker mTLS；P2 Attempt 凭据与网络隔离。
+- 已完成：P0 Task 2 身份/项目作业配额与模型请求并发上限，commit `0fcb5c5`。
+- 已完成：P0 Task 3 Worker gRPC session/stream 入场限制，commit `2e875cb`。
+- 已完成待提交：P0 Task 4 公网边缘策略清单、部署约束文档和自动检查；P0 Task 5 安全 smoke 工具已实现并通过 mock 用例。
+- 尚未完成：目标环境公网端口扫描、源站绕过拒绝、WAF/安全组配置、真实 429/队列饱和验收；没有目标 endpoint、云边缘配置或测试凭据，不能据 CI 宣称公网环境已安全。
+- 尚未开始：P1 API Key 生命周期/Worker mTLS；P2 Attempt 凭据与网络隔离。
 - 当前验证证据：静态代码/配置审查。尚无公网安全组/WAF 状态、真实 Worker 客户端证书、逃逸负向测试或外部端口核验结果。

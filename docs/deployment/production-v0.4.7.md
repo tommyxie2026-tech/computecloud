@@ -2,6 +2,8 @@
 
 本指南适用于 Agent-aware Distributed Job Execution Platform / Agent Job Executor。v0.4.7 已正式发布，归档、`SHA256SUMS`、`CONTAINER_IMAGES.txt` 和 GHCR 镜像 digest 可从 [v0.4.7 Release](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7) 获取，并核对归档校验和、Release tag 与源代码 SHA。发布记录列有已核验的归档 SHA-256 和 Server/Worker 多架构镜像 digest；部署时建议固定 digest 而不是使用可变标签。
 
+> 公网部署安全状态：本指南补充了边缘拓扑和服务端资源限制，但仓库没有云安全组、WAF 或真实源站网络状态的证据。不要把本仓库 CI 通过等同于目标环境安全验收；受控用户可按下方契约部署，面向不可信公网租户前必须完成外部验收。
+
 ## 版本边界
 
 - Server schema：v18；从 v0.4.6 的 v13 升级时执行 v13→v18 迁移。Worker schema：v6。
@@ -33,3 +35,33 @@
 ## 发版后验收
 
 独立 Linux Worker、真实 Runtime/MCP、容器逃逸负向测试、24 小时长任务、真实 NAT Relay、代表性缓存 P50/P95 与目标环境升级/恢复仍需按 [v0.4.7 稳定版台账](../implementation/v0.4.7-stable-tracker.md) 提交脱敏证据。它们保持待验收，不影响本次 CI 门禁放行。
+
+## 公网入口安全契约
+
+- 对互联网公开的入口仅为 TCP 7443（gRPC/TLS passthrough）和 HTTPS 7444（L7 Gateway/WAF）。不要公开数据库、指标、管理端口、容器工作目录或 Docker socket。
+- 源站防火墙只允许边缘 LB/WAF 地址访问 7443/7444；Worker/用户访问公开 LB 地址。必须从外部确认无法直连源站绕过边缘规则。
+- 7443 的 Server TLS 端到端保留；7444 的 Gateway 保留 Bearer `Authorization`、禁止缓存、限制体积/并发/速率。Server 负责身份、scope、project、Job 与模型配额。
+- 认证用户默认限额为每 owner/project 8 个活跃 Job、32 个排队 Job、4 个模型请求并发；Worker 默认 128 个 session 和 stream。可在 Server YAML 的用户 `limits` 与顶层 `worker_admission` 中调整，多个用户身份共享 `owner` 必须配置一致限额。
+- 超额响应 429 或 gRPC `ResourceExhausted`；调用方应退避，禁止无界重试。健康探测限于固定轻量路径，7443 不得使用 HTTP/明文探测。
+
+策略清单检查：`python3 scripts/check_public_edge_config.py`。该检查只验证仓库策略样例，不能证明云侧实际规则；目标环境仍须记录公开端口扫描、源站绕过拒绝、TLS 和限额响应证据。
+
+本机或目标环境可运行安全 smoke 检查；必须显式传入 HTTPS endpoint 和保护好的测试 Token 文件，不会默认访问外网：
+
+~~~sh
+python3 scripts/security/public_ingress_smoke.py \
+  --base-url https://api.example.com \
+  --token-file ./secrets/test-user.token
+~~~
+
+若要检查队列饱和响应，先在隔离环境准备小型有效 Job JSON，并明确确认脚本会尝试提交一次真实 Job：
+
+~~~sh
+python3 scripts/security/public_ingress_smoke.py \
+  --base-url https://staging.example.com \
+  --token-file ./secrets/test-user.token \
+  --queue-job-file ./fixtures/valid-job.json \
+  --confirm-queue-test
+~~~
+
+脚本只输出脱敏的通过/失败状态；队列探测若返回已接受，表示目标队列没有饱和，且该探测 Job 已创建，应在隔离环境清理它。不要在生产环境主动填满队列。

@@ -78,11 +78,34 @@ server:
     cert_file: /run/secrets/server.crt
     key_file: /run/secrets/server.key
   data_dir: /var/lib/computecloud
+  worker_admission:
+    max_sessions: 128
+    max_streams: 128
+  users:
+    - owner: team-a
+      token_file: /run/secrets/team-a.token
+      projects: [team-a]
+      scopes: [jobs:submit, jobs:read, jobs:cancel, models:invoke]
+      limits:
+        max_active_jobs: 8
+        max_queued_jobs: 32
+        max_model_requests: 4
 ~~~
 
 宿主 data directory 必须允许 UID 65532 写入。正式部署优先使用 `image@sha256:<digest>`。
 
-`0.0.0.0` 只表示容器监听所有容器接口，不代表应该向互联网开放。宿主防火墙至少应限制 7443 仅允许 Worker 网段，7444 仅允许运维客户端或受信代理；不要发布数据库、工作目录或 Docker socket。
+`0.0.0.0` 只表示容器监听所有容器接口。若服务面向互联网，公网入口只保留 7443 与 7444：7444 经过 HTTPS L7 Gateway/WAF，7443 经过 TCP/TLS passthrough 负载均衡；不要把 Docker 主机地址作为可绕过边缘策略的源站。
+
+生产边缘必须满足：
+
+- 防火墙/安全组仅允许边缘代理地址访问源站 7443/7444；公网用户只访问 Gateway/LB 的公开地址。验证从互联网直连源站 IP 会失败，避免绕过 WAF、限速和审计。
+- 7444 在 L7 入口校验 TLS、限制请求体/连接/速率并提供 DDoS/WAF 防护；保留 `Authorization` 头，禁止缓存 API 响应。Server 仍执行 Token、scope、项目和速率/配额校验。
+- 7443 经 TCP/TLS passthrough 保持 Server TLS 端到端；代理不得终止后以明文转发，也不得把 HTTP 探测或明文健康检查发到该端口。Worker stream/session 达到限额时返回 gRPC `ResourceExhausted`。
+- Server 配置 `worker_admission`，并为每个用户身份配置可选的 `limits`。默认值为活跃 Job 8、排队 Job 32、模型并发 4；Worker 默认最多 128 个 session/stream。多个身份共用同一 `owner` 时，限额必须一致。
+- 对 429/`ResourceExhausted` 做带抖动的退避，不自动无限重试；日志不得包含 Bearer 值、提示词、上游密钥或请求正文。
+- 公开健康探测只允许固定轻量路径，不得探测数据库、Worker 凭据或管理接口；指标、数据库、Docker socket、工作目录均不得公开或挂载到边缘容器。
+
+符合该契约的边缘策略示例见 [`public-edge.example.json`](public-edge.example.json)，可用 `python3 scripts/check_public_edge_config.py` 检查。它验证仓库中的策略清单，不会自动配置云安全组/WAF；目标环境必须另行提供源站绕过和公开端口扫描结果。
 
 ### 3.1 证书与密钥准备
 

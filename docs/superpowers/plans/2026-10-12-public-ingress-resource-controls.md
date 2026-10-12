@@ -102,7 +102,7 @@
 - [x] **Step 2: Run** `python3 -m unittest scripts.check_public_edge_config_test` (5 checks pass, including mutated insecure fixtures).
 - [x] **Step 3: Update** deployment guidance for source protection, origin/backend bypass prevention, trusted-proxy boundaries, DDoS/WAF duties, 429 handling, health-check exposure, and safe logs.
 - [x] **Step 4: Run** `python3 -m unittest scripts.check_public_edge_config_test`, `go test ./...`, and `git diff --check`.
-- [ ] **Step 5: Commit** as `docs: define hardened public edge deployment`.
+- [x] **Step 5: Commit** as `docs: define hardened public edge deployment`.
 
 ### Task 5: Verify adversarial resource-control behavior
 
