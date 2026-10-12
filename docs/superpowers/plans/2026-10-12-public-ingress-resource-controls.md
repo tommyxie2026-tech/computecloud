@@ -115,7 +115,7 @@
 - [x] **Step 2: Run** `python3 -m unittest scripts.security.public_ingress_smoke_test` (mocked endpoint cases pass).
 - [x] **Step 3: Implement** a safe smoke tool that accepts an explicitly supplied test endpoint and test key from protected files/environment, never prints credentials, and never targets arbitrary networks by default.
 - [x] **Step 4: Run** unit fixtures, `go test ./...`, targeted `go test -race ./internal/server ./internal/rpcutil`, and `git diff --check`.
-- [ ] **Step 5: Commit** as `test: verify public ingress security controls`.
+- [x] **Step 5: Commit** as `test: verify public ingress security controls`.
 
 ---
 
