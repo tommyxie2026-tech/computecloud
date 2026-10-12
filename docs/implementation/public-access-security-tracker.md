@@ -37,5 +37,5 @@
 - 尚未完成：P2 pinned Codex CLI 认证协议实测、Claude Gateway 支持（当前 fail closed）、OCI 逃逸负向测试、目标 Worker 出站负向验收。
 - 已实现（待 CI/目标环境验收）：strict `isolated_only` 下每个 Codex HTTP Attempt 必须配置 `max_attempt_tokens`、`max_attempt_cost_microusd` 与输入/输出每百万 token 单价；Gateway 依据已结算 usage 累计 token 与估算费用、请求串行化、未知用量 fail closed，并按两类余额夹紧 `max_output_tokens`。输入估算按请求体字节数保守预留，费用每次调用向上取整；compact endpoint 不支持。每个新 Attempt（包括重试）有独立额度。
 - 尚未完成：供应商实际账单硬上限。Gateway 估算依赖管理员价格配置和供应商 usage，不能约束供应商账单、定价变化或单次在途请求超额；不可信公网模型调用仍须配置可验证的上游支出硬预算，或暂限可信租户。Claude Gateway/token 预算仍 fail closed。
-- 已提交：strict Attempt token cap 与文档，commit `1c7e7e0`。本地 `go test ./...`、预算路径 race 测试、17 项 Python 安全/边缘策略测试、策略样例检查、Python compile 与 `git diff --check` 通过。全量 Server race 首次运行中一个既有端到端用例 `TestGatewayWorkerInvocationAndSecretRedaction` 因 `ARTIFACT_ERROR` 失败；普通复测通过，新增预算路径 race 测试通过。
+- 已提交：strict Attempt token 预算 `d98bce1`；token 与估算费用双预算 `3778928`。本地全量 `go test ./...`、`go vet ./...`、新增预算路径 race 测试、17 项 Python 安全/边缘策略测试、策略样例检查、Python compile 与 `git diff --check` 通过。全量 Server race 曾有既有端到端用例 `TestGatewayWorkerInvocationAndSecretRedaction` 报 `ARTIFACT_ERROR`；该用例普通复测通过，新增预算路径 race 测试通过。
 - 尚待验证：GitHub CI、锁定 Codex CLI/真实上游的协议与用量合同，以及公网安全组/WAF、真实 Worker 客户端证书、逃逸负向测试和外部端口核验。当前无目标环境证据。
