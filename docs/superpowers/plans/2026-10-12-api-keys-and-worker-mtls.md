@@ -47,7 +47,7 @@
 - [x] **Step 2: Run** `go test ./internal/store -run 'Test(ServerV19|APIKey)' -count=1`; initial compile failed because the v19 repository was absent.
 - [x] **Step 3: Implement** the v19 migration, increment `ServerSchema` target from 18 to 19, and implement owner-filtered repository methods using transactions.
 - [x] **Step 4: Run** `go test ./internal/store` and verify SQLite `integrity_check` and `foreign_key_check` in the migration test.
-- [ ] **Step 5: Commit** as `feat: persist revocable API key metadata`.
+- [x] **Step 5: Commit** as `feat: persist revocable API key metadata` (`fb6e059`).
 
 ### Task 2: Authenticate managed API keys and add management endpoints
 
@@ -70,7 +70,7 @@
 - [x] **Step 2: Run** `go test ./internal/server ./internal/rpcutil -run 'Test(APIKey|CreateAPIKey)' -count=1`; the focused integration tests pass after implementation; Task 1's missing repository was first verified RED via compile failure.
 - [x] **Step 3: Implement** the dynamic resolver and management handlers. Validate requested scopes against an explicit allowlist; managers grant only projects/scopes they already hold.
 - [x] **Step 4: Run** `go test ./internal/server ./internal/rpcutil ./internal/config` and `go test ./...`.
-- [ ] **Step 5: Commit** as `feat: manage expiring user API keys`.
+- [x] **Step 5: Commit** as `feat: manage expiring user API keys` (`f5709fc`).
 
 ### Task 3: Add optional verified Worker client certificates
 
@@ -88,10 +88,10 @@
 - Configure gRPC TLS as `VerifyClientCertIfGiven` when Worker mTLS is enabled; certificate chains are verified against the configured client CA.
 - In `rpcutil.Auth.Context`, if the resolved principal is a Worker and mTLS mode is enabled, require a TLS peer certificate whose URI SAN exactly matches `spiffe://computecloud/workers/{WorkerID}`. Reject client certificates on user identities unless explicitly configured for user mTLS in a later design.
 
-- [ ] **Step 1: Write failing tests** named `TestWorkerRequiresVerifiedClientCertificate`, `TestWorkerCertificateMustMatchIdentity`, `TestUserGRPCCanConnectWithoutClientCertificate`, `TestWorkerCertificateRejectsUnknownCA`, and `TestWorkerCertificateRejectsExpiredCertificate`.
-- [ ] **Step 2: Run** `go test ./internal/rpcutil ./internal/server -run 'Test(WorkerRequires|WorkerCertificate|UserGRPCCan)' -count=1`; confirm failure.
-- [ ] **Step 3: Implement** TLS CA loading, optional client certificate requests, client cert loading in `rpcutil.Dial`, and URI SAN binding in the auth context.
-- [ ] **Step 4: Run** `go test ./internal/rpcutil ./internal/server ./internal/worker`, `go test -race ./internal/rpcutil ./internal/server`, and `go test ./...`.
+- [x] **Step 1: Write failing tests** named `TestWorkerRequiresVerifiedClientCertificate`, `TestWorkerCertificateMustMatchIdentity`, `TestUserGRPCCanConnectWithoutClientCertificate`, `TestWorkerCertificateRejectsUnknownCA`, and `TestWorkerCertificateRejectsExpiredCertificate`.
+- [x] **Step 2: Run** `go test ./internal/rpcutil ./internal/server -run 'Test(WorkerRequires|WorkerCertificate|UserGRPCCan)' -count=1`; initial compilation failed because client certificate config/auth checks were absent.
+- [x] **Step 3: Implement** TLS CA loading, optional client certificate requests, client cert loading in `rpcutil.Dial`, and URI SAN plus thumbprint binding in the auth context.
+- [x] **Step 4: Run** `go test ./internal/rpcutil ./internal/server ./internal/worker`, `go test -race ./internal/rpcutil ./internal/server`, and `go test ./...`.
 - [ ] **Step 5: Commit** as `feat: authenticate workers with per-node mTLS`.
 
 ### Task 4: Add issuance, rotation, rollback, and migration procedures

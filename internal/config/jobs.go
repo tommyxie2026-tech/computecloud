@@ -100,6 +100,9 @@ type ModelGateway struct {
 }
 
 func (c *Server) DefaultV02() {
+	if c.TLS.WorkerMTLSMode == "" {
+		c.TLS.WorkerMTLSMode = "disabled"
+	}
 	if c.WorkerAdmission == (WorkerAdmission{}) {
 		c.WorkerAdmission = WorkerAdmission{MaxSessions: 128, MaxStreams: 128}
 	}
@@ -185,6 +188,39 @@ func (c *Server) DefaultV02() {
 	}
 }
 func (c Server) ValidateV02() error {
+	mode := c.TLS.WorkerMTLSMode
+	if mode == "" {
+		mode = "disabled"
+	}
+	if mode != "disabled" && mode != "optional" && mode != "required" {
+		return fmt.Errorf("invalid worker mTLS mode")
+	}
+	if mode != "disabled" {
+		if c.TLS.InsecureLoopback || c.TLS.ClientCAFile == "" {
+			return fmt.Errorf("worker mTLS requires TLS and client_ca_file")
+		}
+		fingerprints := map[string]string{}
+		for _, worker := range c.Workers {
+			if worker.WorkerID == "" || (mode == "required" && len(worker.ClientCertSHA256) == 0) {
+				return fmt.Errorf("worker mTLS requires a certificate fingerprint for every Worker")
+			}
+			seen := map[string]bool{}
+			for _, fingerprint := range worker.ClientCertSHA256 {
+				decoded, err := hex.DecodeString(fingerprint)
+				normalized := strings.ToLower(fingerprint)
+				if err != nil || len(decoded) != 32 || seen[normalized] {
+					return fmt.Errorf("invalid Worker certificate fingerprint")
+				}
+				seen[normalized] = true
+				if prior, ok := fingerprints[normalized]; ok && prior != worker.WorkerID {
+					return fmt.Errorf("Worker certificate fingerprint is assigned to multiple Workers")
+				}
+				fingerprints[normalized] = worker.WorkerID
+			}
+		}
+	} else if c.TLS.ClientCAFile != "" {
+		return fmt.Errorf("client_ca_file requires worker mTLS")
+	}
 	if c.WorkerAdmission != (WorkerAdmission{}) && (c.WorkerAdmission.MaxSessions < 1 || c.WorkerAdmission.MaxSessions > 10000 || c.WorkerAdmission.MaxStreams < 1 || c.WorkerAdmission.MaxStreams > 10000) {
 		return fmt.Errorf("invalid worker admission limits")
 	}

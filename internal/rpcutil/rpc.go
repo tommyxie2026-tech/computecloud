@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -29,6 +30,7 @@ type Auth struct {
 	identities     map[[32]byte]Principal
 	workerStreams  chan struct{}
 	apiKeyResolver func(context.Context, string) (config.Identity, error)
+	workerMTLSMode string
 }
 
 func (a *Auth) SetWorkerStreamLimit(max int) {
@@ -40,6 +42,8 @@ func (a *Auth) SetWorkerStreamLimit(max int) {
 func (a *Auth) SetAPIKeyResolver(resolve func(context.Context, string) (config.Identity, error)) {
 	a.apiKeyResolver = resolve
 }
+
+func (a *Auth) SetWorkerMTLSMode(mode string) { a.workerMTLSMode = mode }
 
 func NewAuth(users, workers []config.Identity) (*Auth, error) {
 	a := &Auth{identities: make(map[[32]byte]Principal)}
@@ -70,7 +74,58 @@ func (a *Auth) Context(ctx context.Context) (context.Context, error) {
 	if len(v) != 1 || !strings.HasPrefix(v[0], "Bearer ") {
 		return ctx, status.Error(codes.Unauthenticated, "authentication required")
 	}
-	return a.Bearer(ctx, v[0])
+	ctx, err := a.Bearer(ctx, v[0])
+	if err != nil {
+		return ctx, err
+	}
+	principal, ok := PrincipalFrom(ctx)
+	if !ok || a.workerMTLSMode == "" || a.workerMTLSMode == "disabled" {
+		return ctx, nil
+	}
+	if principal.Worker && a.workerMTLSMode == "optional" && len(principal.Identity.ClientCertSHA256) == 0 {
+		return ctx, nil // migration window: token-only until this Worker is pinned
+	}
+	connection, ok := peer.FromContext(ctx)
+	if !ok {
+		if principal.Worker {
+			return ctx, status.Error(codes.Unauthenticated, "verified Worker certificate required")
+		}
+		return ctx, nil
+	}
+	tlsInfo, isTLS := connection.AuthInfo.(credentials.TLSInfo)
+	if !isTLS || len(tlsInfo.State.PeerCertificates) == 0 {
+		if principal.Worker {
+			return ctx, status.Error(codes.Unauthenticated, "verified Worker certificate required")
+		}
+		return ctx, nil
+	}
+	if !principal.Worker {
+		return ctx, status.Error(codes.PermissionDenied, "client certificates are not enabled for user identities")
+	}
+	if len(tlsInfo.State.VerifiedChains) == 0 {
+		return ctx, status.Error(codes.Unauthenticated, "unverified Worker certificate")
+	}
+	cert := tlsInfo.State.PeerCertificates[0]
+	expectedURI := "spiffe://computecloud/workers/" + principal.Identity.WorkerID
+	workerURIs, matchedURI := 0, false
+	for _, uri := range cert.URIs {
+		if uri.Scheme == "spiffe" && uri.Host == "computecloud" && strings.HasPrefix(uri.Path, "/workers/") {
+			workerURIs++
+			matchedURI = matchedURI || uri.String() == expectedURI
+		}
+	}
+	if workerURIs != 1 || !matchedURI {
+		return ctx, status.Error(codes.PermissionDenied, "Worker certificate identity mismatch")
+	}
+	fingerprint := sha256.Sum256(cert.Raw)
+	active := false
+	for _, allowed := range principal.Identity.ClientCertSHA256 {
+		active = active || strings.EqualFold(allowed, hex.EncodeToString(fingerprint[:]))
+	}
+	if !active {
+		return ctx, status.Error(codes.PermissionDenied, "Worker certificate is not active")
+	}
+	return ctx, nil
 }
 func (a *Auth) Bearer(ctx context.Context, header string) (context.Context, error) {
 	if !strings.HasPrefix(header, "Bearer ") {
@@ -184,7 +239,7 @@ func Loopback(address string) bool {
 }
 func ServerTLS(address string, t config.TLS) (grpc.ServerOption, error) {
 	if t.InsecureLoopback {
-		if !Loopback(address) {
+		if !Loopback(address) || (t.WorkerMTLSMode != "" && t.WorkerMTLSMode != "disabled") {
 			return nil, fmt.Errorf("plaintext allowed only on literal loopback address")
 		}
 		return grpc.Creds(insecure.NewCredentials()), nil
@@ -193,7 +248,23 @@ func ServerTLS(address string, t config.TLS) (grpc.ServerOption, error) {
 	if e != nil {
 		return nil, e
 	}
-	return grpc.Creds(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}})), nil
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
+	if t.WorkerMTLSMode != "" && t.WorkerMTLSMode != "disabled" {
+		if t.ClientCAFile == "" {
+			return nil, fmt.Errorf("worker mTLS requires client CA")
+		}
+		pem, e := os.ReadFile(t.ClientCAFile)
+		if e != nil {
+			return nil, e
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("invalid Worker client CA")
+		}
+		tlsConfig.ClientCAs = pool
+		tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+	}
+	return grpc.Creds(credentials.NewTLS(tlsConfig)), nil
 }
 
 type tokenCred struct {
@@ -211,7 +282,7 @@ func Dial(address, token string, t config.TLS) (*grpc.ClientConn, error) {
 func dial(address, token string, t config.TLS, extra ...grpc.DialOption) (*grpc.ClientConn, error) {
 	var transport credentials.TransportCredentials
 	if t.InsecureLoopback {
-		if !Loopback(address) {
+		if !Loopback(address) || t.CertFile != "" || t.KeyFile != "" {
 			return nil, fmt.Errorf("plaintext allowed only on literal loopback address")
 		}
 		transport = insecure.NewCredentials()
@@ -227,6 +298,16 @@ func dial(address, token string, t config.TLS, extra ...grpc.DialOption) (*grpc.
 				return nil, fmt.Errorf("invalid CA certificate")
 			}
 			tc.RootCAs = pool
+		}
+		if (t.CertFile == "") != (t.KeyFile == "") {
+			return nil, fmt.Errorf("client TLS certificate and key must be configured together")
+		}
+		if t.CertFile != "" {
+			cert, e := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
+			if e != nil {
+				return nil, e
+			}
+			tc.Certificates = []tls.Certificate{cert}
 		}
 		transport = credentials.NewTLS(tc)
 	}

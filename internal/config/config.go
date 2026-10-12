@@ -19,6 +19,8 @@ type TLS struct {
 	CertFile         string `yaml:"cert_file"`
 	KeyFile          string `yaml:"key_file"`
 	CAFile           string `yaml:"ca_file"`
+	ClientCAFile     string `yaml:"client_ca_file"`
+	WorkerMTLSMode   string `yaml:"worker_mtls_mode"`
 	InsecureLoopback bool   `yaml:"insecure_loopback"`
 }
 type Identity struct {
@@ -35,6 +37,7 @@ type Identity struct {
 	ModelRoute          string         `yaml:"model_route"`
 	ConversationProfile string         `yaml:"conversation_profile"`
 	Limits              IdentityLimits `yaml:"limits"`
+	ClientCertSHA256    []string       `yaml:"client_cert_sha256"`
 }
 
 // IdentityLimits bounds work admitted for one configured user identity.
@@ -148,7 +151,12 @@ func Load(path string) (Config, error) {
 		}
 		return p
 	}
-	tlsPaths := func(t *TLS) { t.CertFile = abs(t.CertFile); t.KeyFile = abs(t.KeyFile); t.CAFile = abs(t.CAFile) }
+	tlsPaths := func(t *TLS) {
+		t.CertFile = abs(t.CertFile)
+		t.KeyFile = abs(t.KeyFile)
+		t.CAFile = abs(t.CAFile)
+		t.ClientCAFile = abs(t.ClientCAFile)
+	}
 	c.Server.DataDir = abs(c.Server.DataDir)
 	c.Worker.DataDir = abs(c.Worker.DataDir)
 	c.Worker.TokenFile = abs(c.Worker.TokenFile)
@@ -255,6 +263,9 @@ func (c Worker) Validate() error {
 	}
 	if c.ID == "" || c.DataDir == "" || c.Address == "" || c.Slots < 1 || len(c.Runtimes) == 0 {
 		return errors.New("worker id/data_dir/address/slots/runtimes required")
+	}
+	if (c.TLS.CertFile == "") != (c.TLS.KeyFile == "") {
+		return errors.New("worker client TLS certificate and key must be configured together")
 	}
 	if c.WorkspaceRetentionMS < 0 || c.WorkspaceMaxBytes < 0 {
 		return errors.New("worker workspace retention/quota must be non-negative")

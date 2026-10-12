@@ -60,6 +60,7 @@ func New(c config.Server) (*Server, error) {
 		return nil, e
 	}
 	a.SetWorkerStreamLimit(c.WorkerAdmission.MaxStreams)
+	a.SetWorkerMTLSMode(c.TLS.WorkerMTLSMode)
 	d, e := store.Open(c.DataDir, store.ServerSchema)
 	if e != nil {
 		return nil, e
