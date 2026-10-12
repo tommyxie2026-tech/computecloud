@@ -71,11 +71,50 @@ docker run -d --name computecloud-agent-http \
   --mount type=bind,src=/run/computecloud-agent,dst=/run/computecloud-agent \
   --mount type=bind,src=/srv/computecloud/workspaces,dst=/srv/computecloud/workspaces \
   --mount type=bind,src=/srv/computecloud/agent-state,dst=/var/lib/computecloud-agent/runs \
+  --mount type=bind,src=/etc/computecloud/seccomp-agent.json,dst=/etc/computecloud/seccomp-agent.json,readonly \
   --tmpfs /tmp:rw,nosuid,noexec,size=64m \
   IMAGE@sha256:REPLACE_WITH_64_HEX_DIGEST \
   --workspace-root /srv/computecloud/workspaces \
-  --runtime-image IMAGE@sha256:REPLACE_WITH_64_HEX_DIGEST
+  --runtime-image IMAGE@sha256:REPLACE_WITH_64_HEX_DIGEST \
+  --public-strict \
+  --egress-network computecloud-attempt-egress \
+  --seccomp-profile /etc/computecloud/seccomp-agent.json \
+  --memory-bytes 2147483648 --nano-cpus 2000000000 --pids-limit 256
 ```
+
+`computecloud-attempt-egress` is an operator-created Docker network, not a
+magic firewall. Configure host firewall/routing so its containers can reach
+only the Server's model endpoint and explicitly approved dependency endpoints;
+deny metadata IPs, host/private networks, and all other destinations. The
+controller checks that strict mode does not use Docker's default `bridge` and
+that the seccomp profile is a regular file, then applies the configured
+network, seccomp profile, memory, CPU, and PID limits to every Attempt. The
+default mode remains compatible (`bridge`); it is not suitable for untrusted
+public jobs. Validate the host rules with the P2 egress acceptance test before
+admitting public tenants.
+
+The egress acceptance tool must run on the Worker host and requires explicit
+URLs for the model endpoint plus isolated metadata, host-gateway, private-test,
+and unapproved-public destinations. It records only probe labels, status,
+Attempt ID, network, image digest, and pass/fail; it never records URLs or
+credentials. Example invocation (use an isolated test endpoint you control):
+
+```sh
+python3 scripts/security/worker_egress_acceptance.py \
+  --network computecloud-attempt-egress \
+  --image 'IMAGE@sha256:REPLACE_WITH_64_HEX_DIGEST' \
+  --attempt-id egress-acceptance-YYYYMMDD \
+  --allowed-model-url 'https://SERVER_HOST/v1/' \
+  --metadata-url 'http://169.254.169.254/' \
+  --host-gateway-url 'http://WORKER_GATEWAY_IP/' \
+  --private-test-url 'http://ISOLATED_PRIVATE_TEST_IP/' \
+  --unapproved-public-url 'https://UNAPPROVED_TEST_HOST/' \
+  --output egress-acceptance.json
+```
+
+A successful HTTP response of any status from the allowed model endpoint
+proves only network reachability; the four prohibited probes must fail at the
+network layer. Run only with test destinations approved for this Worker.
 
 The controller requires the Docker socket, which grants host-level container
 control; only trusted operators should deploy or configure it. The child
@@ -83,11 +122,11 @@ Agent container has no Docker socket or HTTP token mount. Do not use this
 example as production certification before ECO-03 and VAL-01 evidence passes.
 
 The controller launches each Agent container with a read-only root filesystem,
-no Linux capabilities, `no-new-privileges`, a PID limit, private writable
-tmpfs, and a bind mount of only that Attempt's workspace. It uses Docker's
-bridge network for model access; outbound network policy is still an operator
-deployment decision. `HOME`, `PATH`, `TMPDIR`, and Docker control variables
-from the Worker are replaced or stripped before the Agent starts.
+no Linux capabilities, `no-new-privileges`, CPU/memory/PID limits, private
+writable tmpfs, and a bind mount of only that Attempt's workspace. It uses the
+configured network (`bridge` by default); outbound network policy remains an
+operator responsibility. `HOME`, `PATH`, `TMPDIR`, and Docker control
+variables from the Worker are replaced or stripped before the Agent starts.
 The Worker runtime configuration is:
 
 ```yaml

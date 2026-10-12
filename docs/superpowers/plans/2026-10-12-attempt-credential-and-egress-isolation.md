@@ -94,10 +94,10 @@
 - Reject Docker parameters with host networking, privileged mode, added capabilities, devices, arbitrary binds, image overrides, or paths outside the canonical workspace.
 - Keep Docker daemon access restricted to the trusted Agent Runtime controller; add startup validation that the configured executable/socket is not exposed through the public API.
 
-- [ ] **Step 1: Write failing tests** named `TestOCIRejectsHostNetworkAndPrivilegeOverrides`, `TestOCIRejectsBindOutsideWorkspace`, `TestAttemptCredentialFileModeAndCleanup`, `TestAttemptCannotReadWorkerSecretMount`, and `TestAttemptRestartReconcilesSecretFiles`.
-- [ ] **Step 2: Run** `go test ./internal/agenthttp ./internal/worker -run 'TestOCIRejects|TestAttemptCredential|TestAttemptRestart' -count=1`; confirm failure.
-- [ ] **Step 3: Implement** operator-owned OCI settings, canonical path validation, private state-dir credential file lifecycle, crash recovery cleanup, and strict environment allowlisting.
-- [ ] **Step 4: Run** `go test ./internal/agenthttp ./internal/worker`, `go test -race ./internal/agenthttp ./internal/worker`, and `go test ./...`.
+- [ ] **Step 1: Write remaining failing tests** for privilege overrides, arbitrary binds, and Worker secret mounts. Credential-file mode/location, stale-file restart, and strict network/seccomp tests are covered.
+- [x] **Step 2: Run** focused controller tests after implementing the file lifecycle; all passed.
+- [x] **Step 3: Implement** operator-owned OCI network/seccomp/resource settings, canonical workspace bind validation, private state-dir credential files, and stale file cleanup at controller recovery. Host egress rules still require target configuration.
+- [x] **Step 4: Run** full Go suite and Python egress tool tests; `go test -race ./internal/agenthttp` passed. Server/Worker race suite passed after P2 Task 1.
 - [ ] **Step 5: Commit** as `feat: harden per-attempt OCI and credential boundaries`.
 
 ### Task 4: Add Worker egress controls and real-host negative acceptance
@@ -113,7 +113,7 @@
 - [ ] **Step 1: Write failing config tests** proving unsafe `process` environment, personal Codex HOME mounts, unrestricted host bridge, public Docker socket, and unpinned Runtime image are rejected by the public-production validator.
 - [ ] **Step 2: Run** `python3 -m unittest scripts.security.worker_egress_acceptance_test` and confirm unsafe fixture rejection tests fail.
 - [ ] **Step 3: Implement** a deployment contract requiring a dedicated Worker HOME, no personal profile mount, no Worker Docker socket, pinned Attempt image, enforced host/network egress policy, and explicit allowlisted model endpoint.
-- [ ] **Step 4: Implement** a target-host acceptance tool with harmless probes for allowed model gateway, denied metadata IP, denied host gateway, denied private test destination, and denied unapproved public endpoint; require an operator-supplied isolated test destination and never scan arbitrary networks.
+- [x] **Step 4: Implement** a target-host egress acceptance tool with harmless probes for the explicitly supplied allowed model endpoint, metadata, host gateway, private test destination, and unapproved public endpoint. It never scans arbitrary networks and stores labels/status only.
 - [ ] **Step 5: Run** Python fixture tests, `go test ./...`, then execute target-host ENV01-ENV05 plus egress cases on the pinned candidate image and retain only sanitized hashes/results.
 - [ ] **Step 6: Commit** as `test: gate public workers on egress and runtime isolation`.
 

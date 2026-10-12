@@ -325,10 +325,14 @@ func TestClaudeBudgetOCIMissingFinal(t *testing.T) {
 }
 
 func TestEnvironmentFileDropsControllerVariables(t *testing.T) {
-	server, _ := testServer(t)
+	server, cfg := testServer(t)
 	path, err := server.writeEnvFile(request{AttemptID: "a", Env: []string{"HOME=/host", "PATH=/host/bin", "DOCKER_HOST=tcp://daemon", "OPENAI_API_KEY=secret"}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0600 || filepath.Dir(path) != cfg.StateDir {
+		t.Fatalf("credential file location/mode path=%q info=%v err=%v", path, info, err)
 	}
 	defer os.Remove(path)
 	b, err := os.ReadFile(path)
@@ -341,6 +345,37 @@ func TestEnvironmentFileDropsControllerVariables(t *testing.T) {
 	}
 	if _, err := server.writeEnvFile(request{AttemptID: "a", Env: []string{"TOKEN=secret\nOTHER=value"}}); err == nil {
 		t.Fatal("accepted newline in secret")
+	}
+}
+
+func TestPublicStrictOCIRequiresNamedNetworkAndSeccomp(t *testing.T) {
+	_, cfg := testServer(t)
+	cfg.PublicStrict = true
+	if _, err := New(cfg); err == nil {
+		t.Fatal("public strict mode accepted default bridge network and no seccomp profile")
+	}
+	cfg.EgressNetwork = "computecloud-egress"
+	seccomp := filepath.Join(t.TempDir(), "seccomp.json")
+	if err := os.WriteFile(seccomp, []byte(`{"defaultAction":"SCMP_ACT_ERRNO"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SeccompProfile = seccomp
+	if _, err := New(cfg); err != nil {
+		t.Fatalf("valid operator strict policy rejected: %v", err)
+	}
+}
+
+func TestAttemptRestartReconcilesSecretFiles(t *testing.T) {
+	_, cfg := testServer(t)
+	stale := filepath.Join(cfg.StateDir, "attempt-credential-stale.env")
+	if err := os.WriteFile(stale, []byte("TOKEN=secret\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale credential file survived restart: %v", err)
 	}
 }
 

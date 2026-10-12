@@ -29,6 +29,7 @@ import (
 const maxBody = 4 << 20
 
 var runIDRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$`)
+var dockerNetworkRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$`)
 var imageDigestRE = regexp.MustCompile(`@sha256:[0-9a-f]{64}$`)
 var runProcess = process.Run
 var containerCleanup = func(s *Server, id string) bool { return s.cleanupContainer(id) }
@@ -44,6 +45,12 @@ type Config struct {
 	WorkspaceRoot    string
 	DockerExecutable string
 	RuntimeImage     string
+	PublicStrict     bool
+	EgressNetwork    string
+	SeccompProfile   string
+	MemoryBytes      int64
+	NanoCPUs         int64
+	PidsLimit        int
 	CodexExecutable  string
 	CodexVersion     string
 	ClaudeExecutable string
@@ -103,6 +110,30 @@ func New(cfg Config) (*Server, error) {
 	if !imageDigestRE.MatchString(cfg.RuntimeImage) {
 		return nil, errors.New("agent HTTP runtime image must be pinned by digest")
 	}
+	if cfg.EgressNetwork == "" {
+		cfg.EgressNetwork = "bridge"
+	}
+	if cfg.MemoryBytes == 0 {
+		cfg.MemoryBytes = 2 << 30
+	}
+	if cfg.NanoCPUs == 0 {
+		cfg.NanoCPUs = 2_000_000_000
+	}
+	if cfg.PidsLimit == 0 {
+		cfg.PidsLimit = 256
+	}
+	if !dockerNetworkRE.MatchString(cfg.EgressNetwork) || cfg.MemoryBytes < 64<<20 || cfg.MemoryBytes > 1<<40 || cfg.NanoCPUs < 100_000_000 || cfg.NanoCPUs > 64_000_000_000 || cfg.PidsLimit < 16 || cfg.PidsLimit > 65536 {
+		return nil, errors.New("invalid Agent Runtime OCI resource/network policy")
+	}
+	if cfg.PublicStrict {
+		if cfg.EgressNetwork == "bridge" || !filepath.IsAbs(cfg.SeccompProfile) {
+			return nil, errors.New("public strict mode requires a named egress network and absolute seccomp profile")
+		}
+		seccompInfo, err := os.Stat(cfg.SeccompProfile)
+		if err != nil || !seccompInfo.Mode().IsRegular() {
+			return nil, errors.New("public strict mode seccomp profile must be a regular file")
+		}
+	}
 	tokenInfo, err := os.Stat(cfg.TokenFile)
 	if err != nil {
 		return nil, err
@@ -120,7 +151,23 @@ func New(cfg Config) (*Server, error) {
 	if info.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("agent HTTP state directory must be private")
 	}
+	if err := cleanupAttemptCredentialFiles(cfg.StateDir); err != nil {
+		return nil, fmt.Errorf("clean stale Attempt credential files: %w", err)
+	}
 	return &Server{cfg: cfg, runs: map[string]*run{}}, nil
+}
+
+func cleanupAttemptCredentialFiles(stateDir string) error {
+	files, err := filepath.Glob(filepath.Join(stateDir, "attempt-credential-*.env"))
+	if err != nil {
+		return err
+	}
+	for _, path := range files {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -454,10 +501,15 @@ func (s *Server) execute(ctx context.Context, item *run, provider adapter.Provid
 	lines := &adapter.Lines{Limit: maxBody, OnLine: parser.Line, OnError: item.cancel}
 	dockerArgs := []string{"run", "--rm", "--pull=never", "--name", containerName, "--interactive",
 		"--user", "65532:65532", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges",
-		"--pids-limit", "256", "--network", "bridge", "--tmpfs", "/tmp:rw,nosuid,noexec,size=64m",
+		"--memory", strconv.FormatInt(s.cfg.MemoryBytes, 10), "--cpus", strconv.FormatFloat(float64(s.cfg.NanoCPUs)/1e9, 'f', 3, 64),
+		"--pids-limit", strconv.Itoa(s.cfg.PidsLimit), "--network", s.cfg.EgressNetwork, "--tmpfs", "/tmp:rw,nosuid,noexec,size=64m",
 		"--tmpfs", "/var/lib/computecloud-agent:rw,nosuid,uid=65532,gid=65532",
 		"--mount", "type=bind,source=" + input.CWD + ",target=" + input.CWD,
-		"--workdir", input.CWD, "--env-file", envFile, "--entrypoint", executable, s.cfg.RuntimeImage}
+		"--workdir", input.CWD, "--env-file", envFile}
+	if s.cfg.SeccompProfile != "" {
+		dockerArgs = append(dockerArgs, "--security-opt=seccomp="+s.cfg.SeccompProfile)
+	}
+	dockerArgs = append(dockerArgs, "--entrypoint", executable, s.cfg.RuntimeImage)
 	dockerArgs = append(dockerArgs, input.Args...)
 	result := runProcess(ctx, s.cfg.DockerExecutable, dockerArgs, nil, s.cfg.WorkspaceRoot, strings.NewReader(input.Input), lines, io.Discard, 3*time.Second, func(int, string) error {
 		item.mu.Lock()
@@ -484,7 +536,7 @@ func (s *Server) execute(ctx context.Context, item *run, provider adapter.Provid
 var envKeyRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func (s *Server) writeEnvFile(input request) (string, error) {
-	file, err := os.CreateTemp("", "computecloud-agent-env-*.env")
+	file, err := os.CreateTemp(s.cfg.StateDir, "attempt-credential-*.env")
 	if err != nil {
 		return "", err
 	}

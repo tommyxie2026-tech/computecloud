@@ -26,9 +26,10 @@
 - 已完成：P0 Task 4 公网边缘策略清单、部署约束文档和自动检查，commit `3adb3d3`。
 - 已完成：P0 Task 5 安全 smoke 工具与 mock 用例，commit `4763b84`。
 - 已完成：P1 API Key 元数据、管理 API、离线初始化、安全文件权限、Worker mTLS 身份校验和证书指纹轮换代码，commit `fb6e059`、`f5709fc`、`cfb5403`、`efddd71`。
-- 已完成：P2 第一段严格执行准入初版（配置枚举、仅接受 container + Attempt Gateway route、调度额外 capability fence）；尚待完整 Worker 端复验和 Runtime/OCl 隔离实现。
+- 已完成：P2 第一段严格执行准入，commit `44ce52b`（Server scheduler capability fence + Worker 工作区前复验，只接受 container + Attempt Gateway capable Runtime）。
+- 已完成：P2 OCI 控制器安全子项（私有状态目录中的 Attempt env 文件、0600 权限、启动时 stale 文件清理；strict 模式 named egress network/seccomp + CPU/内存/PID 限额）及 egress 验收工具初版，仍在工作树、未提交。
 - 验证：`go test ./...`、`go test -race ./internal/server ./internal/rpcutil`、9 个 Python 边缘策略/smoke 单测、`py_compile` 与 `git diff --check` 均通过。尚无 GitHub CI 运行记录。
 - 尚未完成：目标环境公网端口扫描、源站绕过拒绝、WAF/安全组配置、真实 429/队列饱和验收；没有目标 endpoint、云边缘配置或测试凭据，不能据 CI 宣称公网环境已安全。
 - 尚未完成：P1 双机证书签发、A/B 证书轮换/撤销实测及目标环境验证。
-- 尚未完成：P2 Codex/Claude CLI Attempt 凭据兼容性实测、OCI secret 文件恢复清理、网络出口限制和主机负向验收。
+- 尚未完成：P2 Codex/Claude CLI Attempt 凭据兼容性实测、OCI 逃逸负向测试、部署配置静态校验、目标 Worker 出站负向验收。
 - 当前验证证据：静态代码/配置审查。尚无公网安全组/WAF 状态、真实 Worker 客户端证书、逃逸负向测试或外部端口核验结果。
