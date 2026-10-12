@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"sort"
 	"sync"
 	"time"
@@ -18,6 +20,8 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -95,6 +99,38 @@ func (s *Server) Close() error {
 	return s.db.Close()
 }
 
+func (s *Server) authUnary(ctx context.Context, req any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
+	if err := s.rateLimitAPIKeyRPC(ctx); err != nil {
+		return nil, err
+	}
+	return s.auth.Unary(ctx, req, info, next)
+}
+
+func (s *Server) authStream(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, next grpc.StreamHandler) error {
+	if err := s.rateLimitAPIKeyRPC(stream.Context()); err != nil {
+		return err
+	}
+	return s.auth.Stream(srv, stream, info, next)
+}
+
+func (s *Server) rateLimitAPIKeyRPC(ctx context.Context) error {
+	md, _ := metadata.FromIncomingContext(ctx)
+	values := md.Get("authorization")
+	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer cc_live_") {
+		return nil
+	}
+	remoteAddr := ""
+	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+		remoteAddr = p.Addr.String()
+	}
+	allowed, retryAfter := s.allowAPIKeyLookup(values[0], remoteAddr)
+	if allowed {
+		return nil
+	}
+	_ = grpc.SetTrailer(ctx, metadata.Pairs("retry-after", strconv.Itoa(retryAfter)))
+	return status.Error(codes.ResourceExhausted, "RATE_LIMITED")
+}
+
 // ServeTunnel consumes a byte-forwarding listener while preserving inner TLS
 // and all existing identity, connection replacement and execution fencing.
 func (s *Server) ServeTunnel(ctx context.Context, l net.Listener) error {
@@ -167,7 +203,7 @@ func (s *Server) serve(ctx context.Context, l, tunnel net.Listener) error {
 			}
 		}()
 	}
-	g := grpc.NewServer(tls, grpc.UnaryInterceptor(s.auth.Unary), grpc.StreamInterceptor(s.auth.Stream), grpc.MaxRecvMsgSize(8<<20), grpc.MaxSendMsgSize(8<<20))
+	g := grpc.NewServer(tls, grpc.UnaryInterceptor(s.authUnary), grpc.StreamInterceptor(s.authStream), grpc.MaxRecvMsgSize(8<<20), grpc.MaxSendMsgSize(8<<20))
 	s.grpc = g
 	pb.RegisterRuntimeServiceServer(g, s)
 	done := make(chan struct{})
