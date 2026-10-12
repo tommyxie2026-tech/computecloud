@@ -46,8 +46,8 @@
 - [x] **Step 1: Write tests** for process rejection, Gateway requirement, Worker-side fail-closed validation, and trusted-mode compatibility. Filtering is verified by the scheduler's additional capability requirements.
 - [x] **Step 2: Run** focused tests; the new tests passed after implementation.
 - [x] **Step 3: Implement** strict-mode config validation, scheduler capability fencing, Worker-side pre-workspace checks, and `PUBLIC_ISOLATION_REQUIRED` errors.
-- [ ] **Step 4: Run** targeted tests, `go test -race ./internal/server ./internal/worker`, and `go test ./...`.
-- [ ] **Step 5: Commit** as `feat: require isolated environments for public jobs`.
+- [x] **Step 4: Run** targeted tests, `go test -race ./internal/server ./internal/worker`, and `go test ./...` (Linux/macOS CI run [38210717417](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38210717417), 30/30 jobs passed).
+- [x] **Step 5: Commit** as `feat: require isolated environments for public jobs` (`44ce52b`).
 
 ### Task 2: Extend Attempt-scoped model credential proxy to supported runtimes
 
@@ -144,7 +144,8 @@
 - [x] 注入或收紧 `max_output_tokens`；拒绝不支持的 compact 请求和无法放入剩余额度的请求。
 - [x] 增加路由输入/输出单价和每 Attempt 估算费用上限；逐次向上取整已完成请求的估算费用，并同时按 token 与费用余额限制输出。
 - [x] 增加配置、预算计算与 Gateway 集成测试；本地聚焦测试通过。
-- [ ] 在 CI 运行完整 Go/race 与安全测试；验证固定版本 Codex CLI 和上游协议合同。
+- [x] 在 CI 运行完整 Go/race 与安全测试（PR CI run [38210717417](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38210717417)，30/30 jobs 通过）。
+- [ ] 验证固定版本 Codex CLI 和上游协议合同。
 - [ ] 在目标 Worker 验证 token 语义，并为不可信公网租户配置独立的供应商账单硬上限。
 
 **边界：** token 与费用额度均按 Attempt 计算，重试会获得新额度。费用边界依据管理员配置的保守单价和供应商上报用量估算，不是供应商账单上限。请求体字节数用于保守估算输入 token；真实分词、单价及上游 `max_output_tokens` 行为仍须用锁定版本协议验收。不可信公网租户仍须有供应商侧支出硬上限。

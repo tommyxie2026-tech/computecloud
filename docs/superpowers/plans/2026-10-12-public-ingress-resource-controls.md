@@ -43,11 +43,11 @@
 - Produce `func (s *Server) allowRequest(key, class string, now time.Time) (allowed bool, retryAfterSeconds int)` with bounded entry count and deterministic eviction of expired buckets.
 - HTTP rate limiting runs only after bearer authentication and before route handlers. It returns HTTP 429 and a `Retry-After` value calculated from the remaining token-bucket refill time.
 
-- [ ] **Step 1: Write failing tests** for `TestHTTPHandlerRateLimitPerCredential`, `TestHTTPHandlerRateLimitIgnoresForwardedFor`, `TestHTTPHandlerRateLimitEvictsIdleCredential`, and `TestRequestLimiterBoundsEntries`.
-- [ ] **Step 2: Run** `go test ./internal/server -run 'TestHTTPHandlerRateLimit|TestRequestLimiter' -count=1`; confirm the tests fail because the limiter is absent.
-- [ ] **Step 3: Implement** a token-bucket limiter with a fixed maximum entry count, cleanup on admission, config validation, and middleware placement after `s.auth.Bearer`.
-- [ ] **Step 4: Run** the same targeted tests and `go test ./internal/config ./internal/server`.
-- [ ] **Step 5: Commit** as `feat: limit authenticated public API request rates`.
+- [x] **Step 1: Write failing tests** for `TestHTTPHandlerRateLimitPerCredential`, `TestHTTPHandlerRateLimitIgnoresForwardedFor`, `TestHTTPHandlerRateLimitEvictsIdleCredential`, and `TestRequestLimiterBoundsEntries`.
+- [x] **Step 2: Run** `go test ./internal/server -run 'TestHTTPHandlerRateLimit|TestRequestLimiter' -count=1`; confirm the tests fail because the limiter is absent.
+- [x] **Step 3: Implement** a token-bucket limiter with a fixed maximum entry count, cleanup on admission, config validation, and middleware placement after `s.auth.Bearer`.
+- [x] **Step 4: Run** the same targeted tests and `go test ./internal/config ./internal/server`.
+- [x] **Step 5: Commit** as `feat: limit authenticated public API request rates`.
 
 ### Task 2: Enforce identity/project workload budgets
 
