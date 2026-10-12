@@ -34,7 +34,8 @@ type Server struct {
 	cfg                config.Server
 	db                 *store.DB
 	auth               *rpcutil.Auth
-	requestLimiter     *requestLimiter
+	requestLimiter      *requestLimiter
+	apiKeyLookupLimiter *requestLimiter
 	mu                 sync.Mutex
 	peers              map[string]*session
 	workerReservations map[string]bool
@@ -65,7 +66,7 @@ func New(c config.Server) (*Server, error) {
 	if e != nil {
 		return nil, e
 	}
-	s := &Server{cfg: c, db: d, auth: a, requestLimiter: newRequestLimiter(c.HTTP.RateLimit), peers: map[string]*session{}, workerReservations: map[string]bool{}, notify: make(chan struct{}, 1), projectCursor: map[int32]string{}, groupCursor: map[string]string{}, controlEpoch: store.ID()}
+	s := &Server{cfg: c, db: d, auth: a, requestLimiter: newRequestLimiter(c.HTTP.RateLimit), apiKeyLookupLimiter: newRequestLimiter(c.HTTP.RateLimit), peers: map[string]*session{}, workerReservations: map[string]bool{}, notify: make(chan struct{}, 1), projectCursor: map[int32]string{}, groupCursor: map[string]string{}, controlEpoch: store.ID()}
 	a.SetAPIKeyResolver(s.resolveAPIKey)
 	// Recover CLI children even when the gateway is disabled after a crash.
 	if err := (&modelGateway{s: s}).recoverCLI(); err != nil {
