@@ -95,6 +95,7 @@
 - Keep Docker daemon access restricted to the trusted Agent Runtime controller; add startup validation that the configured executable/socket is not exposed through the public API.
 
 - [ ] **Step 1: Write remaining failing tests** for privilege overrides, arbitrary binds, and Worker secret mounts. Credential-file mode/location, stale-file restart, and strict network/seccomp tests are covered.
+- [x] **Follow-up regression:** `TestPublicStrictOCIRejectsBuiltInNetworks` first failed because strict mode accepted Docker `host` and `none`; strict validation now rejects all built-in networks, and focused plus full `internal/agenthttp` tests pass.
 - [x] **Step 2: Run** focused controller tests after implementing the file lifecycle; all passed.
 - [x] **Step 3: Implement** operator-owned OCI network/seccomp/resource settings, canonical workspace bind validation, private state-dir credential files, and stale file cleanup at controller recovery. Host egress rules still require target configuration.
 - [x] **Step 4: Run** full Go suite and Python egress tool tests; `go test -race ./internal/agenthttp` passed. Server/Worker race suite passed after P2 Task 1.

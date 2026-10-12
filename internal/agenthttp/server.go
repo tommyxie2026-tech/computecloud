@@ -126,7 +126,7 @@ func New(cfg Config) (*Server, error) {
 		return nil, errors.New("invalid Agent Runtime OCI resource/network policy")
 	}
 	if cfg.PublicStrict {
-		if cfg.EgressNetwork == "bridge" || !filepath.IsAbs(cfg.SeccompProfile) {
+		if cfg.EgressNetwork == "bridge" || cfg.EgressNetwork == "host" || cfg.EgressNetwork == "none" || !filepath.IsAbs(cfg.SeccompProfile) {
 			return nil, errors.New("public strict mode requires a named egress network and absolute seccomp profile")
 		}
 		seccompInfo, err := os.Stat(cfg.SeccompProfile)

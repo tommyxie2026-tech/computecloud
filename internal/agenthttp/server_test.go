@@ -365,6 +365,24 @@ func TestPublicStrictOCIRequiresNamedNetworkAndSeccomp(t *testing.T) {
 	}
 }
 
+func TestPublicStrictOCIRejectsBuiltInNetworks(t *testing.T) {
+	_, cfg := testServer(t)
+	cfg.PublicStrict = true
+	seccomp := filepath.Join(t.TempDir(), "seccomp.json")
+	if err := os.WriteFile(seccomp, []byte(`{"defaultAction":"SCMP_ACT_ERRNO"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SeccompProfile = seccomp
+	for _, network := range []string{"bridge", "host", "none"} {
+		t.Run(network, func(t *testing.T) {
+			cfg.EgressNetwork = network
+			if _, err := New(cfg); err == nil {
+				t.Fatalf("public strict mode accepted built-in Docker network %q", network)
+			}
+		})
+	}
+}
+
 func TestAttemptRestartReconcilesSecretFiles(t *testing.T) {
 	_, cfg := testServer(t)
 	stale := filepath.Join(cfg.StateDir, "attempt-credential-stale.env")
