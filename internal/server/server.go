@@ -31,22 +31,23 @@ type session struct {
 }
 type Server struct {
 	pb.UnimplementedRuntimeServiceServer
-	cfg             config.Server
-	db              *store.DB
-	auth            *rpcutil.Auth
-	requestLimiter  *requestLimiter
-	mu              sync.Mutex
-	peers           map[string]*session
-	notify          chan struct{}
-	grpc            *grpc.Server
-	jobCursor       string
-	workerCursor    string
-	projectCursor   map[int32]string
-	groupCursor     map[string]string
-	modelHandler    http.Handler
-	artifactSweepAt int64
-	eventSweepAt    int64
-	controlEpoch    string
+	cfg                config.Server
+	db                 *store.DB
+	auth               *rpcutil.Auth
+	requestLimiter     *requestLimiter
+	mu                 sync.Mutex
+	peers              map[string]*session
+	workerReservations map[string]bool
+	notify             chan struct{}
+	grpc               *grpc.Server
+	jobCursor          string
+	workerCursor       string
+	projectCursor      map[int32]string
+	groupCursor        map[string]string
+	modelHandler       http.Handler
+	artifactSweepAt    int64
+	eventSweepAt       int64
+	controlEpoch       string
 }
 
 func New(c config.Server) (*Server, error) {
@@ -58,11 +59,12 @@ func New(c config.Server) (*Server, error) {
 	if e != nil {
 		return nil, e
 	}
+	a.SetWorkerStreamLimit(c.WorkerAdmission.MaxStreams)
 	d, e := store.Open(c.DataDir, store.ServerSchema)
 	if e != nil {
 		return nil, e
 	}
-	s := &Server{cfg: c, db: d, auth: a, requestLimiter: newRequestLimiter(c.HTTP.RateLimit), peers: map[string]*session{}, notify: make(chan struct{}, 1), projectCursor: map[int32]string{}, groupCursor: map[string]string{}, controlEpoch: store.ID()}
+	s := &Server{cfg: c, db: d, auth: a, requestLimiter: newRequestLimiter(c.HTTP.RateLimit), peers: map[string]*session{}, workerReservations: map[string]bool{}, notify: make(chan struct{}, 1), projectCursor: map[int32]string{}, groupCursor: map[string]string{}, controlEpoch: store.ID()}
 	// Recover CLI children even when the gateway is disabled after a crash.
 	if err := (&modelGateway{s: s}).recoverCLI(); err != nil {
 		d.Close()
@@ -209,6 +211,24 @@ func (s *Server) wake() {
 	default:
 	}
 }
+
+func (s *Server) reserveWorkerSession(workerID string) (func(), error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.peers[workerID] != nil {
+		return func() {}, nil // a reconnect may replace its own current session
+	}
+	if s.workerReservations[workerID] || len(s.peers)+len(s.workerReservations) >= s.cfg.WorkerAdmission.MaxSessions {
+		return nil, status.Error(codes.ResourceExhausted, "WORKER_SESSION_LIMIT")
+	}
+	s.workerReservations[workerID] = true
+	return func() {
+		s.mu.Lock()
+		delete(s.workerReservations, workerID)
+		s.mu.Unlock()
+	}, nil
+}
+
 func wait(ctx context.Context, ms int) error {
 	t := time.NewTimer(time.Duration(ms) * time.Millisecond)
 	defer t.Stop()
@@ -239,6 +259,11 @@ func (s *Server) ConnectWorker(stream grpc.BidiStreamingServer[pb.WorkerFrame, p
 			}
 		}
 	}
+	releaseReservation, e := s.reserveWorkerSession(h.WorkerId)
+	if e != nil {
+		return e
+	}
+	defer releaseReservation()
 	ctx, cancel := context.WithCancel(stream.Context())
 	defer cancel()
 	peer := &session{hello: h, identity: p.Identity, frames: make(chan *pb.ServerFrame, 64), cancel: cancel}
@@ -250,6 +275,7 @@ func (s *Server) ConnectWorker(stream grpc.BidiStreamingServer[pb.WorkerFrame, p
 		old.cancel()
 	}
 	s.peers[h.WorkerId] = peer
+	delete(s.workerReservations, h.WorkerId)
 	s.mu.Unlock()
 	s.wake()
 	defer func() {

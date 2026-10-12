@@ -22,8 +22,50 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	hp "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
+
+type admissionTestStream struct{ ctx context.Context }
+
+func (s admissionTestStream) SetHeader(metadata.MD) error  { return nil }
+func (s admissionTestStream) SendHeader(metadata.MD) error { return nil }
+func (s admissionTestStream) SetTrailer(metadata.MD)       {}
+func (s admissionTestStream) Context() context.Context     { return s.ctx }
+func (s admissionTestStream) SendMsg(any) error            { return nil }
+func (s admissionTestStream) RecvMsg(any) error            { return nil }
+
+func TestWorkerStreamAdmissionLimit(t *testing.T) {
+	tokenFile := testutil.Token(t, "worker")
+	auth, err := NewAuth(nil, []config.Identity{{TokenFile: tokenFile, WorkerID: "w1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth.SetWorkerStreamLimit(1)
+	token, err := config.Token(tokenFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+token))
+	stream := admissionTestStream{ctx: ctx}
+	entered, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- auth.Stream(nil, stream, &grpc.StreamServerInfo{}, func(any, grpc.ServerStream) error { close(entered); <-release; return nil })
+	}()
+	<-entered
+	err = auth.Stream(nil, stream, &grpc.StreamServerInfo{}, func(any, grpc.ServerStream) error { return nil })
+	if status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("second stream error=%v", err)
+	}
+	close(release)
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+	if err = auth.Stream(nil, stream, &grpc.StreamServerInfo{}, func(any, grpc.ServerStream) error { return nil }); err != nil {
+		t.Fatalf("slot not released: %v", err)
+	}
+}
 
 func certificate(t *testing.T) (string, string) {
 	t.Helper()

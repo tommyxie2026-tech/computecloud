@@ -69,7 +69,7 @@
 - [x] **Step 2: Run** `go test ./internal/server -run 'TestSubmitJobEnforcesIdentity|TestSubmitJobLimitPreserves|TestModelGatewayEnforcesPerIdentity' -count=1`; sandbox loopback was denied, then the authorized local integration run passed after implementation.
 - [x] **Step 3: Implement** validated config limits and admission checks at Job submission and model-gateway request creation; do not rely on the Gateway alone.
 - [x] **Step 4: Run** `go test ./internal/config ./internal/server` and `go test ./...`.
-- [ ] **Step 5: Commit** as `feat: enforce per-identity execution budgets`.
+- [x] **Step 5: Commit** as `feat: enforce per-identity execution budgets` (`0fcb5c5`).
 
 ### Task 3: Bound Worker gRPC admission and expose safe overload signals
 
@@ -84,11 +84,11 @@
 - Add configurable maximum concurrent authenticated Worker sessions and RPC stream admissions; limits are applied after TLS and application authentication.
 - Reject excess Worker registration/session replacement and stream admission with `codes.ResourceExhausted`; do not terminate healthy existing sessions merely because new capacity is full.
 
-- [ ] **Step 1: Write failing tests** named `TestWorkerSessionAdmissionLimit` and `TestWorkerStreamAdmissionLimit`.
-- [ ] **Step 2: Run** `go test ./internal/server ./internal/rpcutil -run 'TestWorker(Session|Stream)AdmissionLimit' -count=1` and confirm failure.
-- [ ] **Step 3: Implement** bounded admission counters with release on every stream/session exit path and safe counter cleanup.
-- [ ] **Step 4: Run** the targeted tests, `go test -race ./internal/server ./internal/rpcutil`, and `go test ./...`.
-- [ ] **Step 5: Commit** as `feat: bound public worker RPC admission`.
+- [x] **Step 1: Write failing tests** named `TestWorkerSessionAdmissionLimit` and `TestWorkerStreamAdmissionLimit`.
+- [x] **Step 2: Run** `go test ./internal/server ./internal/rpcutil -run 'TestWorker(Session|Stream)AdmissionLimit' -count=1` (both passed; loopback permission was granted for the integration package).
+- [x] **Step 3: Implement** bounded admission counters with release on every stream/session exit path and safe counter cleanup.
+- [x] **Step 4: Run** the targeted tests, targeted race checks, and `go test ./...`.
+- [x] **Step 5: Commit** as `feat: bound public worker RPC admission`.
 
 ### Task 4: Document and verify the public edge deployment contract
 
@@ -98,10 +98,10 @@
 - Create: `scripts/check_public_edge_config.py`
 - Create: `scripts/check_public_edge_config_test.py`
 
-- [ ] **Step 1: Write failing checks** for examples that publish only 7443/7444, expose no Docker socket/metrics/database ports, set TLS, and place 7444 behind the documented HTTP Gateway while 7443 uses a TCP/TLS pass-through path.
-- [ ] **Step 2: Run** `python3 -m unittest scripts.check_public_edge_config_test` and confirm the example is rejected until hardened.
-- [ ] **Step 3: Update** deployment guidance for source protection, origin/backend bypass prevention, trusted-proxy boundaries, DDoS/WAF duties, 429 handling, health-check exposure, and safe logs.
-- [ ] **Step 4: Run** `python3 -m unittest scripts.check_public_edge_config_test`, `go test ./...`, and `git diff --check`.
+- [x] **Step 1: Write failing checks** for examples that publish only 7443/7444, expose no Docker socket/metrics/database ports, set TLS, and place 7444 behind the documented HTTP Gateway while 7443 uses a TCP/TLS pass-through path.
+- [x] **Step 2: Run** `python3 -m unittest scripts.check_public_edge_config_test` (5 checks pass, including mutated insecure fixtures).
+- [x] **Step 3: Update** deployment guidance for source protection, origin/backend bypass prevention, trusted-proxy boundaries, DDoS/WAF duties, 429 handling, health-check exposure, and safe logs.
+- [x] **Step 4: Run** `python3 -m unittest scripts.check_public_edge_config_test`, `go test ./...`, and `git diff --check`.
 - [ ] **Step 5: Commit** as `docs: define hardened public edge deployment`.
 
 ### Task 5: Verify adversarial resource-control behavior
@@ -111,10 +111,10 @@
 - Create: `scripts/security/public_ingress_smoke_test.py`
 - Modify: `docs/deployment/production-v0.4.7.md`
 
-- [ ] **Step 1: Write tests** for unauthenticated rejection, per-key 429 behavior, oversized request rejection, saturated queue rejection, and absence of secrets in returned errors/log fixtures.
-- [ ] **Step 2: Run** `python3 -m unittest scripts.security.public_ingress_smoke_test` and confirm expected failing cases.
-- [ ] **Step 3: Implement** a safe smoke tool that accepts an explicitly supplied test endpoint and test key from protected files/environment, never prints credentials, and never targets arbitrary networks by default.
-- [ ] **Step 4: Run** the script against local fixtures, then `go test ./...`, `go test -race ./internal/server ./internal/rpcutil`, and `git diff --check`.
+- [x] **Step 1: Write tests** for unauthenticated rejection, per-key 429 behavior, oversized request rejection, saturated queue rejection, and absence of secrets in returned errors/log fixtures.
+- [x] **Step 2: Run** `python3 -m unittest scripts.security.public_ingress_smoke_test` (mocked endpoint cases pass).
+- [x] **Step 3: Implement** a safe smoke tool that accepts an explicitly supplied test endpoint and test key from protected files/environment, never prints credentials, and never targets arbitrary networks by default.
+- [x] **Step 4: Run** unit fixtures, `go test ./...`, targeted `go test -race ./internal/server ./internal/rpcutil`, and `git diff --check`.
 - [ ] **Step 5: Commit** as `test: verify public ingress security controls`.
 
 ---

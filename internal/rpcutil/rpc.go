@@ -24,7 +24,16 @@ type Principal struct {
 	Worker   bool
 }
 type contextKey struct{}
-type Auth struct{ identities map[[32]byte]Principal }
+type Auth struct {
+	identities    map[[32]byte]Principal
+	workerStreams chan struct{}
+}
+
+func (a *Auth) SetWorkerStreamLimit(max int) {
+	if max > 0 {
+		a.workerStreams = make(chan struct{}, max)
+	}
+}
 
 func NewAuth(users, workers []config.Identity) (*Auth, error) {
 	a := &Auth{identities: make(map[[32]byte]Principal)}
@@ -140,6 +149,14 @@ func (a *Auth) Stream(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo
 	ctx, e := a.Context(ss.Context())
 	if e != nil {
 		return e
+	}
+	if p, ok := PrincipalFrom(ctx); ok && p.Worker && a.workerStreams != nil {
+		select {
+		case a.workerStreams <- struct{}{}:
+			defer func() { <-a.workerStreams }()
+		default:
+			return status.Error(codes.ResourceExhausted, "WORKER_STREAM_LIMIT")
+		}
 	}
 	return next(srv, &authStream{ServerStream: ss, ctx: ctx})
 }

@@ -8,6 +8,8 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/testutil"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestTransportTunnelRejectsPlaintext(t *testing.T) {
@@ -16,6 +18,24 @@ func TestTransportTunnelRejectsPlaintext(t *testing.T) {
 	if err := s.ServeTunnel(context.Background(), nil); err == nil {
 		t.Fatal("plaintext tunnel accepted")
 	}
+}
+
+func TestWorkerSessionAdmissionLimit(t *testing.T) {
+	s := &Server{cfg: config.Server{WorkerAdmission: config.WorkerAdmission{MaxSessions: 1}}, peers: map[string]*session{}, workerReservations: map[string]bool{}}
+	release, err := s.reserveWorkerSession("worker-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.reserveWorkerSession("worker-b"); status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("over-capacity worker error=%v", err)
+	}
+	release()
+	s.peers["worker-a"] = &session{}
+	reconnectRelease, err := s.reserveWorkerSession("worker-a")
+	if err != nil {
+		t.Fatalf("same worker reconnect rejected: %v", err)
+	}
+	reconnectRelease()
 }
 
 func TestDirectAndTunnelShareServerSessions(t *testing.T) {

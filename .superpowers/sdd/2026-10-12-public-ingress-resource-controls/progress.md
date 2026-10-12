@@ -18,4 +18,13 @@ Task 2: Ruling: apply active/queued Job counts by authenticated owner+project, a
 Task 2: Ruling: identities sharing one owner must share identical quota settings; model concurrency is keyed by owner+project and uses nonblocking admission — avoids a second API key multiplying a user's budget; cost: config requires consistent values across that owner's entries.
 Task 2: RED→GREEN: added named submit/replay/model-gateway tests and config default/partial/mismatch tests; focused tests pass. The model-gateway fixture gives global and route concurrency three slots but the identity only two, so the third request exercises the identity limit.
 Task 2: Verification: `GOCACHE=/private/tmp/computecloud-public-security-gocache go test ./...` passed. `go test -race ./internal/server -run 'TestSubmitJobEnforcesIdentity|TestSubmitJobLimitPreserves|TestModelGatewayEnforcesPerIdentity' -count=1` passed. `git diff --check` passed. An initial full config/server run exposed a synthetic internal principal without resolved defaults; fallback defaults were added at the admission boundary, and the affected regression test passed before full-suite rerun.
-Task 2: pending commit `feat: enforce per-identity execution budgets`.
+Task 2: complete — commit `0fcb5c5` (`feat: enforce per-identity execution budgets`).
+
+Task 3: Ruling: enforce the authenticated Worker stream cap in the RPC auth stream interceptor and session cap at registration after a valid Hello; same-Worker reconnects may replace their current session, but a new Worker cannot evict an existing one — preserves current reconnect behavior while making saturation fail closed.
+Task 3: RED→GREEN: added `TestWorkerSessionAdmissionLimit` and `TestWorkerStreamAdmissionLimit`; both pass and exercise ResourceExhausted plus release/reconnect behavior.
+Task 3: Verification: targeted and full `go test -race ./internal/server ./internal/rpcutil` passed (Server 168.808s); after Task 3-5 code changes, `GOCACHE=/private/tmp/computecloud-public-security-gocache go test ./...` passed.
+Task 3: complete — commit `feat: bound public worker RPC admission`.
+
+Task 4: Added an executable public edge policy manifest and validator; the validator is intentionally provider-neutral and makes no claim about deployed cloud state. Five tests include insecure mutations. Container deployment and v0.4.7 production docs now specify 7444 HTTPS L7/WAF, 7443 TCP/TLS passthrough, origin allow-listing, no-cache/auth forwarding, TLS health checks, quota defaults, and external evidence needs.
+
+Task 5: Added a no-default-network smoke CLI requiring explicit HTTPS endpoint and protected token file. Optional queue testing requires explicit confirmation because it can submit one real Job. Mocked tests cover unauthenticated rejection, oversized body, 429, queue backpressure, missing saturation, and token echo checks; the CLI emits only redacted status values.

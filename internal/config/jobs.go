@@ -100,6 +100,9 @@ type ModelGateway struct {
 }
 
 func (c *Server) DefaultV02() {
+	if c.WorkerAdmission == (WorkerAdmission{}) {
+		c.WorkerAdmission = WorkerAdmission{MaxSessions: 128, MaxStreams: 128}
+	}
 	for i := range c.Users {
 		l := &c.Users[i].Limits
 		if *l == (IdentityLimits{}) {
@@ -182,6 +185,9 @@ func (c *Server) DefaultV02() {
 	}
 }
 func (c Server) ValidateV02() error {
+	if c.WorkerAdmission != (WorkerAdmission{}) && (c.WorkerAdmission.MaxSessions < 1 || c.WorkerAdmission.MaxSessions > 10000 || c.WorkerAdmission.MaxStreams < 1 || c.WorkerAdmission.MaxStreams > 10000) {
+		return fmt.Errorf("invalid worker admission limits")
+	}
 	owners := map[string]IdentityLimits{}
 	for _, u := range c.Users {
 		l := u.Limits

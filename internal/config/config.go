@@ -43,6 +43,10 @@ type IdentityLimits struct {
 	MaxQueuedJobs    int `yaml:"max_queued_jobs"`
 	MaxModelRequests int `yaml:"max_model_requests"`
 }
+type WorkerAdmission struct {
+	MaxSessions int `yaml:"max_sessions"`
+	MaxStreams  int `yaml:"max_streams"`
+}
 type Server struct {
 	Listen                        string            `yaml:"listen"`
 	DataDir                       string            `yaml:"data_dir"`
@@ -61,6 +65,7 @@ type Server struct {
 	Jobs                          Jobs              `yaml:"jobs"`
 	MCP                           MCP               `yaml:"mcp"`
 	ModelGateway                  ModelGateway      `yaml:"model_gateway"`
+	WorkerAdmission               WorkerAdmission   `yaml:"worker_admission"`
 	ConversationJobs              ConversationJobs  `yaml:"conversation_jobs"`
 	Transport                     RelayTransport    `yaml:"transport"`
 }
