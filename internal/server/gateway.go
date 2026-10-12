@@ -173,6 +173,9 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		modelError(w, status.Error(codes.Unauthenticated, "authentication required"))
 		return
 	}
+	if !g.s.rateLimitAPIKeyLookup(w, r, r.Header.Get("Authorization")) {
+		return
+	}
 	id, hash, e := g.identity(r.Context(), r.Header.Get("Authorization"))
 	if e != nil {
 		modelError(w, dbErr(e))
