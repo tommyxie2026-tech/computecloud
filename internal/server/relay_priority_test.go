@@ -164,12 +164,18 @@ func TestRelayControlProgressDuringBulkTransfer(t *testing.T) {
 		}
 		bulkWriteDone <- err
 	}()
+	startupTimeout := time.NewTimer(30 * time.Second)
+	defer startupTimeout.Stop()
 	select {
 	case <-bulkStarted:
-	// Startup is only a hang guard. The two-second product bound starts after
-	// the Bulk stream is established and applies to the control request below.
-	case <-time.After(30 * time.Second):
-		t.Fatal("Bulk stream did not reach Relay-backed server")
+		// Startup is only a hang guard. The two-second product bound starts after
+		// the Bulk stream is established and applies to the control request below.
+	case err := <-bulkResponse:
+		t.Fatalf("Bulk request ended before reaching Relay-backed server: %v", err)
+	case err := <-bulkWriteDone:
+		t.Fatalf("Bulk request body ended before reaching Relay-backed server: %v", err)
+	case <-startupTimeout.C:
+		t.Fatal("Bulk stream did not reach Relay-backed server before startup timeout")
 	}
 	select {
 	case err := <-bulkWriteDone:

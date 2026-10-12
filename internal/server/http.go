@@ -99,6 +99,9 @@ func readJSONBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, 
 }
 func (s *Server) HTTPHandler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/auth/keys", s.httpCreateAPIKey)
+	mux.HandleFunc("GET /v1/auth/keys", s.httpListAPIKeys)
+	mux.HandleFunc("DELETE /v1/auth/keys/{id}", s.httpRevokeAPIKey)
 	mux.HandleFunc("GET /v1/jobs/{id}/artifacts/{artifact}/review", s.httpArtifactReview)
 	mux.HandleFunc("GET /v1/jobs/{id}/goal", s.httpJobGoal)
 	mux.HandleFunc("POST /v1/jobs/{id}/goal/decisions", s.httpGoalDecision)
@@ -276,6 +279,9 @@ func (s *Server) HTTPHandler() http.Handler {
 			httpError(w, status.Error(codes.Unauthenticated, "authentication required"))
 			return
 		}
+		if !s.rateLimitAPIKeyLookup(w, r, r.Header.Get("Authorization")) {
+			return
+		}
 		ctx, e := s.auth.Bearer(r.Context(), r.Header.Get("Authorization"))
 		if e != nil {
 			httpError(w, e)
@@ -283,6 +289,9 @@ func (s *Server) HTTPHandler() http.Handler {
 		}
 		if _, e = rpcutil.User(ctx); e != nil {
 			httpError(w, e)
+			return
+		}
+		if !s.rateLimitHTTP(w, r, r.Header.Get("Authorization")) {
 			return
 		}
 		streaming := strings.HasSuffix(r.URL.Path, "/events/stream")

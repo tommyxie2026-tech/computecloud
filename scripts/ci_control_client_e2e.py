@@ -124,7 +124,10 @@ def main():
             }})
             templates = json.loads(run(binary,"templates","--config",str(worker_cfg)))["templates"]
             server_cfg = write("server.json", {"server":{
-                "listen":grpc_addr,"http":{"listen":http_addr},"data_dir":str(root/"server"),"tls":tls,
+                "listen":grpc_addr,"http":{"listen":http_addr,"rate_limit":{
+                    "rate_per_minute":1000000,"burst":100000,
+                    "max_entries":10000,"idle_timeout_seconds":600
+                }},"data_dir":str(root/"server"),"tls":tls,
                 "tick_ms":30,"lease_seconds":4,"max_project_tasks":4,"credentials":{"fixture":1},
                 "jobs":{"enabled":True,"templates":templates},
                 "users":[{"token_file":str(user_token),"owner":"ui","projects":["control"],"credentials":["fixture"],

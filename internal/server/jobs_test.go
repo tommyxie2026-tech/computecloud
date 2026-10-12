@@ -18,6 +18,8 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/testutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/worker"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type jobHarness struct {
@@ -453,5 +455,33 @@ func TestMCPProtocolAndOriginBoundaries(t *testing.T) {
 		if res.StatusCode < 400 {
 			t.Fatalf("invalid protocol/auth/origin accepted: %v", headers)
 		}
+	}
+}
+
+func TestSubmitJobEnforcesIdentityActiveAndQueueLimits(t *testing.T) {
+	h := newJobHarness(t, false, func(c *config.Server) {
+		c.Users[0].Limits = config.IdentityLimits{MaxActiveJobs: 1, MaxQueuedJobs: 1, MaxModelRequests: 1}
+	})
+	if _, err := h.s.SubmitJob(h.ctx, "identity-limit-one", job.JSON(h.spec("single"))); err != nil {
+		t.Fatal(err)
+	}
+	_, err := h.s.SubmitJob(h.ctx, "identity-limit-two", job.JSON(h.spec("single")))
+	if status.Code(err) != codes.ResourceExhausted || status.Convert(err).Message() != "IDENTITY_ACTIVE_JOB_LIMIT" {
+		t.Fatalf("second job error=%v, want identity active resource limit", err)
+	}
+}
+
+func TestSubmitJobLimitPreservesIdempotentReplay(t *testing.T) {
+	h := newJobHarness(t, false, func(c *config.Server) {
+		c.Users[0].Limits = config.IdentityLimits{MaxActiveJobs: 1, MaxQueuedJobs: 1, MaxModelRequests: 1}
+	})
+	spec := job.JSON(h.spec("single"))
+	first, err := h.s.SubmitJob(h.ctx, "identity-limit-replay", spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := h.s.SubmitJob(h.ctx, "identity-limit-replay", spec)
+	if err != nil || replay.ID != first.ID {
+		t.Fatalf("idempotent replay=%v err=%v", replay, err)
 	}
 }

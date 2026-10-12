@@ -1,0 +1,11 @@
+{
+  "public_ports": [7443, 7444],
+  "listeners": [
+    {"port": 7443, "protocol": "tcp", "mode": "tls_passthrough", "upstream_port": 7443},
+    {"port": 7444, "protocol": "https", "mode": "https_gateway", "upstream_port": 7444, "upstream_tls": true, "cache": false, "preserve_authorization": true}
+  ],
+  "origin": {"publicly_reachable": false, "allowed_sources": "edge_proxy_only"},
+  "server_tls": {"enabled": true, "minimum_version": "TLS1.2"},
+  "docker": {"published_ports": [7443, 7444], "mounts": ["server-config:ro", "server-data", "secrets:ro"]},
+  "forbidden_public_services": ["database", "metrics", "admin", "docker_socket", "workspace"]
+}

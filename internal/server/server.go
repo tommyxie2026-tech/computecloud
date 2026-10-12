@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"sort"
 	"sync"
 	"time"
@@ -18,6 +20,8 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -31,21 +35,24 @@ type session struct {
 }
 type Server struct {
 	pb.UnimplementedRuntimeServiceServer
-	cfg             config.Server
-	db              *store.DB
-	auth            *rpcutil.Auth
-	mu              sync.Mutex
-	peers           map[string]*session
-	notify          chan struct{}
-	grpc            *grpc.Server
-	jobCursor       string
-	workerCursor    string
-	projectCursor   map[int32]string
-	groupCursor     map[string]string
-	modelHandler    http.Handler
-	artifactSweepAt int64
-	eventSweepAt    int64
-	controlEpoch    string
+	cfg                config.Server
+	db                 *store.DB
+	auth               *rpcutil.Auth
+	requestLimiter      *requestLimiter
+	apiKeyLookupLimiter *requestLimiter
+	mu                 sync.Mutex
+	peers              map[string]*session
+	workerReservations map[string]bool
+	notify             chan struct{}
+	grpc               *grpc.Server
+	jobCursor          string
+	workerCursor       string
+	projectCursor      map[int32]string
+	groupCursor        map[string]string
+	modelHandler       http.Handler
+	artifactSweepAt    int64
+	eventSweepAt       int64
+	controlEpoch       string
 }
 
 func New(c config.Server) (*Server, error) {
@@ -57,11 +64,14 @@ func New(c config.Server) (*Server, error) {
 	if e != nil {
 		return nil, e
 	}
+	a.SetWorkerStreamLimit(c.WorkerAdmission.MaxStreams)
+	a.SetWorkerMTLSMode(c.TLS.WorkerMTLSMode)
 	d, e := store.Open(c.DataDir, store.ServerSchema)
 	if e != nil {
 		return nil, e
 	}
-	s := &Server{cfg: c, db: d, auth: a, peers: map[string]*session{}, notify: make(chan struct{}, 1), projectCursor: map[int32]string{}, groupCursor: map[string]string{}, controlEpoch: store.ID()}
+	s := &Server{cfg: c, db: d, auth: a, requestLimiter: newRequestLimiter(c.HTTP.RateLimit), apiKeyLookupLimiter: newRequestLimiter(c.HTTP.RateLimit), peers: map[string]*session{}, workerReservations: map[string]bool{}, notify: make(chan struct{}, 1), projectCursor: map[int32]string{}, groupCursor: map[string]string{}, controlEpoch: store.ID()}
+	a.SetAPIKeyResolver(s.resolveAPIKey)
 	// Recover CLI children even when the gateway is disabled after a crash.
 	if err := (&modelGateway{s: s}).recoverCLI(); err != nil {
 		d.Close()
@@ -87,6 +97,38 @@ func (s *Server) Close() error {
 		g.client.CloseIdleConnections()
 	}
 	return s.db.Close()
+}
+
+func (s *Server) authUnary(ctx context.Context, req any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
+	if err := s.rateLimitAPIKeyRPC(ctx); err != nil {
+		return nil, err
+	}
+	return s.auth.Unary(ctx, req, info, next)
+}
+
+func (s *Server) authStream(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, next grpc.StreamHandler) error {
+	if err := s.rateLimitAPIKeyRPC(stream.Context()); err != nil {
+		return err
+	}
+	return s.auth.Stream(srv, stream, info, next)
+}
+
+func (s *Server) rateLimitAPIKeyRPC(ctx context.Context) error {
+	md, _ := metadata.FromIncomingContext(ctx)
+	values := md.Get("authorization")
+	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer cc_live_") {
+		return nil
+	}
+	remoteAddr := ""
+	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+		remoteAddr = p.Addr.String()
+	}
+	allowed, retryAfter := s.allowAPIKeyLookup(values[0], remoteAddr)
+	if allowed {
+		return nil
+	}
+	_ = grpc.SetTrailer(ctx, metadata.Pairs("retry-after", strconv.Itoa(retryAfter)))
+	return status.Error(codes.ResourceExhausted, "RATE_LIMITED")
 }
 
 // ServeTunnel consumes a byte-forwarding listener while preserving inner TLS
@@ -161,7 +203,7 @@ func (s *Server) serve(ctx context.Context, l, tunnel net.Listener) error {
 			}
 		}()
 	}
-	g := grpc.NewServer(tls, grpc.UnaryInterceptor(s.auth.Unary), grpc.StreamInterceptor(s.auth.Stream), grpc.MaxRecvMsgSize(8<<20), grpc.MaxSendMsgSize(8<<20))
+	g := grpc.NewServer(tls, grpc.UnaryInterceptor(s.authUnary), grpc.StreamInterceptor(s.authStream), grpc.MaxRecvMsgSize(8<<20), grpc.MaxSendMsgSize(8<<20))
 	s.grpc = g
 	pb.RegisterRuntimeServiceServer(g, s)
 	done := make(chan struct{})
@@ -208,6 +250,24 @@ func (s *Server) wake() {
 	default:
 	}
 }
+
+func (s *Server) reserveWorkerSession(workerID string) (func(), error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.peers[workerID] != nil {
+		return func() {}, nil // a reconnect may replace its own current session
+	}
+	if s.workerReservations[workerID] || len(s.peers)+len(s.workerReservations) >= s.cfg.WorkerAdmission.MaxSessions {
+		return nil, status.Error(codes.ResourceExhausted, "WORKER_SESSION_LIMIT")
+	}
+	s.workerReservations[workerID] = true
+	return func() {
+		s.mu.Lock()
+		delete(s.workerReservations, workerID)
+		s.mu.Unlock()
+	}, nil
+}
+
 func wait(ctx context.Context, ms int) error {
 	t := time.NewTimer(time.Duration(ms) * time.Millisecond)
 	defer t.Stop()
@@ -238,6 +298,11 @@ func (s *Server) ConnectWorker(stream grpc.BidiStreamingServer[pb.WorkerFrame, p
 			}
 		}
 	}
+	releaseReservation, e := s.reserveWorkerSession(h.WorkerId)
+	if e != nil {
+		return e
+	}
+	defer releaseReservation()
 	ctx, cancel := context.WithCancel(stream.Context())
 	defer cancel()
 	peer := &session{hello: h, identity: p.Identity, frames: make(chan *pb.ServerFrame, 64), cancel: cancel}
@@ -249,6 +314,7 @@ func (s *Server) ConnectWorker(stream grpc.BidiStreamingServer[pb.WorkerFrame, p
 		old.cancel()
 	}
 	s.peers[h.WorkerId] = peer
+	delete(s.workerReservations, h.WorkerId)
 	s.mu.Unlock()
 	s.wake()
 	defer func() {
@@ -634,6 +700,7 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		}
 		blocker := "NO_READY_WORKER"
 		var chosen *session
+		publicRequirements, publicEligible := s.publicExecutionRequirements(t.Spec)
 		workerLoads := make([]workerLoad, 0, len(peers))
 		scoringEnabled := s.cfg.PreparedWorkspaceScoreEnabled
 		scores := make(map[string]workerScore, len(peers))
@@ -643,7 +710,9 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 				observations = append(observations, s.observeCandidate(p, t, reason))
 			}
 		}
-		if creds >= s.cfg.Credentials[t.Spec.CredentialRef] {
+		if !publicEligible {
+			blocker = "PUBLIC_ISOLATION_REQUIRED"
+		} else if creds >= s.cfg.Credentials[t.Spec.CredentialRef] {
 			blocker = "CREDENTIAL_CONCURRENCY_EXHAUSTED"
 		} else if projects >= s.cfg.MaxProjectTasks {
 			blocker = "PROJECT_CONCURRENCY_EXHAUSTED"
@@ -663,7 +732,7 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 				}
 				sawReadyWorker = true
 				baseFits := fits(p, t) && (jc == nil || fitsJob(p, t, jc))
-				if !baseFits || !fitsWithCapabilities(p, t, budgetCapabilities) {
+				if !baseFits || !fitsWithCapabilities(p, t, append(budgetCapabilities, publicRequirements...)) {
 					if baseFits && len(budgetCapabilities) != 0 {
 						sawBudgetCapabilityMismatch = true
 					}

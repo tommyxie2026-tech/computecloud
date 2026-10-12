@@ -172,6 +172,43 @@ func TestHTTPRuntimeLifecycleAndEventCursor(t *testing.T) {
 	}
 }
 
+func TestHTTPRuntimeForwardsAttemptGatewayOnlyToCodexOCIController(t *testing.T) {
+	var received httpRunRequest
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/runs/secure-attempt" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method == http.MethodPut {
+			if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+				t.Error(err)
+			}
+			_, _ = w.Write([]byte(`{"id":"secure-attempt"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"secure-attempt","state":"EXITED","cleanup":"CONFIRMED","exit_code":0,"outcome":{"final":true,"success":true}}`))
+	})
+	runtime := testHTTPRuntime(t, handler)
+	provider, _ := Lookup("codex_http")
+	prepared, err := provider.Prepare(PrepareRequest{
+		AttemptID: "secure-attempt", Generation: 1, Runtime: runtime,
+		Spec:    &pb.TaskSpec{RuntimeProfile: "codex_http", Model: "m"},
+		Policy:  config.Policy{CodexSandbox: "read-only"},
+		Gateway: &pb.GatewayAccess{BaseUrl: "https://server.example/v1", Token: "ephemeral-token"},
+		CWD:     "/workspace", Input: "hello",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := provider.Start(context.Background(), prepared, nil)
+	if result.Err != nil || result.ProtocolErr != nil {
+		t.Fatalf("start result=%+v", result)
+	}
+	if !hasExactString(received.Env, "COMPUTECLOUD_MODEL_TOKEN=ephemeral-token") || !hasExactString(received.Args, `-c`) || received.Profile != "codex_http" {
+		t.Fatalf("Attempt Gateway not forwarded to OCI controller: %+v", received)
+	}
+}
+
 func TestHTTPRuntimeRejectsIdentityAndForeignReference(t *testing.T) {
 	runtime := testHTTPRuntime(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"profile":"claude_http","version":"2.1.292"}`))

@@ -196,6 +196,23 @@ func (s *Server) SubmitJob(ctx context.Context, key string, b []byte) (*Job, err
 		if !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
+		limits := p.Identity.Limits
+		if limits == (config.IdentityLimits{}) {
+			limits = config.IdentityLimits{MaxActiveJobs: 8, MaxQueuedJobs: 32, MaxModelRequests: 4}
+		}
+		var activeJobs, queuedJobs int
+		if e = q.QueryRowContext(ctx, `SELECT count(*) FROM jobs WHERE owner=? AND project=? AND state NOT IN ('SUCCEEDED','FAILED','CANCELED')`, p.Identity.Owner, spec.ProjectID).Scan(&activeJobs); e != nil {
+			return e
+		}
+		if e = q.QueryRowContext(ctx, `SELECT count(*) FROM jobs WHERE owner=? AND project=? AND state='QUEUED'`, p.Identity.Owner, spec.ProjectID).Scan(&queuedJobs); e != nil {
+			return e
+		}
+		if activeJobs >= limits.MaxActiveJobs {
+			return status.Error(codes.ResourceExhausted, "IDENTITY_ACTIVE_JOB_LIMIT")
+		}
+		if queuedJobs >= limits.MaxQueuedJobs {
+			return status.Error(codes.ResourceExhausted, "IDENTITY_QUEUED_JOB_LIMIT")
+		}
 		frozen := job.Frozen{Spec: spec, Digests: map[string]string{}, Routes: map[string]string{}, RouteDigests: map[string]string{}}
 		for _, ex := range spec.Executions() {
 			if !config.Contains(p.Identity.Credentials, ex.CredentialRef) || s.cfg.Credentials[ex.CredentialRef] < 1 {

@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -32,11 +33,14 @@ type gatewayRoute struct {
 	slots  chan struct{}
 }
 type modelGateway struct {
-	cliBlocked atomic.Bool
-	s          *Server
-	client     *http.Client
-	slots      chan struct{}
-	routes     map[string]*gatewayRoute
+	cliBlocked    atomic.Bool
+	s             *Server
+	client        *http.Client
+	slots         chan struct{}
+	routes        map[string]*gatewayRoute
+	identitySlots map[string]chan struct{}
+	attemptMu     sync.Mutex
+	attemptSlots  map[string]chan struct{}
 }
 type modelIdentity struct {
 	owner, project, job, attempt, route, model, traceOwner string
@@ -46,7 +50,15 @@ type modelIdentity struct {
 func newModelGateway(s *Server) (*modelGateway, error) {
 	g := s.cfg.ModelGateway
 	tr := &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: time.Duration(g.ConnectTimeoutSeconds) * time.Second, KeepAlive: 30 * time.Second}).DialContext, TLSHandshakeTimeout: time.Duration(g.ConnectTimeoutSeconds) * time.Second, ResponseHeaderTimeout: time.Duration(g.HeaderTimeoutSeconds) * time.Second, IdleConnTimeout: 90 * time.Second, MaxIdleConns: g.MaxInflight, MaxIdleConnsPerHost: g.MaxInflight, MaxConnsPerHost: g.MaxInflight, MaxResponseHeaderBytes: 64 << 10, DisableCompression: true}
-	out := &modelGateway{s: s, client: &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, slots: make(chan struct{}, g.MaxInflight), routes: map[string]*gatewayRoute{}}
+	out := &modelGateway{s: s, client: &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, slots: make(chan struct{}, g.MaxInflight), routes: map[string]*gatewayRoute{}, identitySlots: map[string]chan struct{}{}, attemptSlots: map[string]chan struct{}{}}
+	for _, u := range s.cfg.Users {
+		if u.ModelRoute != "" && u.Limits.MaxModelRequests > 0 {
+			key := u.Owner + "\x00" + u.ModelProject
+			if _, ok := out.identitySlots[key]; !ok {
+				out.identitySlots[key] = make(chan struct{}, u.Limits.MaxModelRequests)
+			}
+		}
+	}
 	for name, r := range g.Routes {
 		if r.Backend == "codex_cli" {
 			if e := out.prepareCLI(r); e != nil {
@@ -161,9 +173,15 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		modelError(w, status.Error(codes.Unauthenticated, "authentication required"))
 		return
 	}
+	if !g.s.rateLimitAPIKeyLookup(w, r, r.Header.Get("Authorization")) {
+		return
+	}
 	id, hash, e := g.identity(r.Context(), r.Header.Get("Authorization"))
 	if e != nil {
 		modelError(w, dbErr(e))
+		return
+	}
+	if !g.s.rateLimitHTTP(w, r, r.Header.Get("Authorization")) {
 		return
 	}
 	route := g.routes[id.route]
@@ -184,6 +202,28 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		w.WriteHeader(405)
 		return
+	}
+	if hash != "" && g.s.cfg.PublicExecutionMode == "isolated_only" {
+		release, ok := g.acquireAttemptSlot(id.attempt)
+		if !ok {
+			gatewayBusy(w)
+			return
+		}
+		defer release()
+		if route.config.MaxAttemptTokens < 1 || route.config.MaxAttemptCostMicros < 1 || route.config.InputCostPerMillionTokensMicros < 1 || route.config.OutputCostPerMillionTokensMicros < 1 {
+			modelError(w, status.Error(codes.FailedPrecondition, "ATTEMPT_BUDGET_UNCONFIGURED"))
+			return
+		}
+	}
+	identityKey := id.owner + "\x00" + id.project
+	if slots := g.identitySlots[identityKey]; slots != nil {
+		select {
+		case slots <- struct{}{}:
+			defer func() { <-slots }()
+		default:
+			gatewayBusy(w)
+			return
+		}
 	}
 	select {
 	case g.slots <- struct{}{}:
@@ -223,6 +263,18 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if e = validateModelBody(fields, r.URL.Path == "/v1/responses/compact"); e != nil {
 		modelError(w, status.Error(codes.InvalidArgument, e.Error()))
 		return
+	}
+	if hash != "" && g.s.cfg.PublicExecutionMode == "isolated_only" {
+		remaining, budgetErr := remainingAttemptBudget(r.Context(), g.s.db.SQL, id.attempt, route.config.MaxAttemptTokens, route.config.MaxAttemptCostMicros, route.config.InputCostPerMillionTokensMicros, route.config.OutputCostPerMillionTokensMicros)
+		if budgetErr != nil {
+			modelError(w, budgetErr)
+			return
+		}
+		body, budgetErr = applyAttemptBudget(fields, body, remaining, route.config.InputCostPerMillionTokensMicros, route.config.OutputCostPerMillionTokensMicros, r.URL.Path == "/v1/responses/compact")
+		if budgetErr != nil {
+			modelError(w, budgetErr)
+			return
+		}
 	}
 	var model string
 	if e = json.Unmarshal(fields["model"], &model); e != nil || !config.Contains(route.config.AllowedModels, model) || (id.model != "" && model != id.model) {

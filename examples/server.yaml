@@ -1,9 +1,15 @@
 # Local development. For remote workers, configure TLS as shown in the runbook.
 server:
+  # Public execution policy: trusted_only preserves existing deployments.
+  # isolated_only admits only container tasks using a configured Attempt Gateway route.
+  public_execution_mode: trusted_only
   listen: 127.0.0.1:7443
   data_dir: ../data/server
   tls:
     insecure_loopback: true
+    # Production rollout (after issuing per-Worker client certs):
+    # worker_mtls_mode: optional
+    # client_ca_file: ../secrets/worker-client-ca.crt
   users:
     - token_file: ../secrets/user.token
       owner: operator
@@ -14,6 +20,9 @@ server:
       worker_id: worker-a
       projects: [demo]
       credentials: [codex-account, claude-account]
+      # Pin the SHA-256 fingerprint of worker-a's client certificate before
+      # switching this Server from optional to required mTLS.
+      # client_cert_sha256: [REPLACE_WITH_64_HEX_SHA256]
   # Replace with model identifiers supported by your actual CLI/account.
   models:
     codex_exec: REPLACE_WITH_CODEX_MODEL

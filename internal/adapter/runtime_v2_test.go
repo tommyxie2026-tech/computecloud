@@ -2,7 +2,10 @@ package adapter
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +26,56 @@ func (f fixtureProvider) Transport() string                           { return "
 func (f fixtureProvider) Probe(context.Context, config.Runtime) error { return nil }
 func (f fixtureProvider) Args(*pb.TaskSpec, config.Policy) ([]string, error) {
 	return []string{"fixture"}, nil
+}
+
+func TestCodexHTTPAdapterUsesAttemptGatewayWithoutDirectCredential(t *testing.T) {
+	provider, ok := Lookup("codex_http")
+	if !ok || !provider.SupportsGateway() {
+		t.Fatal("Codex HTTP runtime must support the Attempt Gateway")
+	}
+	tokenFile := filepath.Join(t.TempDir(), "runtime.token")
+	if err := os.WriteFile(tokenFile, []byte("runtime-secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := provider.Prepare(PrepareRequest{
+		AttemptID: "attempt-1", Generation: 1,
+		Runtime: config.Runtime{Endpoint: "unix:///tmp/runtime.sock", TokenFile: tokenFile, Version: "0.160.1"},
+		Spec:    &pb.TaskSpec{RuntimeProfile: "codex_http", Model: "model-x"},
+		Policy:  config.Policy{CodexSandbox: "read-only"},
+		Gateway: &pb.GatewayAccess{BaseUrl: "https://server.example/v1", Token: "attempt-only-secret"},
+		Env:     []string{"PATH=/bin", "OPENAI_API_KEY=must-not-leak"}, CWD: t.TempDir(), Input: "prompt",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasExactString(prepared.Env, "COMPUTECLOUD_MODEL_TOKEN=attempt-only-secret") || hasExactString(prepared.Env, "OPENAI_API_KEY=must-not-leak") {
+		t.Fatalf("gateway/direct env leakage: %v", prepared.Env)
+	}
+	joined := strings.Join(prepared.Args, " ")
+	for _, value := range []string{"https://server.example/v1", "computecloud", `model_providers.computecloud.wire_api="responses"`} {
+		if !strings.Contains(joined, value) {
+			t.Fatalf("Codex Gateway setting %q missing from %v", value, prepared.Args)
+		}
+	}
+}
+
+func hasExactString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestClaudeHTTPRejectsAttemptGateway(t *testing.T) {
+	provider, ok := Lookup("claude_http")
+	if !ok || provider.SupportsGateway() {
+		t.Fatal("Claude HTTP runtime must remain unsupported for Attempt Gateway")
+	}
+	if _, err := provider.Prepare(PrepareRequest{Gateway: &pb.GatewayAccess{BaseUrl: "https://server.example/v1", Token: "ephemeral"}}); err == nil {
+		t.Fatal("Claude HTTP accepted an unverified Gateway auth mode")
+	}
 }
 func (f fixtureProvider) Parser(func(string, []byte) error) StreamParser { return fixtureParser{} }
 func (f fixtureProvider) Prepare(req PrepareRequest) (PreparedExecution, error) {

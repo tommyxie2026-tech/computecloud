@@ -55,10 +55,13 @@ func (c *capped) Bytes() []byte {
 	defer c.mu.Unlock()
 	return append([]byte(nil), c.b.Bytes()...)
 }
-func runtimeEnv(r config.Runtime, credential string) ([]string, []string, error) {
+func runtimeEnv(r config.Runtime, credential string, isolatedOnly bool) ([]string, []string, error) {
 	// Only operator-configured variables augment a small inherited runtime environment.
 	env := map[string]string{}
 	for _, k := range []string{"PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"} {
+		if isolatedOnly && (strings.Contains(strings.ToLower(k), "_proxy") || k == "SSL_CERT_FILE" || k == "SSL_CERT_DIR") {
+			continue
+		}
 		if v, ok := os.LookupEnv(k); ok {
 			env[k] = v
 		}
@@ -145,6 +148,10 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE", ErrorMessage: "conflicting environment requirements"})
 		return
 	}
+	if !publicExecutionSupported(w.cfg.PublicExecutionMode, envName, a.Gateway != nil, provider.Capabilities().Runtime, r.Env) {
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "PUBLIC_ISOLATION_REQUIRED", ErrorMessage: "isolated execution requires a container and Attempt Gateway capable runtime"})
+		return
+	}
 	environmentProvider, environmentOK := envreg.LookupProvider(envName)
 	if !environmentOK {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE", ErrorMessage: "environment provider unavailable"})
@@ -160,7 +167,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		// configured direct credential when a gateway access envelope exists.
 		runtimeConfig.CredentialEnv = nil
 	}
-	env, secrets, e := runtimeEnv(runtimeConfig, a.Spec.CredentialRef)
+	env, secrets, e := runtimeEnv(runtimeConfig, a.Spec.CredentialRef, w.cfg.PublicExecutionMode == "isolated_only")
 	if e != nil {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "AUTHENTICATION_REQUIRED", ErrorMessage: "credential file unavailable"})
 		return
@@ -510,4 +517,4 @@ func atomicFile(path string, b []byte) error {
 	return d.Sync()
 }
 
-func verificationEnv() []string { env, _, _ := runtimeEnv(config.Runtime{}, ""); return env }
+func verificationEnv() []string { env, _, _ := runtimeEnv(config.Runtime{}, "", false); return env }

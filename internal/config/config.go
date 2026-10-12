@@ -19,21 +19,36 @@ type TLS struct {
 	CertFile         string `yaml:"cert_file"`
 	KeyFile          string `yaml:"key_file"`
 	CAFile           string `yaml:"ca_file"`
+	ClientCAFile     string `yaml:"client_ca_file"`
+	WorkerMTLSMode   string `yaml:"worker_mtls_mode"`
 	InsecureLoopback bool   `yaml:"insecure_loopback"`
 }
 type Identity struct {
-	GoalActorID         string   `yaml:"goal_actor_id"`
-	GoalActorKind       string   `yaml:"goal_actor_kind"`
-	TraceOwner          string   `yaml:"trace_owner"`
-	TokenFile           string   `yaml:"token_file"`
-	Owner               string   `yaml:"owner"`
-	Projects            []string `yaml:"projects"`
-	Credentials         []string `yaml:"credentials"`
-	WorkerID            string   `yaml:"worker_id"`
-	Scopes              []string `yaml:"scopes"`
-	ModelProject        string   `yaml:"model_project"`
-	ModelRoute          string   `yaml:"model_route"`
-	ConversationProfile string   `yaml:"conversation_profile"`
+	GoalActorID         string         `yaml:"goal_actor_id"`
+	GoalActorKind       string         `yaml:"goal_actor_kind"`
+	TraceOwner          string         `yaml:"trace_owner"`
+	TokenFile           string         `yaml:"token_file"`
+	Owner               string         `yaml:"owner"`
+	Projects            []string       `yaml:"projects"`
+	Credentials         []string       `yaml:"credentials"`
+	WorkerID            string         `yaml:"worker_id"`
+	Scopes              []string       `yaml:"scopes"`
+	ModelProject        string         `yaml:"model_project"`
+	ModelRoute          string         `yaml:"model_route"`
+	ConversationProfile string         `yaml:"conversation_profile"`
+	Limits              IdentityLimits `yaml:"limits"`
+	ClientCertSHA256    []string       `yaml:"client_cert_sha256"`
+}
+
+// IdentityLimits bounds work admitted for one configured user identity.
+type IdentityLimits struct {
+	MaxActiveJobs    int `yaml:"max_active_jobs"`
+	MaxQueuedJobs    int `yaml:"max_queued_jobs"`
+	MaxModelRequests int `yaml:"max_model_requests"`
+}
+type WorkerAdmission struct {
+	MaxSessions int `yaml:"max_sessions"`
+	MaxStreams  int `yaml:"max_streams"`
 }
 type Server struct {
 	Listen                        string            `yaml:"listen"`
@@ -48,11 +63,13 @@ type Server struct {
 	MaxArtifactBytes              int64             `yaml:"max_artifact_bytes"`
 	MaxProjectTasks               int               `yaml:"max_project_tasks"`
 	Maintenance                   bool              `yaml:"maintenance"`
+	PublicExecutionMode           string            `yaml:"public_execution_mode"`
 	PreparedWorkspaceScoreEnabled bool              `yaml:"prepared_workspace_score_enabled"`
 	HTTP                          HTTP              `yaml:"http"`
 	Jobs                          Jobs              `yaml:"jobs"`
 	MCP                           MCP               `yaml:"mcp"`
 	ModelGateway                  ModelGateway      `yaml:"model_gateway"`
+	WorkerAdmission               WorkerAdmission   `yaml:"worker_admission"`
 	ConversationJobs              ConversationJobs  `yaml:"conversation_jobs"`
 	Transport                     RelayTransport    `yaml:"transport"`
 }
@@ -85,6 +102,7 @@ type Policy struct {
 }
 type Worker struct {
 	ID                        string                `yaml:"id"`
+	PublicExecutionMode       string                `yaml:"public_execution_mode"`
 	Address                   string                `yaml:"server_address"`
 	DataDir                   string                `yaml:"data_dir"`
 	TokenFile                 string                `yaml:"token_file"`
@@ -135,7 +153,12 @@ func Load(path string) (Config, error) {
 		}
 		return p
 	}
-	tlsPaths := func(t *TLS) { t.CertFile = abs(t.CertFile); t.KeyFile = abs(t.KeyFile); t.CAFile = abs(t.CAFile) }
+	tlsPaths := func(t *TLS) {
+		t.CertFile = abs(t.CertFile)
+		t.KeyFile = abs(t.KeyFile)
+		t.CAFile = abs(t.CAFile)
+		t.ClientCAFile = abs(t.ClientCAFile)
+	}
 	c.Server.DataDir = abs(c.Server.DataDir)
 	c.Worker.DataDir = abs(c.Worker.DataDir)
 	c.Worker.TokenFile = abs(c.Worker.TokenFile)
@@ -229,6 +252,9 @@ func (c Server) Validate() error {
 	if c.DataDir == "" || c.LeaseSeconds < 3 || c.TickMS < 10 || c.MaxArtifactBytes < 1 || c.MaxProjectTasks < 1 {
 		return errors.New("invalid server limits/data_dir")
 	}
+	if c.PublicExecutionMode != "" && c.PublicExecutionMode != "trusted_only" && c.PublicExecutionMode != "isolated_only" {
+		return errors.New("public_execution_mode must be trusted_only or isolated_only")
+	}
 	for k, v := range c.Credentials {
 		if k == "" || v < 1 {
 			return fmt.Errorf("invalid credential limit %q", k)
@@ -242,6 +268,12 @@ func (c Worker) Validate() error {
 	}
 	if c.ID == "" || c.DataDir == "" || c.Address == "" || c.Slots < 1 || len(c.Runtimes) == 0 {
 		return errors.New("worker id/data_dir/address/slots/runtimes required")
+	}
+	if c.PublicExecutionMode != "" && c.PublicExecutionMode != "trusted_only" && c.PublicExecutionMode != "isolated_only" {
+		return errors.New("worker public_execution_mode must be trusted_only or isolated_only")
+	}
+	if (c.TLS.CertFile == "") != (c.TLS.KeyFile == "") {
+		return errors.New("worker client TLS certificate and key must be configured together")
 	}
 	if c.WorkspaceRetentionMS < 0 || c.WorkspaceMaxBytes < 0 {
 		return errors.New("worker workspace retention/quota must be non-negative")

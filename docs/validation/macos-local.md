@@ -1,6 +1,6 @@
 # macOS 原生本机验证
 
-无需容器或 Linux 虚拟机。需要 Go 1.26+、Git、Python 3.12+；race 检测还需要 Xcode Command Line Tools（`xcode-select --install`）。首次构建需要网络下载工具链及模块。所有命令在仓库根目录运行。
+无需容器或 Linux 虚拟机。需要 Go 1.27.2+、Git、Python 3.12+；race 检测还需要 Xcode Command Line Tools（`xcode-select --install`）。首次构建需要网络下载工具链及模块。所有命令在仓库根目录运行。
 
 ## 自动验证（不调用真实模型）
 

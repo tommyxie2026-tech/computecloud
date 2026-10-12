@@ -60,7 +60,7 @@ func printEvent(ev *pb.Event) error {
 }
 func run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: computecloud server|worker|job|task|workers|artifact|templates|backup|version")
+		return fmt.Errorf("usage: computecloud server|worker|job|task|workers|artifact|templates|backup|keys|version")
 	}
 	if args[0] == "version" || args[0] == "--version" {
 		fmt.Printf("computecloud %s (%s, %s/%s)\n", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
@@ -69,7 +69,7 @@ func run(ctx context.Context, args []string) error {
 	group := args[0]
 	op := ""
 	args = args[1:]
-	if group == "task" || group == "artifact" || group == "job" {
+	if group == "task" || group == "artifact" || group == "job" || group == "keys" {
 		if len(args) == 0 {
 			return fmt.Errorf("subcommand required")
 		}
@@ -85,6 +85,14 @@ func run(ctx context.Context, args []string) error {
 	artifact := fs.String("artifact", "", "artifact ID")
 	out := fs.String("out", "", "output file (must not exist)")
 	dataDir := fs.String("data-dir", "", "offline server data directory")
+	owner := fs.String("owner", "", "bootstrap manager owner")
+	projects := stringFlags{}
+	scopes := stringFlags{}
+	credentials := stringFlags{}
+	fs.Var(&projects, "project", "project allowed for the bootstrap manager (repeatable)")
+	fs.Var(&scopes, "scope", "delegable scope for the bootstrap manager (repeatable)")
+	fs.Var(&credentials, "credential", "credential reference allowed for the bootstrap manager (repeatable)")
+	expiresIn := fs.Duration("expires-in", 24*time.Hour, "bootstrap manager key lifetime (maximum 90 days)")
 	key := fs.String("key", "", "Job submission idempotency key")
 	cursor := fs.String("cursor", "", "Job task/artifact page cursor")
 	limit := fs.Int("limit", 50, "Job page size")
@@ -99,6 +107,12 @@ func run(ctx context.Context, args []string) error {
 			return fmt.Errorf("backup requires --data-dir and --out")
 		}
 		return maintenance.Backup(ctx, *dataDir, *out)
+	}
+	if group == "keys" {
+		if op != "bootstrap" {
+			return fmt.Errorf("keys supports only the bootstrap subcommand")
+		}
+		return runKeysBootstrap(ctx, keyBootstrapOptions{DataDir: *dataDir, Owner: *owner, Projects: projects, Scopes: scopes, Credentials: credentials, OutputPath: *out, ExpiresIn: *expiresIn}, os.Stdout)
 	}
 	c, e := config.Load(*cfgFile)
 	if e != nil {

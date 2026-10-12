@@ -1,0 +1,323 @@
+package server
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/testutil"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
+)
+
+func rateLimitServer(t *testing.T, maxEntries, idleSeconds int, identities ...string) (*Server, []string) {
+	t.Helper()
+	paths := make([]string, len(identities))
+	tokens := make([]string, len(identities))
+	users := make([]string, len(identities))
+	for i, name := range identities {
+		paths[i] = testutil.Token(t, name)
+		b, err := os.ReadFile(paths[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		tokens[i] = strings.TrimSpace(string(b))
+		users[i] = fmt.Sprintf("  - token_file: %s\n    owner: %q\n    projects: [p]\n    scopes: [jobs:read]\n", strconv.Quote(paths[i]), name)
+	}
+	root := t.TempDir()
+	configPath := filepath.Join(root, "server.yaml")
+	lines := []string{
+		"server:", "  data_dir: " + strconv.Quote(filepath.Join(root, "data")),
+		"  lease_seconds: 3", "  tick_ms: 10", "  max_artifact_bytes: 1024", "  max_project_tasks: 8",
+		"  tls:", "    insecure_loopback: true", "  http:", "    rate_limit:",
+		"      rate_per_minute: 1", "      burst: 1",
+		fmt.Sprintf("      max_entries: %d", maxEntries),
+		fmt.Sprintf("      idle_timeout_seconds: %d", idleSeconds), "  users:",
+		strings.TrimSuffix(strings.Join(users, ""), "\n"),
+	}
+	if err := os.WriteFile(configPath, []byte(strings.Join(lines, "\n")+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load rate-limit config: %v", err)
+	}
+	s, err := New(c.Server)
+	if err != nil {
+		t.Fatalf("create rate-limit server: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s, tokens
+}
+
+func rateLimitRequest(s *Server, token, forwardedFor string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(http.MethodGet, "/v1/capabilities", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	if forwardedFor != "" {
+		r.Header.Set("X-Forwarded-For", forwardedFor)
+	}
+	w := httptest.NewRecorder()
+	s.HTTPHandler().ServeHTTP(w, r)
+	return w
+}
+
+func TestHTTPHandlerRateLimitPerCredential(t *testing.T) {
+	s, tokens := rateLimitServer(t, 10, 600, "user-a", "user-b")
+	if got := rateLimitRequest(s, tokens[0], "").Code; got != http.StatusOK {
+		t.Fatalf("first request status=%d, want 200", got)
+	}
+	blocked := rateLimitRequest(s, tokens[0], "")
+	if blocked.Code != http.StatusTooManyRequests || blocked.Header().Get("Retry-After") != "60" {
+		t.Fatalf("second request status=%d retry-after=%q, want 429/60", blocked.Code, blocked.Header().Get("Retry-After"))
+	}
+	if got := rateLimitRequest(s, tokens[1], "").Code; got != http.StatusOK {
+		t.Fatalf("independent credential status=%d, want 200", got)
+	}
+}
+
+func TestHTTPHandlerRateLimitIgnoresForwardedFor(t *testing.T) {
+	s, tokens := rateLimitServer(t, 10, 600, "user-a")
+	if got := rateLimitRequest(s, tokens[0], "198.51.100.1").Code; got != http.StatusOK {
+		t.Fatalf("first request status=%d, want 200", got)
+	}
+	if got := rateLimitRequest(s, tokens[0], "203.0.113.2").Code; got != http.StatusTooManyRequests {
+		t.Fatalf("spoofed source address bypassed identity limit: status=%d", got)
+	}
+}
+
+func TestManagedAPIKeyLookupIsRateLimitedByDirectIPBeforeResolver(t *testing.T) {
+	s, _ := rateLimitServer(t, 10, 600, "user-a")
+	lookups := 0
+	s.auth.SetAPIKeyResolver(func(_ context.Context, _ string) (config.Identity, error) {
+		lookups++
+		return config.Identity{Owner: "api-owner", Projects: []string{"p"}, Scopes: []string{"jobs:read"}}, nil
+	})
+	call := func(token, forwarded string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/v1/capabilities", nil)
+		r.RemoteAddr = "198.51.100.8:44321"
+		r.Header.Set("Authorization", "Bearer "+token)
+		if forwarded != "" {
+			r.Header.Set("X-Forwarded-For", forwarded)
+		}
+		w := httptest.NewRecorder()
+		s.HTTPHandler().ServeHTTP(w, r)
+		return w
+	}
+	if got := call("cc_live_first", "192.0.2.1").Code; got != http.StatusOK {
+		t.Fatalf("first managed-key request status=%d, want 200", got)
+	}
+	blocked := call("cc_live_second", "203.0.113.9")
+	if blocked.Code != http.StatusTooManyRequests || blocked.Header().Get("Retry-After") == "" {
+		t.Fatalf("second managed-key request status=%d retry-after=%q, want 429 with Retry-After", blocked.Code, blocked.Header().Get("Retry-After"))
+	}
+	if lookups != 1 {
+		t.Fatalf("API-key resolver called %d times, want 1; forwarded headers must not change direct-IP bucket", lookups)
+	}
+}
+
+func TestGRPCManagedAPIKeyLookupIsRateLimitedBeforeResolver(t *testing.T) {
+	s, _ := rateLimitServer(t, 10, 600, "user-a")
+	lookups := 0
+	s.auth.SetAPIKeyResolver(func(_ context.Context, _ string) (config.Identity, error) {
+		lookups++
+		return config.Identity{Owner: "api-owner", Projects: []string{"p"}, Scopes: []string{"jobs:read"}}, nil
+	})
+	call := func(token string) error {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+token))
+		ctx = peer.NewContext(ctx, &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("198.51.100.8"), Port: 44321}})
+		_, err := s.authUnary(ctx, nil, &grpc.UnaryServerInfo{}, func(context.Context, any) (any, error) { return nil, nil })
+		return err
+	}
+	if err := call("cc_live_first"); err != nil {
+		t.Fatalf("first managed-key gRPC request returned %v, want success", err)
+	}
+	if err := call("cc_live_second"); status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("second managed-key gRPC request returned %v, want ResourceExhausted", err)
+	}
+	if lookups != 1 {
+		t.Fatalf("gRPC API-key resolver called %d times, want 1", lookups)
+	}
+
+	// Streaming RPCs use a separate interceptor path and must enforce the same
+	// pre-auth budget before Auth.Stream reaches the key resolver.
+	lookups = 0
+	s.apiKeyLookupLimiter = newRequestLimiter(s.cfg.HTTP.RateLimit)
+	streamCall := func(token string) error {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+token))
+		ctx = peer.NewContext(ctx, &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("198.51.100.9"), Port: 44321}})
+		stream := &rateLimitServerStream{ctx: ctx}
+		return s.authStream(nil, stream, &grpc.StreamServerInfo{}, func(any, grpc.ServerStream) error { return nil })
+	}
+	if err := streamCall("cc_live_stream_first"); err != nil {
+		t.Fatalf("first managed-key streaming gRPC request returned %v, want success", err)
+	}
+	if err := streamCall("cc_live_stream_second"); status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("second managed-key streaming gRPC request returned %v, want ResourceExhausted", err)
+	}
+	if lookups != 1 {
+		t.Fatalf("streaming gRPC API-key resolver called %d times, want 1", lookups)
+	}
+}
+
+type rateLimitServerStream struct{ ctx context.Context }
+
+func (s *rateLimitServerStream) SetHeader(metadata.MD) error  { return nil }
+func (s *rateLimitServerStream) SendHeader(metadata.MD) error { return nil }
+func (s *rateLimitServerStream) SetTrailer(metadata.MD)       {}
+func (s *rateLimitServerStream) Context() context.Context     { return s.ctx }
+func (s *rateLimitServerStream) SendMsg(any) error            { return nil }
+func (s *rateLimitServerStream) RecvMsg(any) error            { return nil }
+
+func TestHTTPHandlerRateLimitEvictsIdleCredential(t *testing.T) {
+	s, tokens := rateLimitServer(t, 1, 1, "user-a")
+	if got := rateLimitRequest(s, tokens[0], "").Code; got != http.StatusOK {
+		t.Fatalf("first request status=%d, want 200", got)
+	}
+	if got := rateLimitRequest(s, tokens[0], "").Code; got != http.StatusTooManyRequests {
+		t.Fatalf("immediate repeat status=%d, want 429", got)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	if got := rateLimitRequest(s, tokens[0], "").Code; got != http.StatusOK {
+		t.Fatalf("request after idle eviction status=%d, want 200", got)
+	}
+}
+
+func TestRequestLimiterBoundsEntries(t *testing.T) {
+	s, tokens := rateLimitServer(t, 1, 600, "user-a", "user-b")
+	_ = rateLimitRequest(s, tokens[0], "")
+	_ = rateLimitRequest(s, tokens[1], "")
+	field := reflect.ValueOf(s).Elem().FieldByName("requestLimiter")
+	if !field.IsValid() || field.IsNil() {
+		t.Fatal("Server requestLimiter is missing")
+	}
+	entries := field.Elem().FieldByName("entries")
+	if !entries.IsValid() || entries.Kind() != reflect.Map {
+		t.Fatal("requestLimiter entries map is missing")
+	}
+	if entries.Len() > 1 {
+		t.Fatalf("limiter retained %d credential entries with max_entries=1", entries.Len())
+	}
+}
+
+func TestRequestLimiterBoundsExpiredCleanupPerRequest(t *testing.T) {
+	policy := config.RequestLimit{RatePerMinute: 60, Burst: 1, MaxEntries: 256, IdleTimeoutSeconds: 10}
+	limiter := newRequestLimiter(policy)
+	now := time.Unix(1000, 0)
+	for i := 0; i < 128; i++ {
+		var key [32]byte
+		key[0] = byte(i)
+		key[1] = byte(i >> 8)
+		entry := &requestLimitEntry{key: key, lastSeen: now.Add(-time.Minute)}
+		entry.element = limiter.order.PushBack(entry)
+		limiter.entries[key] = entry
+	}
+	var freshKey [32]byte
+	freshKey[0] = 255
+	freshKey[1] = 255
+	if allowed, _ := limiter.allow(freshKey, "auth_lookup", now); !allowed {
+		t.Fatal("fresh bucket was unexpectedly rate limited")
+	}
+	if got, want := len(limiter.entries), 65; got != want {
+		t.Fatalf("one request removed an unbounded number of expired buckets: entries=%d, want %d after a 64-entry cleanup budget", got, want)
+	}
+}
+
+func TestRequestLimiterEvictsLeastRecentlyUsedEntry(t *testing.T) {
+	policy := config.RequestLimit{RatePerMinute: 60, Burst: 2, MaxEntries: 2, IdleTimeoutSeconds: 600}
+	limiter := newRequestLimiter(policy)
+	var first, second, third [32]byte
+	first[0], second[0], third[0] = 1, 2, 3
+	now := time.Unix(1000, 0)
+	for _, key := range [][32]byte{first, second} {
+		if allowed, _ := limiter.allow(key, "read", now); !allowed {
+			t.Fatal("initial request was unexpectedly rate limited")
+		}
+	}
+	if allowed, _ := limiter.allow(first, "read", now.Add(time.Second)); !allowed {
+		t.Fatal("recent request was unexpectedly rate limited")
+	}
+	if allowed, _ := limiter.allow(third, "read", now.Add(2*time.Second)); !allowed {
+		t.Fatal("new credential request was unexpectedly rate limited")
+	}
+	if limiter.entries[first] == nil || limiter.entries[second] != nil || limiter.entries[third] == nil {
+		t.Fatal("capacity eviction did not remove the least recently used entry")
+	}
+}
+
+func TestHTTPHandlerRateLimitConcurrentRequests(t *testing.T) {
+	s, tokens := rateLimitServer(t, 10, 600, "user-a")
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	allowed, limited := 0, 0
+	for range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			switch rateLimitRequest(s, tokens[0], "").Code {
+			case http.StatusOK:
+				mu.Lock()
+				allowed++
+				mu.Unlock()
+			case http.StatusTooManyRequests:
+				mu.Lock()
+				limited++
+				mu.Unlock()
+			default:
+				t.Error("unexpected response from rate-limited handler")
+			}
+		}()
+	}
+	wg.Wait()
+	if allowed != 1 || limited != 31 {
+		t.Fatalf("concurrent requests allowed=%d limited=%d, want 1/31", allowed, limited)
+	}
+}
+
+func TestModelGatewayUsesHTTPRateLimit(t *testing.T) {
+	tokenFile := testutil.Token(t, "model-user")
+	token, err := config.Token(tokenFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstreamKey := testutil.Token(t, "upstream-key")
+	s, err := New(config.Server{
+		DataDir: t.TempDir(), TLS: config.TLS{InsecureLoopback: true},
+		LeaseSeconds: 3, TickMS: 10, MaxArtifactBytes: 1024, MaxProjectTasks: 4,
+		HTTP:  config.HTTP{RateLimit: config.RequestLimit{RatePerMinute: 1, Burst: 1, MaxEntries: 10, IdleTimeoutSeconds: 600}},
+		Users: []config.Identity{{TokenFile: tokenFile, Owner: "model-owner", Projects: []string{"p"}, Scopes: []string{"models:invoke"}, ModelProject: "p", ModelRoute: "route"}},
+		ModelGateway: config.ModelGateway{Enabled: true, Routes: map[string]config.ModelRoute{
+			"route": {BaseURL: "https://model.example.invalid/v1", APIKeyFile: upstreamKey, AllowedModels: []string{"model"}, MaxInflight: 1},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	call := func() *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		s.HTTPHandler().ServeHTTP(w, r)
+		return w
+	}
+	if got := call().Code; got != http.StatusOK {
+		t.Fatalf("first model request status=%d, want 200", got)
+	}
+	if got := call().Code; got != http.StatusTooManyRequests {
+		t.Fatalf("second model request status=%d, want 429", got)
+	}
+}

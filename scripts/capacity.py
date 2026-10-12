@@ -208,7 +208,11 @@ def cell(binary, worker_count, slots, jobs, submitters, timeout):
                     "verifiers": {"check": [["test", "-f", "README.md"]]}}}
                 configs.append((name, write(name + ".json", config)))
             templates = json.loads(run(binary, "templates", "--config", configs[0][1]))["templates"]
-            server = write("server.json", {"server": {"listen": address, "http": {"listen": http_address},
+            server = write("server.json", {"server": {"listen": address, "http": {"listen": http_address,
+                # This benchmark measures job/worker capacity; request limiting
+                # is covered by its own tests and must not depend on runner speed.
+                "rate_limit": {"rate_per_minute": 1000000, "burst": 100000,
+                    "max_entries": 10000, "idle_timeout_seconds": 600}},
                 "data_dir": str(root / "server"), "tls": tls, "tick_ms": 50, "lease_seconds": 15,
                 "max_project_tasks": worker_count * slots, "credentials": {"fixture": worker_count * slots},
                 "jobs": {"enabled": True, "templates": templates}, "workers": identities,

@@ -185,12 +185,16 @@ func (p codexProvider) Prepare(req PrepareRequest) (PreparedExecution, error) {
 	if req.Gateway == nil {
 		return prepared, nil
 	}
-	if req.Gateway.Token == "" || req.Gateway.BaseUrl == "" {
+	return configureCodexGateway(prepared, req.Gateway)
+}
+
+func configureCodexGateway(prepared PreparedExecution, gateway *pb.GatewayAccess) (PreparedExecution, error) {
+	if gateway == nil || gateway.Token == "" || gateway.BaseUrl == "" {
 		return PreparedExecution{}, errors.New("gateway token/base_url required")
 	}
 	prepared.Env = dropEnv(prepared.Env, "COMPUTECLOUD_MODEL_TOKEN", "OPENAI_API_KEY")
-	prepared.Env = append(prepared.Env, "COMPUTECLOUD_MODEL_TOKEN="+req.Gateway.Token)
-	prepared.Sensitive = append(prepared.Sensitive, req.Gateway.Token)
+	prepared.Env = append(prepared.Env, "COMPUTECLOUD_MODEL_TOKEN="+gateway.Token)
+	prepared.Sensitive = append(prepared.Sensitive, gateway.Token)
 	if n := len(prepared.Args); n == 0 || prepared.Args[n-1] != "-" {
 		return PreparedExecution{}, errors.New("codex stdin argument missing")
 	}
@@ -198,7 +202,7 @@ func (p codexProvider) Prepare(req PrepareRequest) (PreparedExecution, error) {
 	for _, setting := range []string{
 		`model_provider="computecloud"`,
 		`model_providers.computecloud.name="computecloud"`,
-		"model_providers.computecloud.base_url=" + strconv.Quote(req.Gateway.BaseUrl),
+		"model_providers.computecloud.base_url=" + strconv.Quote(gateway.BaseUrl),
 		`model_providers.computecloud.env_key="COMPUTECLOUD_MODEL_TOKEN"`,
 		`model_providers.computecloud.wire_api="responses"`,
 		`model_providers.computecloud.requires_openai_auth=false`,

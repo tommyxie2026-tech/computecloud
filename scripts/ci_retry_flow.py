@@ -240,7 +240,10 @@ def main():
             templates = json.loads(run(binary, "templates", "--config", worker_configs["worker-a"]).stdout)["templates"]
             server_config = write("server.json", {"server": {
                 "listen": address,
-                "http": {"listen": http_address},
+                "http": {"listen": http_address, "rate_limit": {
+                    "rate_per_minute": 1000000, "burst": 100000,
+                    "max_entries": 10000, "idle_timeout_seconds": 600,
+                }},
                 "data_dir": str(root / "server"),
                 "tls": tls,
                 "tick_ms": 50,
@@ -336,7 +339,7 @@ def main():
             with sqlite3.connect(root / "server" / "state.db") as database:
                 integrity = database.execute("PRAGMA integrity_check").fetchone()[0]
                 schema = database.execute("PRAGMA user_version").fetchone()[0]
-            if integrity != "ok" or schema != 18:
+            if integrity != "ok" or schema != 19:
                 raise AssertionError(f"storage gate failed: integrity={integrity} schema={schema}")
 
             report["summary"] = {

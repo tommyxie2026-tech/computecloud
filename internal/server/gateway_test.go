@@ -22,8 +22,10 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/testutil"
 )
 
-func TestGatewayForwardingUsageFailuresAndBinding(t *testing.T) {
+func TestModelGatewayEnforcesPerIdentityInflightLimit(t *testing.T) {
 	var calls atomic.Int32
+	var strictMode atomic.Bool
+	var attemptMaxOutput atomic.Int64
 	streamStarted := make(chan struct{}, 2)
 	streamEnded := make(chan struct{}, 2)
 	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +50,13 @@ func TestGatewayForwardingUsageFailuresAndBinding(t *testing.T) {
 		}
 		if string(input["store"]) != "false" {
 			t.Error("store must be false")
+		}
+		if strictMode.Load() {
+			var maxOutput int64
+			if err := json.Unmarshal(input["max_output_tokens"], &maxOutput); err != nil || maxOutput < 1 || maxOutput >= 99999 {
+				t.Errorf("Attempt output token limit not applied: max=%d err=%v", maxOutput, err)
+			}
+			attemptMaxOutput.Store(maxOutput)
 		}
 		switch string(input["input"]) {
 		case `"wait"`:
@@ -77,7 +86,8 @@ func TestGatewayForwardingUsageFailuresAndBinding(t *testing.T) {
 	defer upstream.Close()
 	user, model, wt := testutil.Token(t, "job"), testutil.Token(t, "model"), testutil.Token(t, "worker")
 	wc := config.Worker{Runtimes: map[string]config.Runtime{"codex_exec": {Version: "fixture-1"}}, Policies: map[string]config.Policy{"review": {CodexSandbox: "read-only"}}, Verifiers: map[string][][]string{"check": {}}}
-	cfg := config.Server{DataDir: t.TempDir(), TLS: config.TLS{InsecureLoopback: true}, LeaseSeconds: 6, TickMS: 20, MaxArtifactBytes: 32 << 20, MaxProjectTasks: 4, Credentials: map[string]int{"account": 2}, Users: []config.Identity{{TokenFile: user, Owner: "owner", Projects: []string{"project"}, Credentials: []string{"account"}, Scopes: []string{"jobs:submit", "jobs:read", "jobs:cancel"}}, {TokenFile: model, Owner: "owner", Projects: []string{"project"}, Scopes: []string{"models:invoke"}, ModelProject: "project", ModelRoute: "route"}}, Workers: []config.Identity{{TokenFile: wt, WorkerID: "w", Projects: []string{"project"}, Credentials: []string{"account"}}}, Jobs: config.Jobs{Enabled: true, Templates: config.Templates(wc)}, ModelGateway: config.ModelGateway{Enabled: true, PublicBaseURL: "http://127.0.0.1:7444/v1", MaxInflight: 2, Routes: map[string]config.ModelRoute{"route": {BaseURL: upstream.URL + "/v1", APIKeyFile: testutil.Token(t, "upstream"), AllowedModels: []string{"model-c"}, MaxInflight: 2}}, CredentialRoutes: map[string]string{"account": "route"}}}
+	limits := config.IdentityLimits{MaxActiveJobs: 8, MaxQueuedJobs: 32, MaxModelRequests: 2}
+	cfg := config.Server{DataDir: t.TempDir(), TLS: config.TLS{InsecureLoopback: true}, LeaseSeconds: 6, TickMS: 20, MaxArtifactBytes: 32 << 20, MaxProjectTasks: 4, Credentials: map[string]int{"account": 2}, Users: []config.Identity{{TokenFile: user, Owner: "owner", Projects: []string{"project"}, Credentials: []string{"account"}, Scopes: []string{"jobs:submit", "jobs:read", "jobs:cancel"}, Limits: limits}, {TokenFile: model, Owner: "owner", Projects: []string{"project"}, Scopes: []string{"models:invoke"}, ModelProject: "project", ModelRoute: "route", Limits: limits}}, Workers: []config.Identity{{TokenFile: wt, WorkerID: "w", Projects: []string{"project"}, Credentials: []string{"account"}}}, Jobs: config.Jobs{Enabled: true, Templates: config.Templates(wc)}, ModelGateway: config.ModelGateway{Enabled: true, PublicBaseURL: "http://127.0.0.1:7444/v1", MaxInflight: 3, Routes: map[string]config.ModelRoute{"route": {BaseURL: upstream.URL + "/v1", APIKeyFile: testutil.Token(t, "upstream"), AllowedModels: []string{"model-c"}, MaxInflight: 3, MaxAttemptTokens: 10_000, MaxAttemptCostMicros: 500_000, InputCostPerMillionTokensMicros: 500_000_000, OutputCostPerMillionTokensMicros: 1_000_000_000}}, CredentialRoutes: map[string]string{"account": "route"}}}
 	s, e := New(cfg)
 	if e != nil {
 		t.Fatal(e)
@@ -193,10 +203,48 @@ func TestGatewayForwardingUsageFailuresAndBinding(t *testing.T) {
 		t.Fatal("model token persisted in command")
 	}
 	tok = modelAttemptToken(cmd.Assignment)
-	code, _ = req("/v1/responses", `{"model":"model-c","input":"bound"}`)
-	if code != 200 {
+	strictMode.Store(true)
+	s.cfg.PublicExecutionMode = "isolated_only"
+	code, _ = req("/v1/responses", `{"model":"model-c","input":"bound","max_output_tokens":99999}`)
+	if code != 200 || attemptMaxOutput.Load() < 1 || attemptMaxOutput.Load() >= 99999 {
 		t.Fatalf("valid attempt rejected: %d", code)
 	}
+	before = calls.Load()
+	code, _ = req("/v1/responses", `{"model":"not-allowed","input":"wrong model"}`)
+	if code != http.StatusForbidden || calls.Load() != before {
+		t.Fatalf("Attempt token crossed its model allowlist: status=%d provider_calls=%d want=%d", code, calls.Load(), before)
+	}
+	routeConfig := g.routes["route"].config
+	g.routes["route"].config.MaxAttemptTokens++
+	before = calls.Load()
+	code, _ = req("/v1/responses", `{"model":"model-c","input":"changed route"}`)
+	g.routes["route"].config = routeConfig
+	if code != http.StatusForbidden || calls.Load() != before {
+		t.Fatalf("Attempt token survived a route digest change: status=%d provider_calls=%d want=%d", code, calls.Load(), before)
+	}
+	var leaseUntil int64
+	if e = s.db.SQL.QueryRow("SELECT lease_until FROM attempts WHERE id=?", cmd.Assignment.AttemptId).Scan(&leaseUntil); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.db.SQL.Exec("UPDATE attempts SET lease_until=? WHERE id=?", store.Now()-1, cmd.Assignment.AttemptId); e != nil {
+		t.Fatal(e)
+	}
+	before = calls.Load()
+	code, _ = req("/v1/responses", `{"model":"model-c","input":"expired lease"}`)
+	if _, e = s.db.SQL.Exec("UPDATE attempts SET lease_until=? WHERE id=?", leaseUntil, cmd.Assignment.AttemptId); e != nil {
+		t.Fatal(e)
+	}
+	if code != http.StatusForbidden || calls.Load() != before {
+		t.Fatalf("Attempt token survived lease expiry: status=%d provider_calls=%d want=%d", code, calls.Load(), before)
+	}
+	before = calls.Load()
+	overBudget := `{"model":"model-c","input":"` + strings.Repeat("x", 1200) + `"}`
+	code, response := req("/v1/responses", overBudget)
+	if code != http.StatusRequestEntityTooLarge || calls.Load() != before || !bytes.Contains(response, []byte("ATTEMPT_COST_BUDGET_EXHAUSTED")) {
+		t.Fatalf("Attempt cost budget was bypassed: status=%d provider_calls=%d want=%d response=%s", code, calls.Load(), before, response)
+	}
+	strictMode.Store(false)
+	s.cfg.PublicExecutionMode = "trusted_only"
 	streamsDone := make(chan struct{}, 2)
 	for i := 0; i < 2; i++ {
 		go func() {

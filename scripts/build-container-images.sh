@@ -64,12 +64,16 @@ docker run --rm --entrypoint sh computecloud-worker:ci -ec '
 '
 
 # The Agent HTTP controller and per-Attempt runtime share one pinned filesystem.
-# This smoke test verifies the package versions without making model calls.
+# Verify fixed package versions, then exercise both CLIs against a local-only mock
+# while the test container has no external network.
 docker buildx build --platform linux/amd64 -f Dockerfile.agent-http \
   --load -t computecloud-agent-http:ci .
-docker run --rm --entrypoint /bin/sh computecloud-agent-http:ci -ec '
+docker run --rm --network none --entrypoint /bin/sh computecloud-agent-http:ci -ec '
   test "$(id -u)" = "65532"
   codex --version | grep -F "0.160.1"
   claude --version | grep -F "2.1.292"
   command -v docker >/dev/null
 '
+docker run --rm --network none \
+  --mount "type=bind,source=$PWD/scripts/ci/agent_cli_gateway_contract.js,target=/tmp/agent_cli_gateway_contract.js,readonly" \
+  --entrypoint node computecloud-agent-http:ci /tmp/agent_cli_gateway_contract.js

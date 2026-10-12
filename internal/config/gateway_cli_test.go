@@ -30,4 +30,10 @@ func TestCLIRouteValidation(t *testing.T) {
 	if RouteDigest(good) == RouteDigest(changed) {
 		t.Fatal("CLI version missing from route digest")
 	}
+	httpRoute := ModelRoute{BaseURL: "https://example.com/v1", AllowedModels: []string{"model"}, MaxAttemptTokens: 1000, MaxAttemptCostMicros: 100000, InputCostPerMillionTokensMicros: 1000000, OutputCostPerMillionTokensMicros: 2000000}
+	changedHTTP := httpRoute
+	changedHTTP.OutputCostPerMillionTokensMicros = 3000000
+	if RouteDigest(httpRoute) == RouteDigest(changedHTTP) {
+		t.Fatal("Attempt cost pricing missing from HTTP route digest")
+	}
 }

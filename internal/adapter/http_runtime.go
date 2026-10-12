@@ -70,13 +70,19 @@ func (p httpRuntimeProvider) Args(spec *pb.TaskSpec, policy config.Policy) ([]st
 func (p httpRuntimeProvider) Parser(emit func(string, []byte) error) StreamParser {
 	return p.cli.Parser(emit)
 }
-func (p httpRuntimeProvider) SupportsGateway() bool { return false }
+func (p httpRuntimeProvider) SupportsGateway() bool { return p.profile == "codex_http" }
 func (p httpRuntimeProvider) Capabilities() CapabilitySet {
+	runtime := []string{"event_stream", "cancel", "remote_api"}
+	legacy := []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1"}
+	if p.profile == "codex_http" {
+		runtime = append(runtime, "gateway_inference_v1")
+		legacy = append(legacy, "gateway_inference_v1")
+	}
 	return CapabilitySet{
-		Runtime:     []string{"event_stream", "cancel", "remote_api"},
+		Runtime:     runtime,
 		Tools:       []string{"job_io_v1", "artifact_inputs_v1"},
 		Environment: []string{"process", "container"},
-		Legacy:      []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1"},
+		Legacy:      legacy,
 	}
 }
 
@@ -185,7 +191,7 @@ func (p httpRuntimeProvider) ConfiguredRuntimeCapabilities(ctx context.Context, 
 }
 
 func (p httpRuntimeProvider) Prepare(req PrepareRequest) (PreparedExecution, error) {
-	if req.Gateway != nil {
+	if req.Gateway != nil && !p.SupportsGateway() {
 		return PreparedExecution{}, errors.New("HTTP runtime does not support model gateway")
 	}
 	if _, _, err := httpClient(req.Runtime); err != nil {
@@ -197,6 +203,12 @@ func (p httpRuntimeProvider) Prepare(req PrepareRequest) (PreparedExecution, err
 	}
 	if prepared.CWD == "" || prepared.Input == "" || prepared.AttemptID == "" || prepared.Generation < 1 {
 		return PreparedExecution{}, errors.New("HTTP runtime requires attempt identity, workspace and input")
+	}
+	if req.Gateway != nil {
+		prepared, err = configureCodexGateway(prepared, req.Gateway)
+		if err != nil {
+			return PreparedExecution{}, err
+		}
 	}
 	return prepared, nil
 }

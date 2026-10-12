@@ -14,8 +14,15 @@ import (
 )
 
 type HTTP struct {
-	Listen         string   `yaml:"listen"`
-	AllowedOrigins []string `yaml:"allowed_origins"`
+	Listen         string       `yaml:"listen"`
+	AllowedOrigins []string     `yaml:"allowed_origins"`
+	RateLimit      RequestLimit `yaml:"rate_limit"`
+}
+type RequestLimit struct {
+	RatePerMinute      int `yaml:"rate_per_minute"`
+	Burst              int `yaml:"burst"`
+	MaxEntries         int `yaml:"max_entries"`
+	IdleTimeoutSeconds int `yaml:"idle_timeout_seconds"`
 }
 type MCP struct {
 	Enabled bool   `yaml:"enabled"`
@@ -72,12 +79,16 @@ type CodexCLI struct {
 }
 
 type ModelRoute struct {
-	Backend       string    `yaml:"backend"`
-	CLI           *CodexCLI `yaml:"cli"`
-	BaseURL       string    `yaml:"base_url"`
-	APIKeyFile    string    `yaml:"api_key_file"`
-	AllowedModels []string  `yaml:"allowed_models"`
-	MaxInflight   int       `yaml:"max_inflight"`
+	Backend                          string    `yaml:"backend"`
+	CLI                              *CodexCLI `yaml:"cli"`
+	BaseURL                          string    `yaml:"base_url"`
+	APIKeyFile                       string    `yaml:"api_key_file"`
+	AllowedModels                    []string  `yaml:"allowed_models"`
+	MaxInflight                      int       `yaml:"max_inflight"`
+	MaxAttemptTokens                 int64     `yaml:"max_attempt_tokens"`
+	MaxAttemptCostMicros             int64     `yaml:"max_attempt_cost_microusd"`
+	InputCostPerMillionTokensMicros  int64     `yaml:"input_cost_per_million_tokens_microusd"`
+	OutputCostPerMillionTokensMicros int64     `yaml:"output_cost_per_million_tokens_microusd"`
 }
 type ModelGateway struct {
 	Enabled                  bool                  `yaml:"enabled"`
@@ -93,6 +104,21 @@ type ModelGateway struct {
 }
 
 func (c *Server) DefaultV02() {
+	if c.TLS.WorkerMTLSMode == "" {
+		c.TLS.WorkerMTLSMode = "disabled"
+	}
+	if c.WorkerAdmission == (WorkerAdmission{}) {
+		c.WorkerAdmission = WorkerAdmission{MaxSessions: 128, MaxStreams: 128}
+	}
+	for i := range c.Users {
+		l := &c.Users[i].Limits
+		if *l == (IdentityLimits{}) {
+			*l = IdentityLimits{MaxActiveJobs: 8, MaxQueuedJobs: 32, MaxModelRequests: 4}
+		}
+	}
+	if c.HTTP.RateLimit == (RequestLimit{}) {
+		c.HTTP.RateLimit = RequestLimit{RatePerMinute: 300, Burst: 60, MaxEntries: 10000, IdleTimeoutSeconds: 600}
+	}
 	j := &c.Jobs
 	if j.MaxPartitions == 0 {
 		j.MaxPartitions = 32
@@ -166,6 +192,57 @@ func (c *Server) DefaultV02() {
 	}
 }
 func (c Server) ValidateV02() error {
+	mode := c.TLS.WorkerMTLSMode
+	if mode == "" {
+		mode = "disabled"
+	}
+	if mode != "disabled" && mode != "optional" && mode != "required" {
+		return fmt.Errorf("invalid worker mTLS mode")
+	}
+	if mode != "disabled" {
+		if c.TLS.InsecureLoopback || c.TLS.ClientCAFile == "" {
+			return fmt.Errorf("worker mTLS requires TLS and client_ca_file")
+		}
+		fingerprints := map[string]string{}
+		for _, worker := range c.Workers {
+			if worker.WorkerID == "" || (mode == "required" && len(worker.ClientCertSHA256) == 0) {
+				return fmt.Errorf("worker mTLS requires a certificate fingerprint for every Worker")
+			}
+			seen := map[string]bool{}
+			for _, fingerprint := range worker.ClientCertSHA256 {
+				decoded, err := hex.DecodeString(fingerprint)
+				normalized := strings.ToLower(fingerprint)
+				if err != nil || len(decoded) != 32 || seen[normalized] {
+					return fmt.Errorf("invalid Worker certificate fingerprint")
+				}
+				seen[normalized] = true
+				if prior, ok := fingerprints[normalized]; ok && prior != worker.WorkerID {
+					return fmt.Errorf("Worker certificate fingerprint is assigned to multiple Workers")
+				}
+				fingerprints[normalized] = worker.WorkerID
+			}
+		}
+	} else if c.TLS.ClientCAFile != "" {
+		return fmt.Errorf("client_ca_file requires worker mTLS")
+	}
+	if c.WorkerAdmission != (WorkerAdmission{}) && (c.WorkerAdmission.MaxSessions < 1 || c.WorkerAdmission.MaxSessions > 10000 || c.WorkerAdmission.MaxStreams < 1 || c.WorkerAdmission.MaxStreams > 10000) {
+		return fmt.Errorf("invalid worker admission limits")
+	}
+	owners := map[string]IdentityLimits{}
+	for _, u := range c.Users {
+		l := u.Limits
+		if l != (IdentityLimits{}) && (l.MaxActiveJobs < 1 || l.MaxActiveJobs > 10000 || l.MaxQueuedJobs < 1 || l.MaxQueuedJobs > 100000 || l.MaxModelRequests < 1 || l.MaxModelRequests > 256) {
+			return fmt.Errorf("invalid identity workload limits")
+		}
+		if prior, ok := owners[u.Owner]; ok && prior != l {
+			return fmt.Errorf("identities for one owner must share workload limits")
+		}
+		owners[u.Owner] = l
+	}
+	r := c.HTTP.RateLimit
+	if r != (RequestLimit{}) && (r.RatePerMinute < 1 || r.RatePerMinute > 1000000 || r.Burst < 1 || r.Burst > 100000 || r.MaxEntries < 1 || r.MaxEntries > 1000000 || r.IdleTimeoutSeconds < 1 || r.IdleTimeoutSeconds > 86400) {
+		return fmt.Errorf("invalid HTTP request rate limit")
+	}
 	j := c.Jobs
 	profiles := map[string]ConversationProfile{}
 	if j.Enabled {
@@ -200,8 +277,12 @@ func (c Server) ValidateV02() error {
 			return fmt.Errorf("invalid gateway limits/routes")
 		}
 		for _, r := range g.Routes {
-			if len(r.AllowedModels) == 0 || r.MaxInflight < 1 {
+			if len(r.AllowedModels) == 0 || r.MaxInflight < 1 || r.MaxAttemptTokens < 0 || r.MaxAttemptTokens > 100_000_000 || r.MaxAttemptCostMicros < 0 || r.MaxAttemptCostMicros > 2_000_000_000_000_000 || r.InputCostPerMillionTokensMicros < 0 || r.InputCostPerMillionTokensMicros > 2_000_000_000_000_000 || r.OutputCostPerMillionTokensMicros < 0 || r.OutputCostPerMillionTokensMicros > 2_000_000_000_000_000 {
 				return fmt.Errorf("invalid gateway route limits")
+			}
+			hasCostConfig := r.MaxAttemptCostMicros != 0 || r.InputCostPerMillionTokensMicros != 0 || r.OutputCostPerMillionTokensMicros != 0
+			if hasCostConfig && (r.MaxAttemptCostMicros < 1 || r.InputCostPerMillionTokensMicros < 1 || r.OutputCostPerMillionTokensMicros < 1) {
+				return fmt.Errorf("incomplete gateway Attempt cost budget")
 			}
 			if r.Backend == "codex_cli" {
 				if r.CLI == nil || r.CLI.Executable == "" || r.CLI.Version == "" || r.BaseURL != "" || r.APIKeyFile != "" {
@@ -220,6 +301,22 @@ func (c Server) ValidateV02() error {
 		for cred, route := range g.CredentialRoutes {
 			if c.Credentials[cred] < 1 || g.Routes[route].BaseURL == "" || g.PublicBaseURL == "" {
 				return fmt.Errorf("invalid credential gateway mapping")
+			}
+		}
+	}
+	if c.PublicExecutionMode == "isolated_only" {
+		if !c.ModelGateway.Enabled || !strings.HasPrefix(c.ModelGateway.PublicBaseURL, "https://") || len(c.ModelGateway.CredentialRoutes) == 0 {
+			return fmt.Errorf("isolated_only requires HTTPS Attempt Gateway credential routes")
+		}
+		for _, user := range c.Users {
+			if Contains(user.Scopes, "models:invoke") {
+				return fmt.Errorf("isolated_only does not allow direct models:invoke identities")
+			}
+		}
+		for _, routeName := range c.ModelGateway.CredentialRoutes {
+			route := c.ModelGateway.Routes[routeName]
+			if route.BaseURL == "" || route.Backend == "codex_cli" || route.MaxAttemptTokens < 1 || route.MaxAttemptCostMicros < 1 || route.InputCostPerMillionTokensMicros < 1 || route.OutputCostPerMillionTokensMicros < 1 {
+				return fmt.Errorf("isolated_only requires HTTP routes with Attempt token and cost budgets")
 			}
 		}
 	}
@@ -290,7 +387,7 @@ func (c Server) ValidateV02() error {
 			}
 		}
 		for _, scope := range id.Scopes {
-			if !Contains([]string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:extend", "jobs:control", "jobs:retry", "models:invoke", "tasks:submit", "tasks:read", "tasks:cancel", "goals:approve", "goals:budget", "goals:constraints", "goals:propose", "conversations:submit", "conversations:read", "conversations:cancel"}, scope) {
+			if !Contains([]string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:extend", "jobs:control", "jobs:retry", "api_keys:manage", "models:invoke", "tasks:submit", "tasks:read", "tasks:cancel", "goals:approve", "goals:budget", "goals:constraints", "goals:propose", "conversations:submit", "conversations:read", "conversations:cancel"}, scope) {
 				return fmt.Errorf("unknown identity scope")
 			}
 		}
@@ -359,7 +456,7 @@ func RouteDigest(r ModelRoute) string {
 	models := append([]string(nil), r.AllowedModels...)
 	sort.Strings(models)
 	if r.Backend == "codex_cli" {
-		return job.Hash(job.JSON(map[string]any{"version": "codex-cli-route-v1", "cli": r.CLI, "models": models}))
+		return job.Hash(job.JSON(map[string]any{"version": "codex-cli-route-v1", "cli": r.CLI, "models": models, "max_attempt_tokens": r.MaxAttemptTokens, "max_attempt_cost_microusd": r.MaxAttemptCostMicros, "input_cost_per_million_tokens_microusd": r.InputCostPerMillionTokensMicros, "output_cost_per_million_tokens_microusd": r.OutputCostPerMillionTokensMicros}))
 	}
-	return job.Hash(job.JSON(map[string]any{"version": "model-route-v1", "base_url": strings.TrimRight(r.BaseURL, "/"), "models": models}))
+	return job.Hash(job.JSON(map[string]any{"version": "model-route-v1", "base_url": strings.TrimRight(r.BaseURL, "/"), "models": models, "max_attempt_tokens": r.MaxAttemptTokens, "max_attempt_cost_microusd": r.MaxAttemptCostMicros, "input_cost_per_million_tokens_microusd": r.InputCostPerMillionTokensMicros, "output_cost_per_million_tokens_microusd": r.OutputCostPerMillionTokensMicros}))
 }

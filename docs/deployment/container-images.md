@@ -78,11 +78,105 @@ server:
     cert_file: /run/secrets/server.crt
     key_file: /run/secrets/server.key
   data_dir: /var/lib/computecloud
+  worker_admission:
+    max_sessions: 128
+    max_streams: 128
+  users:
+    - owner: team-a
+      token_file: /run/secrets/team-a.token
+      projects: [team-a]
+      scopes: [jobs:submit, jobs:read, jobs:cancel, models:invoke]
+      limits:
+        max_active_jobs: 8
+        max_queued_jobs: 32
+        max_model_requests: 4
 ~~~
 
 宿主 data directory 必须允许 UID 65532 写入。正式部署优先使用 `image@sha256:<digest>`。
 
-`0.0.0.0` 只表示容器监听所有容器接口，不代表应该向互联网开放。宿主防火墙至少应限制 7443 仅允许 Worker 网段，7444 仅允许运维客户端或受信代理；不要发布数据库、工作目录或 Docker socket。
+`0.0.0.0` 只表示容器监听所有容器接口。若服务面向互联网，公网入口只保留 7443 与 7444：7444 经过 HTTPS L7 Gateway/WAF，7443 经过 TCP/TLS passthrough 负载均衡；不要把 Docker 主机地址作为可绕过边缘策略的源站。
+
+生产边缘必须满足：
+
+- 防火墙/安全组仅允许边缘代理地址访问源站 7443/7444；公网用户只访问 Gateway/LB 的公开地址。验证从互联网直连源站 IP 会失败，避免绕过 WAF、限速和审计。
+- 7444 在 L7 入口校验 TLS、限制请求体/连接/速率并提供 DDoS/WAF 防护；保留 `Authorization` 头，禁止缓存 API 响应。Server 仍执行 Token、scope、项目和速率/配额校验。
+- 7443 经 TCP/TLS passthrough 保持 Server TLS 端到端；代理不得终止后以明文转发，也不得把 HTTP 探测或明文健康检查发到该端口。Worker stream/session 达到限额时返回 gRPC `ResourceExhausted`。
+- Server 配置 `worker_admission`，并为每个用户身份配置可选的 `limits`。默认值为活跃 Job 8、排队 Job 32、模型并发 4；Worker 默认最多 128 个 session/stream。多个身份共用同一 `owner` 时，限额必须一致。
+- 对 429/`ResourceExhausted` 做带抖动的退避，不自动无限重试；日志不得包含 Bearer 值、提示词、上游密钥或请求正文。
+- 公开健康探测只允许固定轻量路径，不得探测数据库、Worker 凭据或管理接口；指标、数据库、Docker socket、工作目录均不得公开或挂载到边缘容器。
+
+符合该契约的边缘策略示例见 [`public-edge.example.json`](public-edge.example.json)，可用 `python3 scripts/check_public_edge_config.py` 检查。它验证仓库中的策略清单，不会自动配置云安全组/WAF；目标环境必须另行提供源站绕过和公开端口扫描结果。
+
+### API key 生命周期与 Worker mTLS（安全加固工作树）
+
+#### 公网不可信任务的严格执行模式（进行中）
+
+Server 和每台 Worker 都需要显式配置 `public_execution_mode: isolated_only` 才会执行本地拒绝检查。该模式默认不启用，兼容既有受信任部署。启用后，Server 仅调度要求 `environment:container` 且配置了 Attempt Gateway 凭据路由的任务，并要求 Worker 宣告 Gateway inference 能力；Worker 在准备工作区前再次拒绝非 container、无 Attempt Gateway、不支持 Gateway auth 或配置了静态 Runtime 环境变量的 Runtime，返回 `PUBLIC_ISOLATION_REQUIRED`。Codex HTTP/OCI Runtime 通过 Attempt Gateway 接收短期凭据；Claude 和其他未验证 Gateway 协议的 Runtime 在 strict 模式会失败关闭。示例：
+
+```yaml
+server:
+  public_execution_mode: isolated_only
+worker:
+  public_execution_mode: isolated_only
+```
+
+当前这是准入与双端复验边界，不代表 Docker seccomp 或 egress firewall 已由部署自动配置；OCI 限制由 Agent Runtime controller 的 strict flags 设置，目标主机负向网络测试仍待执行。未完成目标环境验收前，不得将此配置视为允许不可信公网租户的完整认证。
+
+以下能力属于 v0.4.7 之后的安全加固工作树，未包含在已发布的 v0.4.7 镜像中。工作树 Server 使用 schema v19；从 v18 升级前需停机、排空 Attempt、做可恢复备份。旧 v0.4.7 二进制不能打开 v19 数据库，回退时必须同时恢复 v18 数据快照和旧配置。
+
+首次创建受限管理 key 时，先确认 Server 已停止，并用离线命令把一次性密钥写入新建的 0600 文件；命令只打印 ID、前缀、过期时间和文件路径，不会输出密钥：
+
+~~~sh
+computecloud keys bootstrap \
+  --data-dir ./server-data \
+  --owner operator \
+  --project team-a \
+  --scope jobs:submit \
+  --scope jobs:read \
+  --scope jobs:cancel \
+  --credential codex-account \
+  --out ./secrets/operator.token \
+  --expires-in 24h
+~~~
+
+将生成的管理 key 配置为 Server 用户身份之外的运行时凭据；managed API key 的主体/项目/scope/credential 列表存于 Server SQLite，仅保留 SHA-256 digest 与短前缀。拥有 `api_keys:manage` 的 key 可调用 `POST /v1/auth/keys` 创建最多 90 天的子 key，但只能授予自身持有的项目、scope 和 credential。创建响应只显示一次明文；`GET /v1/auth/keys` 不返回明文/digest，`DELETE /v1/auth/keys/{id}` 在下一次请求即撤销。离线 bootstrap 不覆盖已有 key 文件，也不会为同一 owner 创建第二个仍有效的管理 key。
+
+Worker mTLS 使用独立 CA 与每台 Worker 的客户端证书。服务端 TLS 配置示例：
+
+~~~yaml
+server:
+  tls:
+    cert_file: /run/secrets/server.crt
+    key_file: /run/secrets/server.key
+    client_ca_file: /run/secrets/worker-client-ca.crt
+    worker_mtls_mode: optional
+  workers:
+    - worker_id: worker-a
+      client_cert_sha256: ["<worker-a-cert-sha256-hex>"]
+~~~
+
+Worker 单独挂载自己的客户端证书与私钥：
+
+~~~yaml
+worker:
+  tls:
+    ca_file: /run/secrets/server-ca.crt
+    cert_file: /run/secrets/worker-a-client.crt
+    key_file: /run/secrets/worker-a-client.key
+~~~
+
+配置 fingerprint 可用 `openssl x509 -in worker-a-client.crt -outform DER | openssl dgst -sha256` 计算并去掉前缀。证书 URI SAN 必须恰好包含 `spiffe://computecloud/workers/worker-a`。`optional` 模式允许尚未登记 fingerprint 的 Worker 在迁移窗口继续使用现有 Token；一旦登记该 Worker fingerprint，就必须同时出示匹配证书。确认每台 Worker 已连接后切换 `required`，该模式要求所有配置 Worker 均有 fingerprint。用户 gRPC 客户端仍可不带客户端证书。
+
+可先离线核验 CA 链和 URI SAN；脚本只输出 Worker ID 与通过/失败，不读取或输出私钥：
+
+~~~sh
+python3 scripts/security/verify_worker_mtls.py \
+  --ca-file ./secrets/worker-client-ca.crt \
+  --certificate-file ./secrets/worker-a-client.crt \
+  --worker-id worker-a
+~~~
+
+逐台轮换时，服务端 fingerprint 列表同时保留旧/新证书 hash；先部署新证书，再逐台重启 Worker 并确认连接，然后移除旧 hash 并重启 Server。移除的 hash 即时失效。回滚时先恢复 Server/Worker 旧证书与旧配置；若回滚到 v0.4.7，还必须恢复升级前 v18 数据快照。任何已撤销的 token/fingerprint 都不得重新加入回滚配置。
 
 ### 3.1 证书与密钥准备
 

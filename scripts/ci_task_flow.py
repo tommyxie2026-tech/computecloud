@@ -265,7 +265,11 @@ def main():
                 worker_configs[name] = write(f"{name}.json", config)
             templates = json.loads(run_command(binary, "templates", "--config", worker_configs["worker-a"]))["templates"]
             server_config = write("server.json", {"server": {"listen": address,
-                "http": {"listen": http_address}, "data_dir": str(root / "server"), "tls": tls,
+                # This fixture validates job lifecycle, not the separately tested
+                # public HTTP limiter. Keep fast polling deterministic on CI hosts.
+                "http": {"listen": http_address, "rate_limit": {"rate_per_minute": 1000000,
+                    "burst": 100000, "max_entries": 10000, "idle_timeout_seconds": 600}},
+                "data_dir": str(root / "server"), "tls": tls,
                 "tick_ms": 50, "lease_seconds": 4, "max_project_tasks": 2,
                 "credentials": {"fixture": 2}, "jobs": {"enabled": True, "max_parallelism": 2,
                     "recommended_parallelism": 2, "templates": templates},

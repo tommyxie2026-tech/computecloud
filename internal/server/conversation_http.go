@@ -50,6 +50,9 @@ func (s *Server) conversationHTTP(allowPlain bool) http.Handler {
 			httpError(w, status.Error(codes.Unauthenticated, "authentication required"))
 			return
 		}
+		if !s.rateLimitAPIKeyLookup(w, r, r.Header.Get("Authorization")) {
+			return
+		}
 		ctx, err := s.auth.Bearer(r.Context(), r.Header.Get("Authorization"))
 		if err != nil {
 			httpError(w, err)

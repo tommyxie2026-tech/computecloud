@@ -67,15 +67,37 @@ func TestRunLifecycleIdempotencyAndRestartFence(t *testing.T) {
 		if executable != "/usr/bin/docker" || len(args) < 5 || args[0] != "run" || args[4] != "computecloud-attempt-attempt-1" {
 			t.Errorf("unexpected Docker command: %s %v", executable, args)
 		}
-		joined := strings.Join(args, " ")
+		imageIndex := -1
+		for i, arg := range args {
+			if arg == cfg.RuntimeImage {
+				imageIndex = i
+				break
+			}
+		}
+		if imageIndex < 0 {
+			t.Fatalf("pinned runtime image missing from Docker command: %v", args)
+		}
+		joined := strings.Join(args[:imageIndex], " ")
 		for _, required := range []string{"--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pids-limit 256", "--mount type=bind,source=" + canonicalWorkspace + ",target=" + canonicalWorkspace} {
 			if !strings.Contains(joined, required) {
 				t.Errorf("missing isolation flag %q in %v", required, args)
 			}
 		}
-		for _, arg := range args {
-			if arg == "--privileged" || strings.Contains(arg, cfg.TokenFile) || strings.Contains(arg, "/var/run/docker.sock") {
+		for _, arg := range args[:imageIndex] {
+			if arg == "--privileged" || arg == "--volume" || arg == "--network=host" || strings.Contains(arg, cfg.TokenFile) || strings.Contains(arg, "/var/run/docker.sock") {
 				t.Errorf("unsafe Docker argument: %s", arg)
+			}
+		}
+		for _, injected := range []string{"--privileged", "--network=host", "--mount", "type=bind,source=/,target=/host", "--volume", "/var/run/docker.sock:/tmp/docker.sock"} {
+			foundAfterImage := false
+			for _, arg := range args[imageIndex+1:] {
+				if arg == injected {
+					foundAfterImage = true
+					break
+				}
+			}
+			if !foundAfterImage {
+				t.Errorf("runtime argument %q did not remain after the image boundary: %v", injected, args)
 			}
 		}
 		if err := onStart(42, "test"); err != nil {
@@ -92,7 +114,7 @@ func TestRunLifecycleIdempotencyAndRestartFence(t *testing.T) {
 		t.Fatalf("health status=%d", got)
 	}
 	runRequest := request{AttemptID: "attempt-1", Generation: 1, Profile: "codex_http", Version: "0.160.1",
-		Args: []string{"-c", "printf '%s\\n' '{\"type\":\"turn.completed\",\"usage\":{}}'"}, CWD: cfg.WorkspaceRoot, Input: "prompt"}
+		Args: []string{"-c", "printf '%s\\n' '{\"type\":\"turn.completed\",\"usage\":{}}'", "--privileged", "--network=host", "--mount", "type=bind,source=/,target=/host", "--volume", "/var/run/docker.sock:/tmp/docker.sock"}, CWD: cfg.WorkspaceRoot, Input: "prompt"}
 	if got := call(t, server, http.MethodPut, "/v1/runs/attempt-1", runRequest, true).Code; got != http.StatusCreated {
 		t.Fatalf("create status=%d", got)
 	}
@@ -325,10 +347,14 @@ func TestClaudeBudgetOCIMissingFinal(t *testing.T) {
 }
 
 func TestEnvironmentFileDropsControllerVariables(t *testing.T) {
-	server, _ := testServer(t)
+	server, cfg := testServer(t)
 	path, err := server.writeEnvFile(request{AttemptID: "a", Env: []string{"HOME=/host", "PATH=/host/bin", "DOCKER_HOST=tcp://daemon", "OPENAI_API_KEY=secret"}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0600 || filepath.Dir(path) != cfg.StateDir {
+		t.Fatalf("credential file location/mode path=%q info=%v err=%v", path, info, err)
 	}
 	defer os.Remove(path)
 	b, err := os.ReadFile(path)
@@ -341,6 +367,80 @@ func TestEnvironmentFileDropsControllerVariables(t *testing.T) {
 	}
 	if _, err := server.writeEnvFile(request{AttemptID: "a", Env: []string{"TOKEN=secret\nOTHER=value"}}); err == nil {
 		t.Fatal("accepted newline in secret")
+	}
+}
+
+func TestPublicStrictOCIRequiresNamedNetworkAndSeccomp(t *testing.T) {
+	_, cfg := testServer(t)
+	cfg.PublicStrict = true
+	if _, err := New(cfg); err == nil {
+		t.Fatal("public strict mode accepted default bridge network and no seccomp profile")
+	}
+	cfg.EgressNetwork = "computecloud-egress"
+	seccomp := filepath.Join(t.TempDir(), "seccomp.json")
+	if err := os.WriteFile(seccomp, []byte(`{"defaultAction":"SCMP_ACT_ERRNO"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SeccompProfile = seccomp
+	if _, err := New(cfg); err != nil {
+		t.Fatalf("valid operator strict policy rejected: %v", err)
+	}
+}
+
+func TestPublicStrictOCIRejectsBuiltInNetworks(t *testing.T) {
+	_, cfg := testServer(t)
+	cfg.PublicStrict = true
+	seccomp := filepath.Join(t.TempDir(), "seccomp.json")
+	if err := os.WriteFile(seccomp, []byte(`{"defaultAction":"SCMP_ACT_ERRNO"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SeccompProfile = seccomp
+	for _, network := range []string{"bridge", "host", "none"} {
+		t.Run(network, func(t *testing.T) {
+			cfg.EgressNetwork = network
+			if _, err := New(cfg); err == nil {
+				t.Fatalf("public strict mode accepted built-in Docker network %q", network)
+			}
+		})
+	}
+}
+
+func TestPublicStrictOCIRejectsNetworkIDResolvingToHost(t *testing.T) {
+	_, cfg := testServer(t)
+	cfg.PublicStrict = true
+	cfg.EgressNetwork = "0123456789abcdef"
+	seccomp := filepath.Join(t.TempDir(), "seccomp.json")
+	if err := os.WriteFile(seccomp, []byte(`{"defaultAction":"SCMP_ACT_ERRNO"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SeccompProfile = seccomp
+	server, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := inspectDockerNetworkName
+	inspectDockerNetworkName = func(*Server) (string, error) { return "host", nil }
+	t.Cleanup(func() { inspectDockerNetworkName = original })
+	if err := server.validateEgressNetwork(); err == nil {
+		t.Fatal("public strict mode accepted a network ID resolving to Docker host network")
+	}
+	inspectDockerNetworkName = func(*Server) (string, error) { return cfg.EgressNetwork, nil }
+	if err := server.validateEgressNetwork(); err != nil {
+		t.Fatalf("public strict mode rejected a named operator network: %v", err)
+	}
+}
+
+func TestAttemptRestartReconcilesSecretFiles(t *testing.T) {
+	_, cfg := testServer(t)
+	stale := filepath.Join(cfg.StateDir, "attempt-credential-stale.env")
+	if err := os.WriteFile(stale, []byte("TOKEN=secret\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale credential file survived restart: %v", err)
 	}
 }
 
