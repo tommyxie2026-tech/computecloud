@@ -210,6 +210,34 @@ func TestModelGatewayEnforcesPerIdentityInflightLimit(t *testing.T) {
 		t.Fatalf("valid attempt rejected: %d", code)
 	}
 	before = calls.Load()
+	code, _ = req("/v1/responses", `{"model":"not-allowed","input":"wrong model"}`)
+	if code != http.StatusForbidden || calls.Load() != before {
+		t.Fatalf("Attempt token crossed its model allowlist: status=%d provider_calls=%d want=%d", code, calls.Load(), before)
+	}
+	routeConfig := g.routes["route"].config
+	g.routes["route"].config.MaxAttemptTokens++
+	before = calls.Load()
+	code, _ = req("/v1/responses", `{"model":"model-c","input":"changed route"}`)
+	g.routes["route"].config = routeConfig
+	if code != http.StatusForbidden || calls.Load() != before {
+		t.Fatalf("Attempt token survived a route digest change: status=%d provider_calls=%d want=%d", code, calls.Load(), before)
+	}
+	var leaseUntil int64
+	if e = s.db.SQL.QueryRow("SELECT lease_until FROM attempts WHERE id=?", cmd.Assignment.AttemptId).Scan(&leaseUntil); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.db.SQL.Exec("UPDATE attempts SET lease_until=? WHERE id=?", store.Now()-1, cmd.Assignment.AttemptId); e != nil {
+		t.Fatal(e)
+	}
+	before = calls.Load()
+	code, _ = req("/v1/responses", `{"model":"model-c","input":"expired lease"}`)
+	if _, e = s.db.SQL.Exec("UPDATE attempts SET lease_until=? WHERE id=?", leaseUntil, cmd.Assignment.AttemptId); e != nil {
+		t.Fatal(e)
+	}
+	if code != http.StatusForbidden || calls.Load() != before {
+		t.Fatalf("Attempt token survived lease expiry: status=%d provider_calls=%d want=%d", code, calls.Load(), before)
+	}
+	before = calls.Load()
 	overBudget := `{"model":"model-c","input":"` + strings.Repeat("x", 1200) + `"}`
 	code, response := req("/v1/responses", overBudget)
 	if code != http.StatusRequestEntityTooLarge || calls.Load() != before || !bytes.Contains(response, []byte("ATTEMPT_COST_BUDGET_EXHAUSTED")) {
