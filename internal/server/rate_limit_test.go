@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,11 @@ import (
 
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/testutil"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
 func rateLimitServer(t *testing.T, maxEntries, idleSeconds int, identities ...string) (*Server, []string) {
@@ -120,6 +126,30 @@ func TestManagedAPIKeyLookupIsRateLimitedByDirectIPBeforeResolver(t *testing.T) 
 	}
 	if lookups != 1 {
 		t.Fatalf("API-key resolver called %d times, want 1; forwarded headers must not change direct-IP bucket", lookups)
+	}
+}
+
+func TestGRPCManagedAPIKeyLookupIsRateLimitedBeforeResolver(t *testing.T) {
+	s, _ := rateLimitServer(t, 10, 600, "user-a")
+	lookups := 0
+	s.auth.SetAPIKeyResolver(func(_ context.Context, _ string) (config.Identity, error) {
+		lookups++
+		return config.Identity{Owner: "api-owner", Projects: []string{"p"}, Scopes: []string{"jobs:read"}}, nil
+	})
+	call := func(token string) error {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+token))
+		ctx = peer.NewContext(ctx, &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("198.51.100.8"), Port: 44321}})
+		_, err := s.authUnary(ctx, nil, &grpc.UnaryServerInfo{}, func(context.Context, any) (any, error) { return nil, nil })
+		return err
+	}
+	if err := call("cc_live_first"); err != nil {
+		t.Fatalf("first managed-key gRPC request returned %v, want success", err)
+	}
+	if err := call("cc_live_second"); status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("second managed-key gRPC request returned %v, want ResourceExhausted", err)
+	}
+	if lookups != 1 {
+		t.Fatalf("gRPC API-key resolver called %d times, want 1", lookups)
 	}
 }
 
