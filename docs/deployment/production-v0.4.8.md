@@ -12,7 +12,19 @@
 
 ## 发布产物
 
-发布成功后，从 [v0.4.8 GitHub Release](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.8) 获取 Linux amd64/arm64 归档、`SHA256SUMS`、`CONTAINER_IMAGES.txt` 和镜像 digest。校验归档哈希，并确认 `CONTAINER_IMAGES.txt` 的 source SHA 与 Release tag 对应的提交一致。Server 与 Worker 镜像均应包含 amd64、arm64 manifest；部署时使用文件中记录的 digest。
+从 [v0.4.8 GitHub Release](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.8) 获取 Linux amd64/arm64 归档、`SHA256SUMS`、`CONTAINER_IMAGES.txt` 和镜像 digest。校验归档哈希，并确认 `CONTAINER_IMAGES.txt` 的 source SHA 与 Release tag 对应的提交一致。Server 与 Worker 镜像均包含 amd64、arm64 manifest；部署时使用文件中记录的 digest。
+
+已发布产物校验值：
+
+| 产物 | SHA-256 / digest |
+| --- | --- |
+| `computecloud_0.4.8_linux_amd64.tar.gz` | `d2ac59c53dedb67586ad870df99840ab3be6b3aceaf325ca0b3406c2065582cc` |
+| `computecloud_0.4.8_linux_arm64.tar.gz` | `648026a0e74569f03d66f21d2cf795fcc7d6369cdaa2c1773c7c1123ca182b05` |
+| Server OCI multi-arch（`:0.4.8`、`:v0.4.8`、`:latest`） | `sha256:f4bfd6639ab7884e34688931623041fc468241d7b54b0ca8f6bea9419cf0f909` |
+| Worker OCI multi-arch（`:0.4.8`、`:v0.4.8`、`:latest`） | `sha256:325f0b9decef818e15af5bdf80722df3fe0fb1a11c367d2c658ba9eec3c59e01` |
+| Release `SHA256SUMS` 文件 | `8bd50b3f45097eb32b946089cd6156498afdbfa8818099def811dfda617182d8` |
+
+发布流水线和发布范围见[v0.4.8 发布记录](../implementation/v0.4.8-release-status.md)。
 
 ## 升级步骤
 
