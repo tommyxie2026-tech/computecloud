@@ -51,3 +51,5 @@
 - OCI 参数边界验证（2026-10-12）：扩展 `TestRunLifecycleIdempotencyAndRestartFence`，以恶意 Runtime argv 注入 `--privileged`、`--network=host`、任意宿主 bind mount 和 Docker socket mount 字符串；断言这些值始终位于镜像之后，只作为 Runtime 参数，且 Docker 镜像前的固定隔离参数不包含提权/额外挂载选项。PR head `8573673` 的 CI run [38215422886](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38215422886) 30/30 jobs 全部通过，含 Linux/macOS 完整 verify。此为参数构造回归测试，不替代在目标 Docker/OCI 主机上尝试文件系统/网络逃逸和出站拒绝的实测。
 
 - Agent Runtime 本地 Unix HTTP 服务 header 上限（2026-10-12）：该监听器已设置 `ReadHeaderTimeout` 和 4 MiB body cap，之前未显式限制 header 总字节。现配置 `MaxHeaderBytes=16 KiB` 并加入配置回归测试。PR head `e88ec2d` 的 CI run [38217113343](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38217113343) 30/30 jobs 成功，Linux 全量 verify 包含 `govulncheck`、vet、全量测试、race、smoke 与 capacity checks；该本地 Unix socket 端点的限制不替代公网 Server 入口及 Worker 主机隔离验收。
+
+- 2026-10-12：复审发现未知 `cc_live_` Bearer 值可在认证后限流之前触发 SQLite key 查询。已增加独立的直连来源 IP 有界限流，在普通 HTTPS、模型 Gateway、Agent conversation 入口的 resolver 之前拒绝过量查询；转发头不参与来源键。目标 NAT/代理后的合法客户端共享来源预算，边缘层仍需限流。回归测试覆盖 token 轮换与伪造 `X-Forwarded-For`；PR CI 尚待运行。
