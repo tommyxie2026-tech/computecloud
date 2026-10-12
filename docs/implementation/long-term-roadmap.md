@@ -1600,3 +1600,17 @@ RPG-4 的退出门槛：
 - reject / abort 能终止 Goal；
 - 关键 negative cases 纳入 CI；
 - RPG-1～3 最新主线 CI 全绿，且 GI-01～GI-04 的 Goal 执行集成与治理端到端 Gate 通过后再宣布 RPG CLOSED。
+
+## Execution Token Observability & Efficiency（2026-10-12 纳入迭代）
+
+本能力是 Agent Job Executor 的 **Execution Usage / Quality Evidence / Efficiency Signals**，不建设通用 Token Gateway，也不把 LiteLLM 变成运行依赖。详见 [分阶段实施与 CI 验收计划](execution-token-observability-roadmap.md)。
+
+| 阶段 | 纳入既有路线的子能力 | Gate |
+| --- | --- | --- |
+| v0.4.x | Runtime/Conversation Usage 字段盘点、费用结算正确性与重放测试 | `ci-execution-usage-contract` |
+| v0.5 Agent-aware Scheduler | Attempt/Job/Goal Token 聚合、请求用量来源、只读 API | `ci-execution-usage-e2e` |
+| v0.6 Enterprise Governance | Artifact/CI 质量证据、预算与成本归因、异步评估 | `ci-token-quality-governance` |
+| v0.7 Scale & Resilience | 重试/上下文/缓存效率诊断、可解释建议及基准对照 | `ci-token-efficiency-regression` |
+| v1.0 Stable Platform | 版本化遥测导出、Provider/双机验收 | release acceptance |
+
+现有 `claude_http` 客户端估算成本限制是起点，Codex Token/Cost、Claude Token 上限未具备可靠强制能力时仍保持 unsupported/unknown。Collector 失败不阻塞执行，但不得绕过现有强制预算的 fail-closed 规则。默认不保存完整 Prompt/Response；质量必须能追溯到 Artifact、CI 或标注版本的评价证据。
