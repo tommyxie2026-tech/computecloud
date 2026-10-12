@@ -59,3 +59,5 @@
 - 来源限流器压力路径优化（2026-10-12）：复审发现每次请求都遍历来源桶清理过期项，容量满时还会排序全部条目淘汰最旧项。提交 `8418d0b` 改为 map + LRU 链表；单次请求过期清理最多处理 64 项，容量淘汰为 O(1)，并新增有界清理和最近使用顺序回归测试。相关普通与 race 测试通过。PR head `8418d0b` 的 CI run [38252321597](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38252321597) 44 个 job 中 34 成功、10 个按 PR 条件跳过；Linux/macOS 完整 verify 成功。该修复降低高基数来源流量下限流器自身的 CPU 放大风险，但不代表公网压力/DoS 验收通过。
 
 - 当前 PR [#144](https://github.com/tommyxie2026-tech/computecloud/pull/144) 仍为草稿。未完成的发布门禁仍包括真实公网端口与源站绕过核验、边缘 WAF/安全组实配、Worker A/B mTLS 轮换及撤销演练、目标 OCI 文件/进程隔离和出站网络负向测试，以及供应商可验证的账单硬上限。上述各项均须绑定同一候选 SHA 和实际镜像 digest 的目标环境证据；CI 不能替代这些证据。
+
+- 目标环境验收证据现在要求填写安全格式的 `worker_id`，并在每台 Worker 的独立报告中记录，降低 A/B 结果混用风险；validator 明确只校验字段格式，不证明目标主机身份。提交 `ea39aca` 的缺失字段和路径注入拒绝测试、23 项 Python 验收工具测试、边缘策略样例检查及脚本编译通过。PR head `ea39aca` 的 CI run [38255474804](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38255474804) 34 个 job 成功、10 个按条件跳过，Linux/macOS 全量 verify 均成功。
