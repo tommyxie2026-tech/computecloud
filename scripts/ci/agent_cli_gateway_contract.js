@@ -138,6 +138,11 @@ async function main() {
   const claudeHome = path.join(root, "claude-home");
   fs.mkdirSync(codexHome, { recursive: true, mode: 0o700 });
   fs.mkdirSync(claudeHome, { recursive: true, mode: 0o700 });
+  const git = spawn("git", ["init", "--quiet"], { cwd: codexHome, env: { PATH: process.env.PATH, HOME: codexHome }, stdio: "ignore" });
+  await new Promise((resolve, reject) => {
+    git.once("error", reject);
+    git.once("close", code => code === 0 ? resolve() : reject(new Error(`git init failed: ${code}`)));
+  });
   server.listen(0, "127.0.0.1");
   await new Promise(resolve => server.once("listening", resolve));
   const baseURL = `http://127.0.0.1:${server.address().port}`;
@@ -149,7 +154,7 @@ async function main() {
       CODEX_DISABLE_UPDATE_CHECK: "1",
     };
     await run("codex", [
-      "exec", "--json", "--dangerously-bypass-approvals-and-sandbox", "--model", "fixture-model",
+      "exec", "--json", "--sandbox", "read-only", "--model", "fixture-model",
       "-c", 'model_provider="computecloud"',
       "-c", 'model_providers.computecloud.name="computecloud"',
       "-c", `model_providers.computecloud.base_url="${baseURL}/v1"`,
