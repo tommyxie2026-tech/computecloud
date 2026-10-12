@@ -747,6 +747,24 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  agent-cli-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned Agent Runtime CLI image
+        run: docker build --platform linux/amd64 -f Dockerfile.agent-http --tag computecloud-agent-http:contract .
+      - name: Verify CLI versions and isolated authentication/base URL contracts
+        run: |
+          docker run --rm --network none --entrypoint /bin/sh computecloud-agent-http:contract -ec '
+            test "$(id -u)" = "65532"
+            codex --version | grep -F "0.160.1"
+            claude --version | grep -F "2.1.292"
+          '
+          docker run --rm --network none \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/scripts/ci/agent_cli_gateway_contract.js,target=/tmp/agent_cli_gateway_contract.js,readonly" \
+            --entrypoint node computecloud-agent-http:contract /tmp/agent_cli_gateway_contract.js
+
   container-image:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.run_slow)
     runs-on: ubuntu-latest
@@ -769,7 +787,7 @@ jobs:
 
   package:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [relay-fixture, v047-stable-gate-contract, v047-release-transition, transport-seam, control-review, goal-governance, goal-execution, scheduler-readiness, prepared-workspace-cache, verify-macos, verify, task-flow, retry-flow, manual-retry-negative, artifact-flow, workspace-flow, prepared-workspace-contract, prepared-workspace-recovery, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, runtime-budget, agent-control-fencing, agent-control-negative, agent-control-dispatch, agent-control-approval, agent-control-resume, control-client-check, control-client-e2e, control-mobile-check, container-image]
+    needs: [relay-fixture, v047-stable-gate-contract, v047-release-transition, transport-seam, control-review, goal-governance, goal-execution, scheduler-readiness, prepared-workspace-cache, verify-macos, verify, task-flow, retry-flow, manual-retry-negative, artifact-flow, workspace-flow, prepared-workspace-contract, prepared-workspace-recovery, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, runtime-budget, agent-control-fencing, agent-control-negative, agent-control-dispatch, agent-control-approval, agent-control-resume, control-client-check, control-client-e2e, control-mobile-check, agent-cli-contract, container-image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
