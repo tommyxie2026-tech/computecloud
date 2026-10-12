@@ -54,7 +54,7 @@
 
 - [x] Add a regression test proving rotated unknown `cc_live_` tokens from one direct IP cannot each trigger a resolver lookup, and that spoofed `X-Forwarded-For` does not split the bucket.
 - [x] Apply the separate bounded limiter before bearer resolution on the standard HTTPS API, model gateway, and Agent conversation HTTP entry points; preserve the post-auth per-credential limiter.
-- [ ] Run focused, full, and race tests; record CI evidence before treating this code item as verified.
+- [x] Focused regression and race tests passed locally; PR head `57e75ab` CI run [38219776567](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38219776567) passed 30/30 jobs, including Linux/macOS full verify.
 
 ### Task 2: Enforce identity/project workload budgets
 
