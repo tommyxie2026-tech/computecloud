@@ -55,7 +55,7 @@ func main() {
 	if err := os.Chmod(socket, 0600); err != nil {
 		log.Fatal(err)
 	}
-	httpServer := &http.Server{Handler: server, ReadHeaderTimeout: 5 * time.Second}
+	httpServer := newAgentRuntimeHTTPServer(server)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {
@@ -67,4 +67,8 @@ func main() {
 	if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+func newAgentRuntimeHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 16 << 10}
 }
