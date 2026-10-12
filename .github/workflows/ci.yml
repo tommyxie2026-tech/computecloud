@@ -204,6 +204,7 @@ jobs:
           path: dist/
           if-no-files-found: ignore
   verify:
+    needs: [agent-cli-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
