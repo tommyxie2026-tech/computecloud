@@ -1,5 +1,13 @@
 # 版本记录
 
+## 0.4.8 — 公网入口与 Agent Job 执行边界加固
+
+- 增加认证请求来源限流、身份/项目配额、模型并发上限和 Worker gRPC 入场限制。
+- 增加可撤销/过期 API key 与 Worker mTLS 身份校验、轮换能力。
+- strict OCI 模式拒绝宿主进程执行，采用隔离 Attempt 凭据、只读 rootfs、非 root、capability drop、seccomp、资源限制和 operator 管理的 egress 网络。
+- Codex HTTP Attempt Gateway 增加 token 与估算费用双预算；估算费用不是供应商账单硬上限，未知用量 fail closed。
+- 更新公网部署与安全验收文档。目标公网环境的外部入口、Worker 证书轮换、OCI/egress 负向测试及供应商账单硬上限仍需单独验收；本版本不代表已认证可承载任意不可信公网租户。
+
 ## 未发布 — 原生对话 Job API
 
 - 新增默认关闭的 Claude Messages / Codex Responses 文本接口，将请求持久化映射到既有 Worker Job，并支持 SSE、查询、幂等重试和显式取消。
