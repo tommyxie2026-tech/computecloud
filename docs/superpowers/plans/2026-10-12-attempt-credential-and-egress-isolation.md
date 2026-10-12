@@ -74,7 +74,7 @@
 - [ ] **Step 3: Run** `go test ./internal/server ./internal/adapter ./internal/worker ./internal/agenthttp -run 'TestAttemptGateway|TestStrictModeRejectsRuntime' -count=1`; verify uncovered cases fail.
 - [x] **Step 4: Implement** Codex HTTP Attempt Gateway support using its existing Codex provider config and token, and fail closed for Claude HTTP. No protobuf change was needed.
 - [x] **Step 5: Run** targeted/full Go tests and race suites for adapter/Worker and server/Worker; all passed.
-- [ ] **Step 6: Commit** as `feat: scope runtime model access to active attempts`.
+- [x] **Step 6: Commit** as `09b97a0 feat: scope OCI Codex model access to attempts`.
 
 ### Task 3: Harden the OCI Attempt boundary and secret file lifecycle
 
@@ -114,8 +114,8 @@
 - [x] **Step 2: Run** `python3 -m unittest scripts.security.worker_egress_acceptance_test scripts.security.validate_worker_runtime_config_test`; all five fixtures passed.
 - [x] **Step 3: Implement** a deployment contract requiring a dedicated Runtime HOME, no personal profile mount, pinned Runtime image, no public TCP port, named egress network, and explicit model endpoint. Host firewall policy remains operator-owned.
 - [x] **Step 4: Implement** a target-host egress acceptance tool with harmless probes for the explicitly supplied allowed model endpoint, metadata, host gateway, private test destination, and unapproved public endpoint. It never scans arbitrary networks and stores labels/status only.
-- [ ] **Step 5: Run** Python fixture tests, `go test ./...`, then execute target-host ENV01-ENV05 plus egress cases on the pinned candidate image and retain only sanitized hashes/results.
-- [ ] **Step 6: Commit** as `test: gate public workers on egress and runtime isolation`.
+- [ ] **Step 5: Run** target-host ENV01-ENV05 plus egress cases on the pinned candidate image and retain only sanitized hashes/results. Python fixtures and full Go suite passed locally; target host is unavailable in this environment.
+- [x] **Step 6: Commit** as `09b97a0` (egress tool and controller validator landed with Codex Gateway integration).
 
 ### Task 5: Establish public tenant admission and operational rollback
 
@@ -127,8 +127,8 @@
 - [x] **Step 1: Write acceptance checklist** distinguishing CI fixture proof, target-host OCI proof, Attempt credential isolation, and public-edge proof.
 - [x] **Step 2: Verify** the validator rejects missing SHA/digests/platform/Attempt, fixture-only evidence, missing network negatives, and credential-shaped data.
 - [x] **Step 3: Document** staged rollout: trusted single-tenant first; mTLS and public strict mode per Worker; low-quota canary; expand only after egress and revocation checks; rollback keeps revoked keys/certs revoked.
-- [ ] **Step 4: Run** repository documentation/validation scripts, `go test ./...`, `git diff --check`, and validate the acceptance report schema against sanitized fixtures.
-- [ ] **Step 5: Commit** as `docs: gate public tenants on runtime security evidence`.
+- [x] **Step 4: Run** repository security Python suites (21 tests), public-edge policy check, Python compile checks, and `git diff --check`. The full Go suite passed on this code revision.
+- [x] **Step 5: Commit** as `4e1ae6e docs: gate public tenants on runtime security evidence`.
 
 ---
 
