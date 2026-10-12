@@ -100,6 +100,7 @@ Worker B 重复运行，替换其实际镜像平台并使用独立 Attempt ID。
   "worker_image_digest": "sha256:<64位digest>",
   "agent_runtime_image_digest": "sha256:<64位digest>",
   "platform": "linux/amd64",
+  "worker_id": "worker-a",
   "attempt_id": "<sanitized-attempt-id>",
   "target_host": true,
   "secrets_included": false,
@@ -119,7 +120,7 @@ Worker B 重复运行，替换其实际镜像平台并使用独立 Attempt ID。
 }
 ```
 
-按每台 Worker、每个平台和候选部署分别保留证据，避免把 A 的通过结果套用到 B。不要将私钥、API key、证书内容、Authorization 值、提示词、原始模型响应、完整请求 URL 或个人配置写入 JSON/工单。报告中的 `target_host: true` 是操作人员对证据来源的声明，必须由审阅者对照受限原始日志、外部探测结果和变更记录核验。
+按每台 Worker、每个平台和候选部署分别保留证据；必填 `worker_id` 使用部署配置中的稳定 Worker ID，避免把 A 的通过结果套用到 B。校验器只检查字段存在和安全字符格式，不能证明该 ID 对应真实目标主机。不要将私钥、API key、证书内容、Authorization 值、提示词、原始模型响应、完整请求 URL 或个人配置写入 JSON/工单。报告中的 `target_host: true` 是操作人员对证据来源的声明，必须由审阅者对照受限原始日志、外部探测结果和变更记录核验。
 
 运行结构门禁：
 

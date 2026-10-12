@@ -8,6 +8,7 @@ import sys
 
 SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+WORKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SENSITIVE_KEY = re.compile(r"token|secret|password|private.?key|authorization|api.?key", re.I)
 SENSITIVE_VALUE = re.compile(r"(?:bearer\s+\S+|sk-[A-Za-z0-9_-]{16,}|cc_live_[A-Za-z0-9_-]{16,})", re.I)
 
@@ -34,6 +35,8 @@ def validate(report: dict) -> list[str]:
             errors.append(f"{name} is missing or invalid")
     if report.get("platform") not in ("linux/amd64", "linux/arm64"):
         errors.append("platform is missing or invalid")
+    if not WORKER_ID.fullmatch(str(report.get("worker_id", ""))):
+        errors.append("worker_id is missing or invalid")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", str(report.get("attempt_id", ""))):
         errors.append("attempt_id is missing or invalid")
     if report.get("target_host") is not True or report.get("secrets_included") is not False:

@@ -10,6 +10,7 @@ def passing_report():
         "worker_image_digest": "sha256:" + "2" * 64,
         "agent_runtime_image_digest": "sha256:" + "3" * 64,
         "platform": "linux/amd64",
+        "worker_id": "worker-a",
         "attempt_id": "public-acceptance-001",
         "target_host": True,
         "secrets_included": False,
@@ -33,6 +34,16 @@ class PublicSecurityEvidenceTests(unittest.TestCase):
         errors = validator.validate(report)
         self.assertTrue(any("target-host" in error for error in errors))
         self.assertTrue(any("metadata_egress_denied" in error for error in errors))
+
+    def test_rejects_missing_worker_identity(self):
+        report = passing_report()
+        del report["worker_id"]
+        self.assertIn("worker_id is missing or invalid", validator.validate(report))
+
+    def test_rejects_unsafe_worker_identity(self):
+        report = passing_report()
+        report["worker_id"] = "../worker-a"
+        self.assertIn("worker_id is missing or invalid", validator.validate(report))
 
     def test_rejects_credential_shaped_data_without_echoing_it(self):
         report = passing_report()
