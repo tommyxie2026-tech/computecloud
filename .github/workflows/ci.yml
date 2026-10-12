@@ -566,6 +566,7 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           version: '36.2'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install pinned protobuf generators
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
