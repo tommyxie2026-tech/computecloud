@@ -52,4 +52,4 @@
 
 - Agent Runtime 本地 Unix HTTP 服务 header 上限（2026-10-12）：该监听器已设置 `ReadHeaderTimeout` 和 4 MiB body cap，之前未显式限制 header 总字节。现配置 `MaxHeaderBytes=16 KiB` 并加入配置回归测试。PR head `e88ec2d` 的 CI run [38217113343](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38217113343) 30/30 jobs 成功，Linux 全量 verify 包含 `govulncheck`、vet、全量测试、race、smoke 与 capacity checks；该本地 Unix socket 端点的限制不替代公网 Server 入口及 Worker 主机隔离验收。
 
-- 2026-10-12：复审发现未知 `cc_live_` Bearer 值可在认证后限流之前触发 SQLite key 查询。已增加独立的直连来源 IP 有界限流，在普通 HTTPS、模型 Gateway、Agent conversation 入口的 resolver 之前拒绝过量查询；转发头不参与来源键。目标 NAT/代理后的合法客户端共享来源预算，边缘层仍需限流。回归测试覆盖 token 轮换与伪造 `X-Forwarded-For`；PR CI 尚待运行。
+- 2026-10-12：复审发现未知 `cc_live_` Bearer 值可在认证后限流之前触发 SQLite key 查询。已增加独立的直连来源 IP 有界限流，在普通 HTTPS、模型 Gateway、Agent conversation 入口的 resolver 之前拒绝过量查询；转发头不参与来源键。目标 NAT/代理后的合法客户端共享来源预算，边缘层仍需限流。回归测试覆盖 token 轮换与伪造 `X-Forwarded-For`；PR head `57e75ab` 的 CI run [38219776567](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38219776567) 30/30 jobs 成功，含 Linux/macOS 完整 verify。
