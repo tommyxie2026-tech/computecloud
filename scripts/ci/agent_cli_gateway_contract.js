@@ -15,6 +15,7 @@ const fixtures = {
 };
 const observed = { codex: false, claude: false };
 const unexpected = [];
+const requests = [];
 
 function sendSSE(res, event, payload) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
@@ -89,6 +90,8 @@ const server = http.createServer((req, res) => {
   const auth = req.headers.authorization || "";
   const codexAuth = auth === `Bearer ${fixtures.codex}`;
   const claudeAuth = auth === `Bearer ${fixtures.claude}` || req.headers["x-api-key"] === fixtures.claude;
+  const authKind = codexAuth ? "codex-fixture" : claudeAuth ? "claude-fixture" : auth || req.headers["x-api-key"] ? "wrong-credential" : "missing-credential";
+  requests.push(`${req.method} ${req.url} auth=${authKind}`);
   const parts = [];
   req.on("data", chunk => parts.push(chunk));
   req.on("end", () => {
@@ -127,7 +130,7 @@ function run(executable, args, env, cwd) {
     child.once("close", code => {
       clearTimeout(timer);
       if (code === 0) return resolve();
-      reject(new Error(`${executable} exited ${code}: ${stderr.replaceAll(fixtures.codex, "[fixture]").replaceAll(fixtures.claude, "[fixture]").slice(-1200)}`));
+      reject(new Error(`${executable} exited ${code}: ${stderr.replaceAll(fixtures.codex, "[fixture]").replaceAll(fixtures.claude, "[fixture]").slice(-1200)}; requests=${requests.join(" | ")}; unexpected=${unexpected.join(" | ")}`));
     });
   });
 }
