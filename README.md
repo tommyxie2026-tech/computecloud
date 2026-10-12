@@ -217,7 +217,7 @@ Goal Governance 决策与审计已接入 Control；原子发布与限定 `claude
 
 ## 构建与试跑
 
-需要 Linux、Go 1.26+ 和 Git；当前验证工具链为 Go 1.27.1。CLI 烟测额外需要 Python 3.12+，不调用模型或消耗账号额度。
+需要 Linux、Go 1.27.2+ 和 Git；该补丁版本包含当前已知的 Go 标准库安全修复。CLI 烟测额外需要 Python 3.12+，不调用模型或消耗账号额度。
 
 ~~~sh
 make build

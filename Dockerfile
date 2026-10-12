@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG GO_IMAGE=golang:1.27.1-alpine
+ARG GO_IMAGE=golang:1.27.2-alpine
 ARG CERTS_IMAGE=alpine:3.22
 ARG WORKER_IMAGE=debian:bookworm-slim
 
