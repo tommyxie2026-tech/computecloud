@@ -55,3 +55,7 @@
 - 2026-10-12：复审发现未知 `cc_live_` Bearer 值可在认证后限流之前触发 SQLite key 查询。已增加独立的直连来源 IP 有界限流，在普通 HTTPS、模型 Gateway、Agent conversation 入口的 resolver 之前拒绝过量查询；转发头不参与来源键。目标 NAT/代理后的合法客户端共享来源预算，边缘层仍需限流。回归测试覆盖 token 轮换与伪造 `X-Forwarded-For`；PR head `57e75ab` 的 CI run [38219776567](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38219776567) 30/30 jobs 成功，含 Linux/macOS 完整 verify。
 
 - HTTP/gRPC 认证前 key 查找防护（2026-10-12）：Server unary/stream 拦截器和 HTTPS/Gateway/Agent conversation 入口复用按直连 peer IP 建立的有界预算；未知 `cc_live_` 不会在限流前触发 resolver，超限返回 HTTP 429 或 gRPC `ResourceExhausted`/`retry-after` trailer。HTTP unary/gRPC unary 与 streaming resolver 调用计数回归和本机 race 测试通过。PR head `296adb5` 的 CI run [38223430583](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38223430583) 30/30 jobs 成功，含 Linux/macOS 完整 verify。
+
+- 来源限流器压力路径优化（2026-10-12）：复审发现每次请求都遍历来源桶清理过期项，容量满时还会排序全部条目淘汰最旧项。提交 `8418d0b` 改为 map + LRU 链表；单次请求过期清理最多处理 64 项，容量淘汰为 O(1)，并新增有界清理和最近使用顺序回归测试。相关普通与 race 测试通过。PR head `8418d0b` 的 CI run [38252321597](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38252321597) 44 个 job 中 34 成功、10 个按 PR 条件跳过；Linux/macOS 完整 verify 成功。该修复降低高基数来源流量下限流器自身的 CPU 放大风险，但不代表公网压力/DoS 验收通过。
+
+- 当前 PR [#144](https://github.com/tommyxie2026-tech/computecloud/pull/144) 仍为草稿。未完成的发布门禁仍包括真实公网端口与源站绕过核验、边缘 WAF/安全组实配、Worker A/B mTLS 轮换及撤销演练、目标 OCI 文件/进程隔离和出站网络负向测试，以及供应商可验证的账单硬上限。上述各项均须绑定同一候选 SHA 和实际镜像 digest 的目标环境证据；CI 不能替代这些证据。
