@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/sha256"
 	"math"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -134,6 +135,29 @@ func writeRateLimited(w http.ResponseWriter, retryAfter int) {
 
 func (s *Server) rateLimitHTTP(w http.ResponseWriter, r *http.Request, authorization string) bool {
 	allowed, retryAfter := s.allowRequest(authorization, publicRequestClass(r), time.Now())
+	if allowed {
+		return true
+	}
+	writeRateLimited(w, retryAfter)
+	return false
+}
+
+// rateLimitAPIKeyLookup protects the SQLite-backed managed-key resolver before
+// authentication succeeds. It uses only the socket peer address: forwarding
+// headers are untrusted on this listener and must not be able to rotate buckets.
+func (s *Server) rateLimitAPIKeyLookup(w http.ResponseWriter, r *http.Request, authorization string) bool {
+	if !strings.HasPrefix(authorization, "Bearer cc_live_") || s.apiKeyLookupLimiter == nil {
+		return true
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
+		host = ip.String()
+	}
+	key := sha256.Sum256([]byte("managed-api-key-lookup:" + host))
+	allowed, retryAfter := s.apiKeyLookupLimiter.allow(key, "auth_lookup", time.Now())
 	if allowed {
 		return true
 	}
