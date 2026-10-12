@@ -42,7 +42,7 @@
 - Produce `type RequestLimit struct { RatePerMinute int; Burst int; MaxEntries int; IdleTimeoutSeconds int }` in config and a server-owned limiter keyed by SHA-256 of the presented credential plus a bounded route class.
 - Produce `func (s *Server) allowRequest(key, class string, now time.Time) (allowed bool, retryAfterSeconds int)` with bounded entry count and deterministic eviction of expired buckets.
 - HTTP rate limiting runs only after bearer authentication and before route handlers. It returns HTTP 429 and a `Retry-After` value calculated from the remaining token-bucket refill time.
-- Managed `cc_live_` key lookup also has a separate bounded pre-auth token bucket keyed by the direct socket peer IP, before any SQLite resolver lookup. It ignores forwarding headers and protects the DB path when callers rotate unknown key values; the existing post-auth per-credential limiter remains in force.
+- 托管 `cc_live_` key 在认证前查询时，另经独立且有界的令牌桶限流，按 socket 直连 peer IP 计数，并在 SQLite resolver 查询前执行。该限流忽略转发头，可防止调用方轮换未知 key 值来持续触发数据库查询；认证后的 credential 限流继续保留。
 
 - [x] **Step 1: Write failing tests** for `TestHTTPHandlerRateLimitPerCredential`, `TestHTTPHandlerRateLimitIgnoresForwardedFor`, `TestHTTPHandlerRateLimitEvictsIdleCredential`, and `TestRequestLimiterBoundsEntries`.
 - [x] **Step 2: Run** `go test ./internal/server -run 'TestHTTPHandlerRateLimit|TestRequestLimiter' -count=1`; confirm the tests fail because the limiter is absent.
@@ -50,17 +50,17 @@
 - [x] **Step 4: Run** the same targeted tests and `go test ./internal/config ./internal/server`.
 - [x] **Step 5: Commit** as `feat: limit authenticated public API request rates`.
 
-### Task 1a: Bound managed API-key lookups before authentication
+### Task 1a：为托管 API key 认证前查库设置限流
 
-- [x] Add a regression test proving rotated unknown `cc_live_` tokens from one direct IP cannot each trigger a resolver lookup, and that spoofed `X-Forwarded-For` does not split the bucket.
-- [x] Apply the separate bounded limiter before bearer resolution on the standard HTTPS API, model gateway, and Agent conversation HTTP entry points; preserve the post-auth per-credential limiter.
-- [x] Focused regression and race tests passed locally; PR head `57e75ab` CI run [38219776567](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38219776567) passed 30/30 jobs, including Linux/macOS full verify.
+- [x] 增加回归测试，验证同一直连 IP 轮换未知 `cc_live_` token 时只会触发一次 resolver 查询，伪造 `X-Forwarded-For` 不能切换限流桶。
+- [x] 在标准 HTTPS API、模型 Gateway 和 Agent conversation HTTP 入口的 Bearer resolver 前应用独立有界限流，并保留认证后的 credential 限流。
+- [x] 本机定向回归和 race 测试通过；PR head `57e75ab` 的 CI run [38219776567](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38219776567) 30/30 jobs 全部通过，含 Linux/macOS 完整验证。
 
-### Task 1b: Apply managed API-key lookup limits to gRPC
+### Task 1b：将托管 API key 查库限流扩展至 gRPC
 
-- [x] Run the same bounded direct-peer-IP limiter before managed-key resolution in unary and streaming gRPC interceptors; share the HTTP source budget and ignore forwarding metadata.
-- [x] Add a regression test that rotates unknown managed keys from one peer and proves the resolver is called only once before `ResourceExhausted`.
-- [x] PR head `86161ae` CI run [38220975018](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38220975018) passed all 30 jobs, including Linux/macOS full verify.
+- [x] 在 unary 和 streaming gRPC 拦截器的托管 key resolver 前应用同一个有界直连 peer IP 限流器，与 HTTP 共用来源预算，并忽略转发 metadata。
+- [x] 增加回归测试：同一 peer 轮换未知托管 key 时，限流器在返回 `ResourceExhausted` 前只允许一次 resolver 查询。
+- [x] PR head `86161ae` 的 CI run [38220975018](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38220975018) 30/30 jobs 全部通过，含 Linux/macOS 完整验证。
 
 ### Task 2: Enforce identity/project workload budgets
 
