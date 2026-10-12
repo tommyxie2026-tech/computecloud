@@ -22,7 +22,7 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - Relay 设计与实施计划：[ADR-021](docs/adr/0021-relay-assisted-p2p-transport.md) / [v0.4.x Relay 传输计划](docs/implementation/relay-p2p-transport-plan.md)
 - 下一步 Relay：按运维手册完成真实 NAT、direct fallback、Relay 重启重连、事件水位和 Attempt 去重验收；`direct` 继续为默认路径
 - Goal-oriented Computing：Legacy Job 的 synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 证据评估和 Control 治理审计已接入执行路径；显式提议可通过受控 HTTP 入口原子发布新 Plan/Job，自动 Re-plan 仍关闭
-- Runtime 预算：自托管 `claude_http` 已支持 Claude 客户端估算费用的微美元硬停止边界，包含能力协商、Assignment 冻结、单在途 Attempt、原子 usage 结算和未知用量 fail-closed。一次 API 调用可能越过阈值；它不是供应商账单上限。公网 `isolated_only` 模式新增 Codex HTTP 每 Attempt token 累计上限，基于 Gateway usage 结算并在请求前夹紧 `max_output_tokens`；尚无美元成本硬上限，且目标主机/锁定 CLI 的真实合同验证待完成。Claude token 上限仍不支持。
+- Runtime 预算：自托管 `claude_http` 已支持 Claude 客户端估算费用的微美元硬停止边界，包含能力协商、Assignment 冻结、单在途 Attempt、原子 usage 结算和未知用量 fail-closed。一次 API 调用可能越过阈值；它不是供应商账单上限。公网 `isolated_only` 模式下 Codex HTTP 每 Attempt 同时有 token 与按管理员配置单价计算的估算费用边界；Gateway 按已结算 usage 累计并在请求前夹紧 `max_output_tokens`。这不是供应商账单硬上限；目标主机/锁定 CLI 的真实合同验证待完成。Claude token 上限仍不支持。
 - RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费、显式提议入口和限定范围 Runtime cost enforcement 已实现。固定版本真实 Runtime 与独立主机验收仍待完成，RPG-4 保持 PARTIAL；完成后关闭，不新增 RPG-5
 - 当前安全加固工作树 Server schema：**v19**（可撤销 API key 元数据；v0.4.7 发布基线为 v18，v0.4.6 tag 为 v13）；Worker schema：**v6**
 - 公网安全加固 P0/P1 与 P2 strict execution / Codex Attempt Gateway / OCI 边界仍在独立工作分支，尚未发布；不可信公网租户仍须等目标主机双机证书、OCI escape、egress firewall 和源站保护验收通过。状态与证据门禁见[安全实施台账](docs/implementation/public-access-security-tracker.md)和[v0.4.7 公网生产验收章节](docs/deployment/production-v0.4.7.md#不可信公网任务的准入与回退门禁)

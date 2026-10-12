@@ -79,13 +79,16 @@ type CodexCLI struct {
 }
 
 type ModelRoute struct {
-	Backend          string    `yaml:"backend"`
-	CLI              *CodexCLI `yaml:"cli"`
-	BaseURL          string    `yaml:"base_url"`
-	APIKeyFile       string    `yaml:"api_key_file"`
-	AllowedModels    []string  `yaml:"allowed_models"`
-	MaxInflight      int       `yaml:"max_inflight"`
-	MaxAttemptTokens int64     `yaml:"max_attempt_tokens"`
+	Backend                          string    `yaml:"backend"`
+	CLI                              *CodexCLI `yaml:"cli"`
+	BaseURL                          string    `yaml:"base_url"`
+	APIKeyFile                       string    `yaml:"api_key_file"`
+	AllowedModels                    []string  `yaml:"allowed_models"`
+	MaxInflight                      int       `yaml:"max_inflight"`
+	MaxAttemptTokens                 int64     `yaml:"max_attempt_tokens"`
+	MaxAttemptCostMicros             int64     `yaml:"max_attempt_cost_microusd"`
+	InputCostPerMillionTokensMicros  int64     `yaml:"input_cost_per_million_tokens_microusd"`
+	OutputCostPerMillionTokensMicros int64     `yaml:"output_cost_per_million_tokens_microusd"`
 }
 type ModelGateway struct {
 	Enabled                  bool                  `yaml:"enabled"`
@@ -274,8 +277,12 @@ func (c Server) ValidateV02() error {
 			return fmt.Errorf("invalid gateway limits/routes")
 		}
 		for _, r := range g.Routes {
-			if len(r.AllowedModels) == 0 || r.MaxInflight < 1 || r.MaxAttemptTokens < 0 || r.MaxAttemptTokens > 100_000_000 {
+			if len(r.AllowedModels) == 0 || r.MaxInflight < 1 || r.MaxAttemptTokens < 0 || r.MaxAttemptTokens > 100_000_000 || r.MaxAttemptCostMicros < 0 || r.MaxAttemptCostMicros > 2_000_000_000_000_000 || r.InputCostPerMillionTokensMicros < 0 || r.InputCostPerMillionTokensMicros > 2_000_000_000_000_000 || r.OutputCostPerMillionTokensMicros < 0 || r.OutputCostPerMillionTokensMicros > 2_000_000_000_000_000 {
 				return fmt.Errorf("invalid gateway route limits")
+			}
+			hasCostConfig := r.MaxAttemptCostMicros != 0 || r.InputCostPerMillionTokensMicros != 0 || r.OutputCostPerMillionTokensMicros != 0
+			if hasCostConfig && (r.MaxAttemptCostMicros < 1 || r.InputCostPerMillionTokensMicros < 1 || r.OutputCostPerMillionTokensMicros < 1) {
+				return fmt.Errorf("incomplete gateway Attempt cost budget")
 			}
 			if r.Backend == "codex_cli" {
 				if r.CLI == nil || r.CLI.Executable == "" || r.CLI.Version == "" || r.BaseURL != "" || r.APIKeyFile != "" {
@@ -308,8 +315,8 @@ func (c Server) ValidateV02() error {
 		}
 		for _, routeName := range c.ModelGateway.CredentialRoutes {
 			route := c.ModelGateway.Routes[routeName]
-			if route.BaseURL == "" || route.Backend == "codex_cli" || route.MaxAttemptTokens < 1 {
-				return fmt.Errorf("isolated_only requires HTTP routes with max_attempt_tokens")
+			if route.BaseURL == "" || route.Backend == "codex_cli" || route.MaxAttemptTokens < 1 || route.MaxAttemptCostMicros < 1 || route.InputCostPerMillionTokensMicros < 1 || route.OutputCostPerMillionTokensMicros < 1 {
+				return fmt.Errorf("isolated_only requires HTTP routes with Attempt token and cost budgets")
 			}
 		}
 	}
@@ -449,7 +456,7 @@ func RouteDigest(r ModelRoute) string {
 	models := append([]string(nil), r.AllowedModels...)
 	sort.Strings(models)
 	if r.Backend == "codex_cli" {
-		return job.Hash(job.JSON(map[string]any{"version": "codex-cli-route-v1", "cli": r.CLI, "models": models, "max_attempt_tokens": r.MaxAttemptTokens}))
+		return job.Hash(job.JSON(map[string]any{"version": "codex-cli-route-v1", "cli": r.CLI, "models": models, "max_attempt_tokens": r.MaxAttemptTokens, "max_attempt_cost_microusd": r.MaxAttemptCostMicros, "input_cost_per_million_tokens_microusd": r.InputCostPerMillionTokensMicros, "output_cost_per_million_tokens_microusd": r.OutputCostPerMillionTokensMicros}))
 	}
-	return job.Hash(job.JSON(map[string]any{"version": "model-route-v1", "base_url": strings.TrimRight(r.BaseURL, "/"), "models": models, "max_attempt_tokens": r.MaxAttemptTokens}))
+	return job.Hash(job.JSON(map[string]any{"version": "model-route-v1", "base_url": strings.TrimRight(r.BaseURL, "/"), "models": models, "max_attempt_tokens": r.MaxAttemptTokens, "max_attempt_cost_microusd": r.MaxAttemptCostMicros, "input_cost_per_million_tokens_microusd": r.InputCostPerMillionTokensMicros, "output_cost_per_million_tokens_microusd": r.OutputCostPerMillionTokensMicros}))
 }

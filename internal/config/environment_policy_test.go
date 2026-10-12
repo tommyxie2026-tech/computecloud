@@ -50,7 +50,7 @@ func TestIsolatedPublicModeRequiresBoundedHTTPSGatewayRoute(t *testing.T) {
 		ModelGateway: ModelGateway{
 			Enabled: true, PublicBaseURL: "https://server.example/v1", MaxRequestBytes: 1 << 20, MaxInflight: 4,
 			ConnectTimeoutSeconds: 5, HeaderTimeoutSeconds: 5, StreamIdleTimeoutSeconds: 5, RequestTimeoutSeconds: 60,
-			Routes:           map[string]ModelRoute{"route": {BaseURL: "https://provider.example/v1", APIKeyFile: "/tmp/key", AllowedModels: []string{"model"}, MaxInflight: 1, MaxAttemptTokens: 10000}},
+			Routes:           map[string]ModelRoute{"route": {BaseURL: "https://provider.example/v1", APIKeyFile: "/tmp/key", AllowedModels: []string{"model"}, MaxInflight: 1, MaxAttemptTokens: 10000, MaxAttemptCostMicros: 500000, InputCostPerMillionTokensMicros: 2500000, OutputCostPerMillionTokensMicros: 10000000}},
 			CredentialRoutes: map[string]string{"cred": "route"},
 		},
 	}
@@ -62,8 +62,8 @@ func TestIsolatedPublicModeRequiresBoundedHTTPSGatewayRoute(t *testing.T) {
 		t.Fatal("isolated-only allowed unbounded direct model invocation")
 	}
 	base.Users = nil
-	base.ModelGateway.Routes["route"] = ModelRoute{BaseURL: "https://provider.example/v1", APIKeyFile: "/tmp/key", AllowedModels: []string{"model"}, MaxInflight: 1}
+	base.ModelGateway.Routes["route"] = ModelRoute{BaseURL: "https://provider.example/v1", APIKeyFile: "/tmp/key", AllowedModels: []string{"model"}, MaxInflight: 1, MaxAttemptTokens: 10000}
 	if err := base.Validate(); err == nil {
-		t.Fatal("isolated-only accepted a route without an Attempt token budget")
+		t.Fatal("isolated-only accepted a route without an Attempt cost budget")
 	}
 }

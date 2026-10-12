@@ -134,15 +134,16 @@
 
 ## Completion Gate
 
-### Follow-up: strict-mode per-Attempt token ceiling
+### 后续：strict 模式 Attempt 级 token 与估算费用上限
 
-- [x] Require a positive `max_attempt_tokens` on every strict-mode Gateway route and include it in route digest/config validation.
-- [x] Serialize model requests per Attempt; sum settled Gateway usage and fail closed when any usage is unresolved.
-- [x] Clamp/inject `max_output_tokens`; reject unsupported compact calls and requests that cannot fit the remaining allowance.
-- [x] Add config, budget helper, and Gateway integration tests. Focused tests pass locally.
-- [ ] Run full Go/race and security suites in CI; validate the exact pinned Codex CLI and provider contract.
-- [ ] Validate token semantics on target Worker and configure a separate provider-side monetary hard budget before untrusted public tenants.
+- [x] strict Gateway 路由必须设置正数 `max_attempt_tokens`，并纳入路由摘要和配置校验。
+- [x] 按 Attempt 串行化模型请求、累计已结算 Gateway 用量；任何用量未结算时 fail closed。
+- [x] 注入或收紧 `max_output_tokens`；拒绝不支持的 compact 请求和无法放入剩余额度的请求。
+- [x] 增加路由输入/输出单价和每 Attempt 估算费用上限；逐次向上取整已完成请求的估算费用，并同时按 token 与费用余额限制输出。
+- [x] 增加配置、预算计算与 Gateway 集成测试；本地聚焦测试通过。
+- [ ] 在 CI 运行完整 Go/race 与安全测试；验证固定版本 Codex CLI 和上游协议合同。
+- [ ] 在目标 Worker 验证 token 语义，并为不可信公网租户配置独立的供应商账单硬上限。
 
-**Limits:** This is a token ceiling per Attempt, not a Job-wide or monetary ceiling. A retry creates a new Attempt allowance. The request-body byte estimate is conservative but provider tokenizer/usage semantics and `max_output_tokens` enforcement must be verified against the pinned upstream contract.
+**边界：** token 与费用额度均按 Attempt 计算，重试会获得新额度。费用边界依据管理员配置的保守单价和供应商上报用量估算，不是供应商账单上限。请求体字节数用于保守估算输入 token；真实分词、单价及上游 `max_output_tokens` 行为仍须用锁定版本协议验收。不可信公网租户仍须有供应商侧支出硬上限。
 
 Do not mark complete until public-strict mode cannot schedule `process` execution, all public-supported runtimes use the Attempt-scoped credential route, Attempt containers cannot read persistent Worker credentials, outbound policy denies all non-allowlisted destinations on the target host, and ENV/egress acceptance records prove the exact candidate image digest and platform. A CI fixture is not sufficient evidence for target-host isolation.

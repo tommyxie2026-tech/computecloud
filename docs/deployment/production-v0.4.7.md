@@ -68,7 +68,7 @@ P0/P1/P2 的工作树实现及回归测试不能替代目标环境证据。在�
 
 strict execution 需要 Server 和每台 Worker 同时设置 `public_execution_mode: isolated_only`，并由 `codex_http`、container Environment 与 Attempt Gateway 路由组成受支持路径；Claude 等未验证 Gateway 认证的运行时会被拒绝。Agent Runtime controller 需用 `--public-strict`、operator 创建的 egress network、seccomp 文件和资源限额启动。先在隔离网络执行 `validate_worker_runtime_config.py` 与 `worker_egress_acceptance.py`，再审阅脱敏记录；不能只凭配置项或 CI 标记通过。
 
-strict Server 必须为每个 `CredentialRoutes` 配置 HTTP 路由与 `max_attempt_tokens`，且不能授予客户端 `models:invoke`。示例（替换 URL、模型和密钥文件路径）：
+strict Server 必须为每个 `CredentialRoutes` 配置 HTTP 路由、`max_attempt_tokens`、`max_attempt_cost_microusd` 和输入/输出单价，且不能授予客户端 `models:invoke`。示例（替换 URL、模型和密钥文件路径）：
 
 ```yaml
 server:
@@ -92,13 +92,16 @@ server:
         allowed_models: [REPLACE_WITH_CODEX_MODEL]
         max_inflight: 4
         max_attempt_tokens: 100000
+        max_attempt_cost_microusd: 500000
+        input_cost_per_million_tokens_microusd: 2500000
+        output_cost_per_million_tokens_microusd: 10000000
     credential_routes:
       codex-account: codex-public
 ```
 
-`max_attempt_tokens` 按每个 Attempt 的上游用量累计；Server 会用请求体字节数保守估算输入 token，并限制上游 `max_output_tokens`。请求并发串行化；上游用量未知或缺失时，该 Attempt 后续模型请求会 fail closed。只接受遵守 `max_output_tokens` 且能返回完整 token usage 的 OpenAI Responses 兼容上游；严格模式暂不支持无输出上限的 compact 端点。
+`max_attempt_tokens` 和 `max_attempt_cost_microusd` 按每个 Attempt 的上游用量累计。费用单位是微美元；输入/输出单价按每百万 token 的微美元填写。示例的额度为 $0.50，输入单价为 $2.50/百万 token，输出单价为 $10/百万 token。每条路由的单价必须不低于该路由所有允许模型的最高价格；Server 按请求逐项向上取整，并用请求体字节数保守估算输入 token，再依据 token 与费用剩余额度夹紧 `max_output_tokens`。请求并发串行化；上游用量未知或缺失时，该 Attempt 后续模型请求会 fail closed。只接受遵守 `max_output_tokens` 且能返回完整 token usage 的 OpenAI Responses 兼容上游；严格模式暂不支持无输出上限的 compact 端点。
 
-**费用限制仍是独立门禁：** token 上限不是金额硬上限；不同模型 token 单价不同，且上游可能不按兼容协议执行输出限制。面向不可信租户前，仍必须在上游模型账户/组织设置可验证的支出上限，并保留告警/停用证据；若无法配置上游硬限额，禁止开放自动付费模型凭据给不可信公网任务。
+**供应商账单限制仍是独立门禁：** Gateway 费用边界使用管理员配置的单价和供应商 usage，不等同供应商实际扣费。单价配置错误、供应商定价变化、一次在途请求、供应商不遵守 `max_output_tokens` 或账单调整均可能导致实际费用超过边界。面向不可信租户前，仍必须在上游模型账户/组织设置可验证的支出上限，并保留告警/停用证据；若无法配置上游硬限额，禁止开放自动付费模型凭据给不可信公网任务。
 
 完成上述所有目标主机验证后，将真实观测写入统一 evidence JSON，并运行以下门禁。样例 fixture 和 CI 结果不能设置 `target_host: true`，也无法替代要求的各项网络负向结果：
 

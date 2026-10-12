@@ -207,8 +207,8 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer release()
-		if route.config.MaxAttemptTokens < 1 {
-			modelError(w, status.Error(codes.FailedPrecondition, "ATTEMPT_TOKEN_BUDGET_UNCONFIGURED"))
+		if route.config.MaxAttemptTokens < 1 || route.config.MaxAttemptCostMicros < 1 || route.config.InputCostPerMillionTokensMicros < 1 || route.config.OutputCostPerMillionTokensMicros < 1 {
+			modelError(w, status.Error(codes.FailedPrecondition, "ATTEMPT_BUDGET_UNCONFIGURED"))
 			return
 		}
 	}
@@ -262,12 +262,12 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hash != "" && g.s.cfg.PublicExecutionMode == "isolated_only" {
-		remaining, budgetErr := remainingAttemptTokens(r.Context(), g.s.db.SQL, id.attempt, route.config.MaxAttemptTokens)
+		remaining, budgetErr := remainingAttemptBudget(r.Context(), g.s.db.SQL, id.attempt, route.config.MaxAttemptTokens, route.config.MaxAttemptCostMicros, route.config.InputCostPerMillionTokensMicros, route.config.OutputCostPerMillionTokensMicros)
 		if budgetErr != nil {
 			modelError(w, budgetErr)
 			return
 		}
-		body, budgetErr = applyAttemptTokenLimit(fields, body, remaining, r.URL.Path == "/v1/responses/compact")
+		body, budgetErr = applyAttemptBudget(fields, body, remaining, route.config.InputCostPerMillionTokensMicros, route.config.OutputCostPerMillionTokensMicros, r.URL.Path == "/v1/responses/compact")
 		if budgetErr != nil {
 			modelError(w, budgetErr)
 			return
