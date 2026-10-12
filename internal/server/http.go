@@ -279,6 +279,9 @@ func (s *Server) HTTPHandler() http.Handler {
 			httpError(w, status.Error(codes.Unauthenticated, "authentication required"))
 			return
 		}
+		if !s.rateLimitAPIKeyLookup(w, r, r.Header.Get("Authorization")) {
+			return
+		}
 		ctx, e := s.auth.Bearer(r.Context(), r.Header.Get("Authorization"))
 		if e != nil {
 			httpError(w, e)
