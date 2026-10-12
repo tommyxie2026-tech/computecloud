@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | P0 公网入口与资源限制 | 进行中 | [实施计划](../superpowers/plans/2026-10-12-public-ingress-resource-controls.md) | 认证主体速率/并发/成本限额生效；公网入口拓扑、源站保护、429/过载行为通过验收 |
 | P1 API Key 生命周期与 Worker mTLS | 本地实现完成，待目标环境验收 | [实施计划](../superpowers/plans/2026-10-12-api-keys-and-worker-mtls.md) | key 创建/撤销/过期有效；A/B 独立证书验证、逐台轮换、撤销和回退完成 |
-| P2 Attempt 凭据与网络隔离 | 进行中 | [实施计划](../superpowers/plans/2026-10-12-attempt-credential-and-egress-isolation.md) | 公网严格模式拒绝 process；Attempt 凭据限时限域；目标 Worker 逃逸/出站负向测试通过；模型支出有可验证硬上限 |
+| P2 Attempt 凭据与网络隔离 | 进行中 | [实施计划](../superpowers/plans/2026-10-12-attempt-credential-and-egress-isolation.md) | 公网严格模式拒绝 process；Attempt 凭据限时限域；目标 Worker 逃逸/出站负向测试通过；Attempt token 上限代码完成；美元成本上限与目标环境验收仍待完成 |
 
 ## 跟踪规则
 
@@ -35,5 +35,7 @@
 - 尚未完成：目标环境公网端口扫描、源站绕过拒绝、WAF/安全组配置、真实 429/队列饱和验收；没有目标 endpoint、云边缘配置或测试凭据，不能据 CI 宣称公网环境已安全。
 - 尚未完成：P1 双机证书签发、A/B 证书轮换/撤销实测及目标环境验证。
 - 尚未完成：P2 pinned Codex CLI 认证协议实测、Claude Gateway 支持（当前 fail closed）、OCI 逃逸负向测试、目标 Worker 出站负向验收。
-- 尚未完成：Codex Attempt 总 token/cost 硬上限；不可信公网模型调用前须有运行时强制或可验证上游支出硬预算，否则仅限可信租户。
-- 当前验证证据：静态代码/配置审查。尚无公网安全组/WAF 状态、真实 Worker 客户端证书、逃逸负向测试或外部端口核验结果。
+- 已实现（待 CI/目标环境验收）：strict `isolated_only` 下每个 Codex HTTP Attempt 必须配置 `max_attempt_tokens`；Gateway 依据已结算 usage 累计、请求串行化、未知用量 fail closed，并夹紧 `max_output_tokens`。保守按请求字节数预留输入 token；compact endpoint 不支持。该上限以 Attempt 为单位，重试的新 Attempt 有独立额度。
+- 尚未完成：美元成本硬上限。token 上限不能约束供应商计价或账单；不可信公网模型调用仍须配置可验证的上游支出硬预算，或暂限可信租户。Claude Gateway/token 预算仍 fail closed。
+- 已提交：strict Attempt token cap 与文档，commit `1c7e7e0`。本地 `go test ./...`、预算路径 race 测试、17 项 Python 安全/边缘策略测试、策略样例检查、Python compile 与 `git diff --check` 通过。全量 Server race 首次运行中一个既有端到端用例 `TestGatewayWorkerInvocationAndSecretRedaction` 因 `ARTIFACT_ERROR` 失败；普通复测通过，新增预算路径 race 测试通过。
+- 尚待验证：GitHub CI、锁定 Codex CLI/真实上游的协议与用量合同，以及公网安全组/WAF、真实 Worker 客户端证书、逃逸负向测试和外部端口核验。当前无目标环境证据。

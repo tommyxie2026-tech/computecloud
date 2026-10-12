@@ -134,4 +134,15 @@
 
 ## Completion Gate
 
+### Follow-up: strict-mode per-Attempt token ceiling
+
+- [x] Require a positive `max_attempt_tokens` on every strict-mode Gateway route and include it in route digest/config validation.
+- [x] Serialize model requests per Attempt; sum settled Gateway usage and fail closed when any usage is unresolved.
+- [x] Clamp/inject `max_output_tokens`; reject unsupported compact calls and requests that cannot fit the remaining allowance.
+- [x] Add config, budget helper, and Gateway integration tests. Focused tests pass locally.
+- [ ] Run full Go/race and security suites in CI; validate the exact pinned Codex CLI and provider contract.
+- [ ] Validate token semantics on target Worker and configure a separate provider-side monetary hard budget before untrusted public tenants.
+
+**Limits:** This is a token ceiling per Attempt, not a Job-wide or monetary ceiling. A retry creates a new Attempt allowance. The request-body byte estimate is conservative but provider tokenizer/usage semantics and `max_output_tokens` enforcement must be verified against the pinned upstream contract.
+
 Do not mark complete until public-strict mode cannot schedule `process` execution, all public-supported runtimes use the Attempt-scoped credential route, Attempt containers cannot read persistent Worker credentials, outbound policy denies all non-allowlisted destinations on the target host, and ENV/egress acceptance records prove the exact candidate image digest and platform. A CI fixture is not sufficient evidence for target-host isolation.

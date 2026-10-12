@@ -79,12 +79,13 @@ type CodexCLI struct {
 }
 
 type ModelRoute struct {
-	Backend       string    `yaml:"backend"`
-	CLI           *CodexCLI `yaml:"cli"`
-	BaseURL       string    `yaml:"base_url"`
-	APIKeyFile    string    `yaml:"api_key_file"`
-	AllowedModels []string  `yaml:"allowed_models"`
-	MaxInflight   int       `yaml:"max_inflight"`
+	Backend          string    `yaml:"backend"`
+	CLI              *CodexCLI `yaml:"cli"`
+	BaseURL          string    `yaml:"base_url"`
+	APIKeyFile       string    `yaml:"api_key_file"`
+	AllowedModels    []string  `yaml:"allowed_models"`
+	MaxInflight      int       `yaml:"max_inflight"`
+	MaxAttemptTokens int64     `yaml:"max_attempt_tokens"`
 }
 type ModelGateway struct {
 	Enabled                  bool                  `yaml:"enabled"`
@@ -273,7 +274,7 @@ func (c Server) ValidateV02() error {
 			return fmt.Errorf("invalid gateway limits/routes")
 		}
 		for _, r := range g.Routes {
-			if len(r.AllowedModels) == 0 || r.MaxInflight < 1 {
+			if len(r.AllowedModels) == 0 || r.MaxInflight < 1 || r.MaxAttemptTokens < 0 || r.MaxAttemptTokens > 100_000_000 {
 				return fmt.Errorf("invalid gateway route limits")
 			}
 			if r.Backend == "codex_cli" {
@@ -293,6 +294,22 @@ func (c Server) ValidateV02() error {
 		for cred, route := range g.CredentialRoutes {
 			if c.Credentials[cred] < 1 || g.Routes[route].BaseURL == "" || g.PublicBaseURL == "" {
 				return fmt.Errorf("invalid credential gateway mapping")
+			}
+		}
+	}
+	if c.PublicExecutionMode == "isolated_only" {
+		if !c.ModelGateway.Enabled || !strings.HasPrefix(c.ModelGateway.PublicBaseURL, "https://") || len(c.ModelGateway.CredentialRoutes) == 0 {
+			return fmt.Errorf("isolated_only requires HTTPS Attempt Gateway credential routes")
+		}
+		for _, user := range c.Users {
+			if Contains(user.Scopes, "models:invoke") {
+				return fmt.Errorf("isolated_only does not allow direct models:invoke identities")
+			}
+		}
+		for _, routeName := range c.ModelGateway.CredentialRoutes {
+			route := c.ModelGateway.Routes[routeName]
+			if route.BaseURL == "" || route.Backend == "codex_cli" || route.MaxAttemptTokens < 1 {
+				return fmt.Errorf("isolated_only requires HTTP routes with max_attempt_tokens")
 			}
 		}
 	}
@@ -432,7 +449,7 @@ func RouteDigest(r ModelRoute) string {
 	models := append([]string(nil), r.AllowedModels...)
 	sort.Strings(models)
 	if r.Backend == "codex_cli" {
-		return job.Hash(job.JSON(map[string]any{"version": "codex-cli-route-v1", "cli": r.CLI, "models": models}))
+		return job.Hash(job.JSON(map[string]any{"version": "codex-cli-route-v1", "cli": r.CLI, "models": models, "max_attempt_tokens": r.MaxAttemptTokens}))
 	}
-	return job.Hash(job.JSON(map[string]any{"version": "model-route-v1", "base_url": strings.TrimRight(r.BaseURL, "/"), "models": models}))
+	return job.Hash(job.JSON(map[string]any{"version": "model-route-v1", "base_url": strings.TrimRight(r.BaseURL, "/"), "models": models, "max_attempt_tokens": r.MaxAttemptTokens}))
 }

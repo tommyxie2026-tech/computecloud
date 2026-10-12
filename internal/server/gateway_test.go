@@ -24,6 +24,8 @@ import (
 
 func TestModelGatewayEnforcesPerIdentityInflightLimit(t *testing.T) {
 	var calls atomic.Int32
+	var strictMode atomic.Bool
+	var attemptMaxOutput atomic.Int64
 	streamStarted := make(chan struct{}, 2)
 	streamEnded := make(chan struct{}, 2)
 	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +50,13 @@ func TestModelGatewayEnforcesPerIdentityInflightLimit(t *testing.T) {
 		}
 		if string(input["store"]) != "false" {
 			t.Error("store must be false")
+		}
+		if strictMode.Load() {
+			var maxOutput int64
+			if err := json.Unmarshal(input["max_output_tokens"], &maxOutput); err != nil || maxOutput < 1 || maxOutput >= 99999 {
+				t.Errorf("Attempt output token limit not applied: max=%d err=%v", maxOutput, err)
+			}
+			attemptMaxOutput.Store(maxOutput)
 		}
 		switch string(input["input"]) {
 		case `"wait"`:
@@ -78,7 +87,7 @@ func TestModelGatewayEnforcesPerIdentityInflightLimit(t *testing.T) {
 	user, model, wt := testutil.Token(t, "job"), testutil.Token(t, "model"), testutil.Token(t, "worker")
 	wc := config.Worker{Runtimes: map[string]config.Runtime{"codex_exec": {Version: "fixture-1"}}, Policies: map[string]config.Policy{"review": {CodexSandbox: "read-only"}}, Verifiers: map[string][][]string{"check": {}}}
 	limits := config.IdentityLimits{MaxActiveJobs: 8, MaxQueuedJobs: 32, MaxModelRequests: 2}
-	cfg := config.Server{DataDir: t.TempDir(), TLS: config.TLS{InsecureLoopback: true}, LeaseSeconds: 6, TickMS: 20, MaxArtifactBytes: 32 << 20, MaxProjectTasks: 4, Credentials: map[string]int{"account": 2}, Users: []config.Identity{{TokenFile: user, Owner: "owner", Projects: []string{"project"}, Credentials: []string{"account"}, Scopes: []string{"jobs:submit", "jobs:read", "jobs:cancel"}, Limits: limits}, {TokenFile: model, Owner: "owner", Projects: []string{"project"}, Scopes: []string{"models:invoke"}, ModelProject: "project", ModelRoute: "route", Limits: limits}}, Workers: []config.Identity{{TokenFile: wt, WorkerID: "w", Projects: []string{"project"}, Credentials: []string{"account"}}}, Jobs: config.Jobs{Enabled: true, Templates: config.Templates(wc)}, ModelGateway: config.ModelGateway{Enabled: true, PublicBaseURL: "http://127.0.0.1:7444/v1", MaxInflight: 3, Routes: map[string]config.ModelRoute{"route": {BaseURL: upstream.URL + "/v1", APIKeyFile: testutil.Token(t, "upstream"), AllowedModels: []string{"model-c"}, MaxInflight: 3}}, CredentialRoutes: map[string]string{"account": "route"}}}
+	cfg := config.Server{DataDir: t.TempDir(), TLS: config.TLS{InsecureLoopback: true}, LeaseSeconds: 6, TickMS: 20, MaxArtifactBytes: 32 << 20, MaxProjectTasks: 4, Credentials: map[string]int{"account": 2}, Users: []config.Identity{{TokenFile: user, Owner: "owner", Projects: []string{"project"}, Credentials: []string{"account"}, Scopes: []string{"jobs:submit", "jobs:read", "jobs:cancel"}, Limits: limits}, {TokenFile: model, Owner: "owner", Projects: []string{"project"}, Scopes: []string{"models:invoke"}, ModelProject: "project", ModelRoute: "route", Limits: limits}}, Workers: []config.Identity{{TokenFile: wt, WorkerID: "w", Projects: []string{"project"}, Credentials: []string{"account"}}}, Jobs: config.Jobs{Enabled: true, Templates: config.Templates(wc)}, ModelGateway: config.ModelGateway{Enabled: true, PublicBaseURL: "http://127.0.0.1:7444/v1", MaxInflight: 3, Routes: map[string]config.ModelRoute{"route": {BaseURL: upstream.URL + "/v1", APIKeyFile: testutil.Token(t, "upstream"), AllowedModels: []string{"model-c"}, MaxInflight: 3, MaxAttemptTokens: 1000}}, CredentialRoutes: map[string]string{"account": "route"}}}
 	s, e := New(cfg)
 	if e != nil {
 		t.Fatal(e)
@@ -194,10 +203,20 @@ func TestModelGatewayEnforcesPerIdentityInflightLimit(t *testing.T) {
 		t.Fatal("model token persisted in command")
 	}
 	tok = modelAttemptToken(cmd.Assignment)
-	code, _ = req("/v1/responses", `{"model":"model-c","input":"bound"}`)
-	if code != 200 {
+	strictMode.Store(true)
+	s.cfg.PublicExecutionMode = "isolated_only"
+	code, _ = req("/v1/responses", `{"model":"model-c","input":"bound","max_output_tokens":99999}`)
+	if code != 200 || attemptMaxOutput.Load() < 1 || attemptMaxOutput.Load() >= 99999 {
 		t.Fatalf("valid attempt rejected: %d", code)
 	}
+	before = calls.Load()
+	overBudget := `{"model":"model-c","input":"` + strings.Repeat("x", 1200) + `"}`
+	code, _ = req("/v1/responses", overBudget)
+	if code != http.StatusRequestEntityTooLarge || calls.Load() != before {
+		t.Fatalf("Attempt token budget was bypassed: status=%d provider_calls=%d want=%d", code, calls.Load(), before)
+	}
+	strictMode.Store(false)
+	s.cfg.PublicExecutionMode = "trusted_only"
 	streamsDone := make(chan struct{}, 2)
 	for i := 0; i < 2; i++ {
 		go func() {

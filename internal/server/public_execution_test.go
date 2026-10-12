@@ -8,14 +8,14 @@ import (
 )
 
 func TestPublicStrictModeRejectsProcessEnvironment(t *testing.T) {
-	s := &Server{cfg: config.Server{PublicExecutionMode: "isolated_only", ModelGateway: config.ModelGateway{Enabled: true, PublicBaseURL: "https://server.example/v1", CredentialRoutes: map[string]string{"cred": "route"}}}}
+	s := &Server{cfg: config.Server{PublicExecutionMode: "isolated_only", ModelGateway: config.ModelGateway{Enabled: true, PublicBaseURL: "https://server.example/v1", CredentialRoutes: map[string]string{"cred": "route"}, Routes: map[string]config.ModelRoute{"route": {BaseURL: "https://provider.example/v1", MaxAttemptTokens: 1000}}}}}
 	if _, ok := s.publicExecutionRequirements(&pb.TaskSpec{RuntimeProfile: "codex_http", CredentialRef: "cred", RequiredCapabilities: []string{"environment:process"}}); ok {
 		t.Fatal("strict public mode accepted process environment")
 	}
 }
 
 func TestPublicStrictModeRequiresAttemptGateway(t *testing.T) {
-	s := &Server{cfg: config.Server{PublicExecutionMode: "isolated_only", ModelGateway: config.ModelGateway{Enabled: true, PublicBaseURL: "https://server.example/v1"}}}
+	s := &Server{cfg: config.Server{PublicExecutionMode: "isolated_only", ModelGateway: config.ModelGateway{Enabled: true, PublicBaseURL: "https://server.example/v1", Routes: map[string]config.ModelRoute{"route": {BaseURL: "https://provider.example/v1", MaxAttemptTokens: 1000}}}}}
 	if _, ok := s.publicExecutionRequirements(&pb.TaskSpec{RuntimeProfile: "codex_http", CredentialRef: "cred", RequiredCapabilities: []string{"environment:container"}}); ok {
 		t.Fatal("strict public mode accepted a direct credential route")
 	}
@@ -39,6 +39,7 @@ func TestTrustedOnlyModePreservesExistingLocalBehavior(t *testing.T) {
 func TestPublicStrictModeFiltersNonContainerWorker(t *testing.T) {
 	s := &Server{cfg: config.Server{PublicExecutionMode: "isolated_only", ModelGateway: config.ModelGateway{
 		Enabled: true, PublicBaseURL: "https://server.example/v1", CredentialRoutes: map[string]string{"cred": "route"},
+		Routes: map[string]config.ModelRoute{"route": {BaseURL: "https://provider.example/v1", MaxAttemptTokens: 1000}},
 	}}}
 	spec := &pb.TaskSpec{RuntimeProfile: "codex_http", ProjectId: "project", CredentialRef: "cred", Model: "model", PolicyRef: "policy", AcceptanceProfile: "accept", RequiredCapabilities: []string{"environment:container"}, Workspace: &pb.Workspace{RepositoryRef: "repo"}}
 	requirements, ok := s.publicExecutionRequirements(spec)

@@ -29,7 +29,7 @@ func TestWorkerPolicyEnvironmentNameValidation(t *testing.T) {
 
 func TestPublicExecutionModeValidation(t *testing.T) {
 	base := Server{DataDir: "/tmp/server", LeaseSeconds: 60, TickMS: 500, MaxArtifactBytes: 1024, MaxProjectTasks: 1}
-	for _, mode := range []string{"", "trusted_only", "isolated_only"} {
+	for _, mode := range []string{"", "trusted_only"} {
 		base.PublicExecutionMode = mode
 		if err := base.Validate(); err != nil {
 			t.Fatalf("valid mode %q rejected: %v", mode, err)
@@ -40,5 +40,30 @@ func TestPublicExecutionModeValidation(t *testing.T) {
 		if err := base.Validate(); err == nil || err.Error() != "public_execution_mode must be trusted_only or isolated_only" {
 			t.Fatalf("invalid mode %q: got %v", mode, err)
 		}
+	}
+}
+
+func TestIsolatedPublicModeRequiresBoundedHTTPSGatewayRoute(t *testing.T) {
+	base := Server{
+		DataDir: "/tmp/server", LeaseSeconds: 60, TickMS: 500, MaxArtifactBytes: 1024, MaxProjectTasks: 1,
+		PublicExecutionMode: "isolated_only", Credentials: map[string]int{"cred": 1},
+		ModelGateway: ModelGateway{
+			Enabled: true, PublicBaseURL: "https://server.example/v1", MaxRequestBytes: 1 << 20, MaxInflight: 4,
+			ConnectTimeoutSeconds: 5, HeaderTimeoutSeconds: 5, StreamIdleTimeoutSeconds: 5, RequestTimeoutSeconds: 60,
+			Routes:           map[string]ModelRoute{"route": {BaseURL: "https://provider.example/v1", APIKeyFile: "/tmp/key", AllowedModels: []string{"model"}, MaxInflight: 1, MaxAttemptTokens: 10000}},
+			CredentialRoutes: map[string]string{"cred": "route"},
+		},
+	}
+	if err := base.Validate(); err != nil {
+		t.Fatalf("valid isolated-only gateway config rejected: %v", err)
+	}
+	base.Users = []Identity{{Owner: "user", Scopes: []string{"models:invoke"}}}
+	if err := base.Validate(); err == nil {
+		t.Fatal("isolated-only allowed unbounded direct model invocation")
+	}
+	base.Users = nil
+	base.ModelGateway.Routes["route"] = ModelRoute{BaseURL: "https://provider.example/v1", APIKeyFile: "/tmp/key", AllowedModels: []string{"model"}, MaxInflight: 1}
+	if err := base.Validate(); err == nil {
+		t.Fatal("isolated-only accepted a route without an Attempt token budget")
 	}
 }

@@ -18,6 +18,10 @@ func (s *Server) publicExecutionRequirements(spec *pb.TaskSpec) ([]string, bool)
 		s.cfg.ModelGateway.CredentialRoutes[spec.CredentialRef] == "" {
 		return nil, false
 	}
+	route := s.cfg.ModelGateway.Routes[s.cfg.ModelGateway.CredentialRoutes[spec.CredentialRef]]
+	if route.BaseURL == "" || route.Backend == "codex_cli" || route.MaxAttemptTokens < 1 {
+		return nil, false
+	}
 	return []string{"environment:container", "gateway_inference_v1"}, true
 }
 
