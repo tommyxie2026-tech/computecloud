@@ -69,7 +69,14 @@
 - Gateway validates attempt ID/lease, active state, owner/project, route digest, allowed model, current budget, and deadline on every request; no standalone user key can invoke this path.
 - Runtimes without a proven gateway-compatible authentication mode are rejected under `isolated_only` and may run only under an explicit trusted single-tenant policy.
 
-- [ ] **Step 1: Add contract tests** for the real Codex and Claude CLI auth/base-URL behavior using pinned CLI versions in a credential-free fixture; capture no user credential or network call. Document the supported integration matrix before changing protocol fields.
+- [x] **Step 1: Add pinned CLI contract tests** in `scripts/ci/agent_cli_gateway_contract.js`. CI run [38234526922](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38234526922) passed with Codex 0.160.1 and Claude Code 2.1.292 in a `--network none` container; both hit only the local fixture using fixture-only credentials. The test observes Codex `POST /v1/responses` with Bearer auth and Claude `POST /v1/messages?beta=true` with Bearer auth. It proves CLI configuration behavior, not production upstream or Agent Runtime support.
+
+#### 固定版 CLI 能力矩阵（2026-10-12）
+
+| Runtime | 固定版 CLI 合约证据 | 当前严格模式状态 |
+|---|---|---|
+| Codex HTTP | 0.160.1 使用配置的 OpenAI Responses `base_url`，并从 `env_key` 发送 Attempt Bearer token；本地 mock CI 通过。 | 支持 Attempt Gateway。 |
+| Claude HTTP | 2.1.292 使用 `ANTHROPIC_BASE_URL` 与 `ANTHROPIC_AUTH_TOKEN`，发送 Anthropic Messages API 请求（含 `?beta=true`）；本地 mock CI 通过。 | 仍 fail-closed：当前 Server Gateway 暴露 Responses API，没有 Anthropic Messages 路由/协议适配；CLI 能连接通用网关不等于当前产品路径已受支持。不得在 `isolated_only` 注入持久 Worker 凭据。 |
 - [x] **Step 2: Add Gateway/strict-mode regression coverage.** The existing consolidated tests cover Attempt lease expiry and cancellation/revocation, route digest and model allowlist mismatch, token/cost budget exhaustion, and strict-mode rejection of Claude/direct credentials. Coverage lives in `TestGatewayWorkerInvocationAndSecretRedaction`, `TestPublicStrictModeRequiresAttemptGateway`, `TestWorkerFailsClosedBeforeWorkspaceForUnsafeCredentialMode`, and `TestClaudeHTTPRejectsAttemptGateway`; no separate duplicate test functions were needed.
 - [x] **Step 3: Run focused regression tests.** `go test ./internal/server ./internal/adapter ./internal/worker ./internal/agenthttp -run 'Test(GatewayWorkerInvocationAndSecretRedaction|PublicStrictMode|CodexHTTPAdapterUsesAttemptGatewayWithoutDirectCredential|ClaudeHTTPRejectsAttemptGateway|WorkerFailsClosedBeforeWorkspaceForUnsafeCredentialMode|IsolatedRuntimeDoesNotInheritHostNetworkOverrides|RunLifecycleIdempotencyAndRestartFence|AttemptRestartReconcilesSecretFiles|PublicStrictOCI)' -count=1` passed for all four packages on 2026-10-12. This validates the current implementation, not actual pinned Codex/Claude CLI binaries.
 - [x] **Step 4: Implement** Codex HTTP Attempt Gateway support using its existing Codex provider config and token, and fail closed for Claude HTTP. No protobuf change was needed.
@@ -144,8 +151,8 @@
 - [x] 注入或收紧 `max_output_tokens`；拒绝不支持的 compact 请求和无法放入剩余额度的请求。
 - [x] 增加路由输入/输出单价和每 Attempt 估算费用上限；逐次向上取整已完成请求的估算费用，并同时按 token 与费用余额限制输出。
 - [x] 增加配置、预算计算与 Gateway 集成测试；本地聚焦测试通过。
-- [x] 在 CI 运行完整 Go/race 与安全测试（PR CI run [38210717417](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38210717417)，30/30 jobs 通过）。
-- [ ] 验证固定版本 Codex CLI 和上游协议合同。
+- [x] 在 CI 运行完整 Go/race 与安全测试；最新 PR CI run [38234526922](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38234526922) 全部 30 个可见作业成功，包含固定版 CLI 合约及 Linux/macOS 全量验证。
+- [x] 验证固定版本 Codex/Claude CLI 的 base URL 与认证头合同（仅本地无凭据 mock；不声称真实供应商协议/账单验收）。
 - [ ] 在目标 Worker 验证 token 语义，并为不可信公网租户配置独立的供应商账单硬上限。
 
 **边界：** token 与费用额度均按 Attempt 计算，重试会获得新额度。费用边界依据管理员配置的保守单价和供应商上报用量估算，不是供应商账单上限。请求体字节数用于保守估算输入 token；真实分词、单价及上游 `max_output_tokens` 行为仍须用锁定版本协议验收。不可信公网租户仍须有供应商侧支出硬上限。
