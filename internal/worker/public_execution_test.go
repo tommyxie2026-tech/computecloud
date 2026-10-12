@@ -34,8 +34,8 @@ func TestTrustedOnlyModePreservesExistingLocalBehavior(t *testing.T) {
 	}
 }
 
-func TestIsolatedRuntimeDoesNotInheritProxyEnvironment(t *testing.T) {
-	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy"} {
+func TestIsolatedRuntimeDoesNotInheritHostNetworkOverrides(t *testing.T) {
+	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR"} {
 		t.Setenv(key, "http://proxy.invalid:3128")
 	}
 	env, _, err := runtimeEnv(config.Runtime{}, "", true)
@@ -44,8 +44,8 @@ func TestIsolatedRuntimeDoesNotInheritProxyEnvironment(t *testing.T) {
 	}
 	for _, item := range env {
 		key, _, _ := strings.Cut(item, "=")
-		if strings.Contains(strings.ToLower(key), "_proxy") {
-			t.Errorf("isolated runtime inherited proxy setting %s", key)
+		if strings.Contains(strings.ToLower(key), "_proxy") || key == "SSL_CERT_FILE" || key == "SSL_CERT_DIR" {
+			t.Errorf("isolated runtime inherited host network override %s", key)
 		}
 	}
 	trustedEnv, _, err := runtimeEnv(config.Runtime{}, "", false)

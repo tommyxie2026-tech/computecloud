@@ -85,7 +85,7 @@ Worker 使用专用 OS 身份、专用 HOME 和专用模型账号，不挂载操
 
 - Worker 专用身份/配置；Attempt 不读取个人持久 Codex 登录态。
 - 凭据代理或短时任务凭据；严禁凭据出现在事件、Artifact 和日志。
-- 出站 allowlist、元数据阻断和网络隔离；strict Attempt 容器不得继承 Worker 宿主的 `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY` 设置，避免应用层代理路径绕过宿主出站策略。
+- 出站 allowlist、元数据阻断和网络隔离；strict Attempt 容器不得继承 Worker 宿主的代理变量或 `SSL_CERT_FILE`/`SSL_CERT_DIR` 信任根覆盖，避免代理绕过宿主出站策略或宿主环境改写 Attempt 的 TLS 信任边界。
 - 运行真实主机上的文件/网络逃逸、控制器重启、清理和额度测试。
 - 仅在 Phase 2 的目标环境验收完成后，才考虑接受不可信公网多租户任务。
 

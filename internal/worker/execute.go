@@ -59,7 +59,7 @@ func runtimeEnv(r config.Runtime, credential string, isolatedOnly bool) ([]strin
 	// Only operator-configured variables augment a small inherited runtime environment.
 	env := map[string]string{}
 	for _, k := range []string{"PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"} {
-		if isolatedOnly && strings.Contains(strings.ToLower(k), "_proxy") {
+		if isolatedOnly && (strings.Contains(strings.ToLower(k), "_proxy") || k == "SSL_CERT_FILE" || k == "SSL_CERT_DIR") {
 			continue
 		}
 		if v, ok := os.LookupEnv(k); ok {
