@@ -15,7 +15,7 @@ func TestAllowedEnvironmentsAffectTemplateDigest(t *testing.T) {
 func TestWorkerPolicyEnvironmentNameValidation(t *testing.T) {
 	base := Worker{
 		ID: "w", Address: "127.0.0.1:1", DataDir: t.TempDir(), Slots: 1,
-		Runtimes: map[string]Runtime{"codex_exec": {Version: "v"}},
+		Runtimes:     map[string]Runtime{"codex_exec": {Version: "v"}},
 		Repositories: map[string]string{"repo": t.TempDir()},
 	}
 	for _, environments := range [][]string{{"Bad"}, {"environment:qualified"}, {"process", "process"}} {
@@ -23,6 +23,22 @@ func TestWorkerPolicyEnvironmentNameValidation(t *testing.T) {
 		w.Policies = map[string]Policy{"p": {AllowedEnvironments: environments}}
 		if err := w.Validate(); err == nil {
 			t.Fatalf("invalid policy environments accepted: %v", environments)
+		}
+	}
+}
+
+func TestPublicExecutionModeValidation(t *testing.T) {
+	base := Server{DataDir: "/tmp/server", LeaseSeconds: 60, TickMS: 500, MaxArtifactBytes: 1024, MaxProjectTasks: 1}
+	for _, mode := range []string{"", "trusted_only", "isolated_only"} {
+		base.PublicExecutionMode = mode
+		if err := base.Validate(); err != nil {
+			t.Fatalf("valid mode %q rejected: %v", mode, err)
+		}
+	}
+	for _, mode := range []string{"unsafe", "public", "disabled"} {
+		base.PublicExecutionMode = mode
+		if err := base.Validate(); err == nil || err.Error() != "public_execution_mode must be trusted_only or isolated_only" {
+			t.Fatalf("invalid mode %q: got %v", mode, err)
 		}
 	}
 }

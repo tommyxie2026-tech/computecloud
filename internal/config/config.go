@@ -63,6 +63,7 @@ type Server struct {
 	MaxArtifactBytes              int64             `yaml:"max_artifact_bytes"`
 	MaxProjectTasks               int               `yaml:"max_project_tasks"`
 	Maintenance                   bool              `yaml:"maintenance"`
+	PublicExecutionMode           string            `yaml:"public_execution_mode"`
 	PreparedWorkspaceScoreEnabled bool              `yaml:"prepared_workspace_score_enabled"`
 	HTTP                          HTTP              `yaml:"http"`
 	Jobs                          Jobs              `yaml:"jobs"`
@@ -101,6 +102,7 @@ type Policy struct {
 }
 type Worker struct {
 	ID                        string                `yaml:"id"`
+	PublicExecutionMode       string                `yaml:"public_execution_mode"`
 	Address                   string                `yaml:"server_address"`
 	DataDir                   string                `yaml:"data_dir"`
 	TokenFile                 string                `yaml:"token_file"`
@@ -250,6 +252,9 @@ func (c Server) Validate() error {
 	if c.DataDir == "" || c.LeaseSeconds < 3 || c.TickMS < 10 || c.MaxArtifactBytes < 1 || c.MaxProjectTasks < 1 {
 		return errors.New("invalid server limits/data_dir")
 	}
+	if c.PublicExecutionMode != "" && c.PublicExecutionMode != "trusted_only" && c.PublicExecutionMode != "isolated_only" {
+		return errors.New("public_execution_mode must be trusted_only or isolated_only")
+	}
 	for k, v := range c.Credentials {
 		if k == "" || v < 1 {
 			return fmt.Errorf("invalid credential limit %q", k)
@@ -263,6 +268,9 @@ func (c Worker) Validate() error {
 	}
 	if c.ID == "" || c.DataDir == "" || c.Address == "" || c.Slots < 1 || len(c.Runtimes) == 0 {
 		return errors.New("worker id/data_dir/address/slots/runtimes required")
+	}
+	if c.PublicExecutionMode != "" && c.PublicExecutionMode != "trusted_only" && c.PublicExecutionMode != "isolated_only" {
+		return errors.New("worker public_execution_mode must be trusted_only or isolated_only")
 	}
 	if (c.TLS.CertFile == "") != (c.TLS.KeyFile == "") {
 		return errors.New("worker client TLS certificate and key must be configured together")

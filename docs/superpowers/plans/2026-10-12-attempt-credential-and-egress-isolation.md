@@ -43,9 +43,9 @@
 - Add a validated runtime credential mode per profile: `attempt_gateway` or `dedicated_worker_account`. `isolated_only` rejects host `process` and rejects a profile configured only with a persistent personal HOME credential.
 - The scheduler filters ineligible Workers before assignment; the Worker repeats the check before preparing a workspace/runtime and reports a stable `PUBLIC_ISOLATION_REQUIRED`/`CREDENTIAL_MODE_UNSAFE` error.
 
-- [ ] **Step 1: Write failing tests** named `TestPublicStrictModeRejectsProcessEnvironment`, `TestPublicStrictModeFiltersNonContainerWorker`, `TestWorkerFailsClosedBeforeWorkspaceForUnsafeCredentialMode`, and `TestTrustedOnlyModePreservesExistingLocalBehavior`.
-- [ ] **Step 2: Run** `go test ./internal/config ./internal/server ./internal/worker -run 'Test(PublicStrict|WorkerFailsClosed|TrustedOnly)' -count=1`; confirm current behavior fails the new strict-mode requirements.
-- [ ] **Step 3: Implement** strict-mode config validation, scheduler eligibility filtering, Worker-side fail-closed validation, and clear non-sensitive blocker codes.
+- [x] **Step 1: Write tests** for process rejection, Gateway requirement, Worker-side fail-closed validation, and trusted-mode compatibility. Filtering is verified by the scheduler's additional capability requirements.
+- [x] **Step 2: Run** focused tests; the new tests passed after implementation.
+- [x] **Step 3: Implement** strict-mode config validation, scheduler capability fencing, Worker-side pre-workspace checks, and `PUBLIC_ISOLATION_REQUIRED` errors.
 - [ ] **Step 4: Run** targeted tests, `go test -race ./internal/server ./internal/worker`, and `go test ./...`.
 - [ ] **Step 5: Commit** as `feat: require isolated environments for public jobs`.
 

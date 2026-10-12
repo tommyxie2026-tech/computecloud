@@ -1,5 +1,8 @@
 # Local development. For remote workers, configure TLS as shown in the runbook.
 server:
+  # Public execution policy: trusted_only preserves existing deployments.
+  # isolated_only admits only container tasks using a configured Attempt Gateway route.
+  public_execution_mode: trusted_only
   listen: 127.0.0.1:7443
   data_dir: ../data/server
   tls:

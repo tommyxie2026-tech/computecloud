@@ -663,6 +663,7 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 		}
 		blocker := "NO_READY_WORKER"
 		var chosen *session
+		publicRequirements, publicEligible := s.publicExecutionRequirements(t.Spec)
 		workerLoads := make([]workerLoad, 0, len(peers))
 		scoringEnabled := s.cfg.PreparedWorkspaceScoreEnabled
 		scores := make(map[string]workerScore, len(peers))
@@ -672,7 +673,9 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 				observations = append(observations, s.observeCandidate(p, t, reason))
 			}
 		}
-		if creds >= s.cfg.Credentials[t.Spec.CredentialRef] {
+		if !publicEligible {
+			blocker = "PUBLIC_ISOLATION_REQUIRED"
+		} else if creds >= s.cfg.Credentials[t.Spec.CredentialRef] {
 			blocker = "CREDENTIAL_CONCURRENCY_EXHAUSTED"
 		} else if projects >= s.cfg.MaxProjectTasks {
 			blocker = "PROJECT_CONCURRENCY_EXHAUSTED"
@@ -692,7 +695,7 @@ func (s *Server) assign(ctx context.Context, id string, peers []*session) error 
 				}
 				sawReadyWorker = true
 				baseFits := fits(p, t) && (jc == nil || fitsJob(p, t, jc))
-				if !baseFits || !fitsWithCapabilities(p, t, budgetCapabilities) {
+				if !baseFits || !fitsWithCapabilities(p, t, append(budgetCapabilities, publicRequirements...)) {
 					if baseFits && len(budgetCapabilities) != 0 {
 						sawBudgetCapabilityMismatch = true
 					}

@@ -1,5 +1,8 @@
 worker:
   id: worker-a
+  # Set to isolated_only on public untrusted-task Workers; the Worker repeats
+  # the Server admission check before workspace preparation.
+  public_execution_mode: trusted_only
   server_address: 127.0.0.1:7443
   data_dir: ../data/worker-a
   token_file: ../secrets/worker-a.token
