@@ -1,11 +1,11 @@
 package server
 
 import (
+	"container/list"
 	"crypto/sha256"
 	"math"
 	"net"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,15 +20,20 @@ type requestBucket struct {
 }
 
 type requestLimitEntry struct {
+	key      [32]byte
 	global   requestBucket
 	classes  map[string]requestBucket
 	lastSeen time.Time
+	element  *list.Element
 }
+
+const maxExpiredRequestEntriesPerCall = 64
 
 type requestLimiter struct {
 	mu      sync.Mutex
 	policy  config.RequestLimit
 	entries map[[32]byte]*requestLimitEntry
+	order   list.List // least recently used at the front
 }
 
 func newRequestLimiter(policy config.RequestLimit) *requestLimiter {
@@ -40,21 +45,25 @@ func (l *requestLimiter) allow(tokenHash [32]byte, class string, now time.Time) 
 	defer l.mu.Unlock()
 
 	idle := time.Duration(l.policy.IdleTimeoutSeconds) * time.Second
-	for key, entry := range l.entries {
-		if now.Sub(entry.lastSeen) >= idle {
-			delete(l.entries, key)
-		}
-	}
+	l.cleanupExpired(now, idle, maxExpiredRequestEntriesPerCall)
 	entry := l.entries[tokenHash]
+	if entry != nil && now.Sub(entry.lastSeen) >= idle {
+		l.removeEntry(entry)
+		entry = nil
+	}
 	if entry == nil {
 		if len(l.entries) >= l.policy.MaxEntries {
 			l.evictOldest()
 		}
 		entry = &requestLimitEntry{
+			key:     tokenHash,
 			global:  requestBucket{tokens: float64(l.policy.Burst), updated: now},
 			classes: make(map[string]requestBucket),
 		}
+		entry.element = l.order.PushBack(entry)
 		l.entries[tokenHash] = entry
+	} else {
+		l.order.MoveToBack(entry.element)
 	}
 	entry.lastSeen = now
 	classBucket, ok := entry.classes[class]
@@ -85,22 +94,32 @@ func refill(bucket requestBucket, policy config.RequestLimit, now time.Time) flo
 	return tokens
 }
 
-func (l *requestLimiter) evictOldest() {
-	if len(l.entries) == 0 {
-		return
-	}
-	keys := make([][32]byte, 0, len(l.entries))
-	for key := range l.entries {
-		keys = append(keys, key)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		left, right := l.entries[keys[i]].lastSeen, l.entries[keys[j]].lastSeen
-		if left.Equal(right) {
-			return strings.Compare(string(keys[i][:]), string(keys[j][:])) < 0
+func (l *requestLimiter) cleanupExpired(now time.Time, idle time.Duration, budget int) {
+	for cleaned := 0; cleaned < budget; cleaned++ {
+		front := l.order.Front()
+		if front == nil {
+			return
 		}
-		return left.Before(right)
-	})
-	delete(l.entries, keys[0])
+		entry := front.Value.(*requestLimitEntry)
+		if now.Sub(entry.lastSeen) < idle {
+			return
+		}
+		l.removeEntry(entry)
+	}
+}
+
+func (l *requestLimiter) removeEntry(entry *requestLimitEntry) {
+	delete(l.entries, entry.key)
+	if entry.element != nil {
+		l.order.Remove(entry.element)
+		entry.element = nil
+	}
+}
+
+func (l *requestLimiter) evictOldest() {
+	if front := l.order.Front(); front != nil {
+		l.removeEntry(front.Value.(*requestLimitEntry))
+	}
 }
 
 func (s *Server) allowRequest(authorization, class string, now time.Time) (bool, int) {

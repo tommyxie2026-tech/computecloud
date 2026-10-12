@@ -2,8 +2,8 @@ package server
 
 import (
 	"context"
-	"net"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -179,8 +179,8 @@ func (s *rateLimitServerStream) SetHeader(metadata.MD) error  { return nil }
 func (s *rateLimitServerStream) SendHeader(metadata.MD) error { return nil }
 func (s *rateLimitServerStream) SetTrailer(metadata.MD)       {}
 func (s *rateLimitServerStream) Context() context.Context     { return s.ctx }
-func (s *rateLimitServerStream) SendMsg(any) error             { return nil }
-func (s *rateLimitServerStream) RecvMsg(any) error             { return nil }
+func (s *rateLimitServerStream) SendMsg(any) error            { return nil }
+func (s *rateLimitServerStream) RecvMsg(any) error            { return nil }
 
 func TestHTTPHandlerRateLimitEvictsIdleCredential(t *testing.T) {
 	s, tokens := rateLimitServer(t, 1, 1, "user-a")
@@ -210,6 +210,51 @@ func TestRequestLimiterBoundsEntries(t *testing.T) {
 	}
 	if entries.Len() > 1 {
 		t.Fatalf("limiter retained %d credential entries with max_entries=1", entries.Len())
+	}
+}
+
+func TestRequestLimiterBoundsExpiredCleanupPerRequest(t *testing.T) {
+	policy := config.RequestLimit{RatePerMinute: 60, Burst: 1, MaxEntries: 256, IdleTimeoutSeconds: 10}
+	limiter := newRequestLimiter(policy)
+	now := time.Unix(1000, 0)
+	for i := 0; i < 128; i++ {
+		var key [32]byte
+		key[0] = byte(i)
+		key[1] = byte(i >> 8)
+		entry := &requestLimitEntry{key: key, lastSeen: now.Add(-time.Minute)}
+		entry.element = limiter.order.PushBack(entry)
+		limiter.entries[key] = entry
+	}
+	var freshKey [32]byte
+	freshKey[0] = 255
+	freshKey[1] = 255
+	if allowed, _ := limiter.allow(freshKey, "auth_lookup", now); !allowed {
+		t.Fatal("fresh bucket was unexpectedly rate limited")
+	}
+	if got, want := len(limiter.entries), 65; got != want {
+		t.Fatalf("one request removed an unbounded number of expired buckets: entries=%d, want %d after a 64-entry cleanup budget", got, want)
+	}
+}
+
+func TestRequestLimiterEvictsLeastRecentlyUsedEntry(t *testing.T) {
+	policy := config.RequestLimit{RatePerMinute: 60, Burst: 2, MaxEntries: 2, IdleTimeoutSeconds: 600}
+	limiter := newRequestLimiter(policy)
+	var first, second, third [32]byte
+	first[0], second[0], third[0] = 1, 2, 3
+	now := time.Unix(1000, 0)
+	for _, key := range [][32]byte{first, second} {
+		if allowed, _ := limiter.allow(key, "read", now); !allowed {
+			t.Fatal("initial request was unexpectedly rate limited")
+		}
+	}
+	if allowed, _ := limiter.allow(first, "read", now.Add(time.Second)); !allowed {
+		t.Fatal("recent request was unexpectedly rate limited")
+	}
+	if allowed, _ := limiter.allow(third, "read", now.Add(2*time.Second)); !allowed {
+		t.Fatal("new credential request was unexpectedly rate limited")
+	}
+	if limiter.entries[first] == nil || limiter.entries[second] != nil || limiter.entries[third] == nil {
+		t.Fatal("capacity eviction did not remove the least recently used entry")
 	}
 }
 
