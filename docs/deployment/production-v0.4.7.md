@@ -68,6 +68,8 @@ P0/P1/P2 的工作树实现及回归测试不能替代目标环境证据。在�
 
 strict execution 需要 Server 和每台 Worker 同时设置 `public_execution_mode: isolated_only`，并由 `codex_http`、container Environment 与 Attempt Gateway 路由组成受支持路径；Claude 等未验证 Gateway 认证的运行时会被拒绝。Agent Runtime controller 需用 `--public-strict`、operator 创建的 egress network、seccomp 文件和资源限额启动。先在隔离网络执行 `validate_worker_runtime_config.py` 与 `worker_egress_acceptance.py`，再审阅脱敏记录；不能只凭配置项或 CI 标记通过。
 
+**费用限制仍是独立门禁：** Codex Runtime 当前没有可强制的 Attempt 总 token/cost 上限。Server 对请求速率、并发、输入体积、Job 数量和时限有限制，但不能据此承诺供应商账单封顶。面向不可信租户前，必须在上游模型账户/组织设置可验证的支出上限，并保留告警/停用证据；若无法配置上游硬限额，禁止开放自动付费模型凭据给不可信公网任务。
+
 完成上述所有目标主机验证后，将真实观测写入统一 evidence JSON，并运行以下门禁。样例 fixture 和 CI 结果不能设置 `target_host: true`，也无法替代要求的各项网络负向结果：
 
 ```sh

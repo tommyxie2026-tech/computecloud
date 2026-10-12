@@ -35,3 +35,25 @@ func TestTrustedOnlyModePreservesExistingLocalBehavior(t *testing.T) {
 		t.Fatalf("trusted mode requirements=%v eligible=%v", requirements, ok)
 	}
 }
+
+func TestPublicStrictModeFiltersNonContainerWorker(t *testing.T) {
+	s := &Server{cfg: config.Server{PublicExecutionMode: "isolated_only", ModelGateway: config.ModelGateway{
+		Enabled: true, PublicBaseURL: "https://server.example/v1", CredentialRoutes: map[string]string{"cred": "route"},
+	}}}
+	spec := &pb.TaskSpec{RuntimeProfile: "codex_http", ProjectId: "project", CredentialRef: "cred", Model: "model", PolicyRef: "policy", AcceptanceProfile: "accept", RequiredCapabilities: []string{"environment:container"}, Workspace: &pb.Workspace{RepositoryRef: "repo"}}
+	requirements, ok := s.publicExecutionRequirements(spec)
+	if !ok {
+		t.Fatal("valid Codex Gateway container task rejected")
+	}
+	peer := &session{identity: config.Identity{Projects: []string{"project"}}, hello: &pb.WorkerHello{Runtimes: []*pb.Runtime{{
+		Profile: "codex_http", Models: []string{"model"}, Credentials: []string{"cred"}, Repositories: []string{"repo"},
+		Policies: []string{"policy"}, Verifiers: []string{"accept"}, Capabilities: []string{"environment:process", "gateway_inference_v1"},
+	}}}}
+	if fitsWithCapabilities(peer, &pb.Task{Spec: spec}, requirements) {
+		t.Fatal("strict mode scheduled a process-only Worker")
+	}
+	peer.hello.Runtimes[0].Capabilities = []string{"environment:container", "gateway_inference_v1"}
+	if !fitsWithCapabilities(peer, &pb.Task{Spec: spec}, requirements) {
+		t.Fatal("strict mode rejected a compatible container/Gateway Worker")
+	}
+}
