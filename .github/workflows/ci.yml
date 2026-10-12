@@ -216,6 +216,8 @@ jobs:
         with:
           python-version: '3.13'
       - run: go mod verify
+      - name: Check Go module graph consistency
+        run: go mod tidy -diff
       - run: make benchmark-contract
       - run: make vet test race smoke capacity-check
       - uses: actions/upload-artifact@v4
