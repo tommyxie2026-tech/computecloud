@@ -14,8 +14,15 @@ import (
 )
 
 type HTTP struct {
-	Listen         string   `yaml:"listen"`
-	AllowedOrigins []string `yaml:"allowed_origins"`
+	Listen         string       `yaml:"listen"`
+	AllowedOrigins []string     `yaml:"allowed_origins"`
+	RateLimit      RequestLimit `yaml:"rate_limit"`
+}
+type RequestLimit struct {
+	RatePerMinute      int `yaml:"rate_per_minute"`
+	Burst              int `yaml:"burst"`
+	MaxEntries         int `yaml:"max_entries"`
+	IdleTimeoutSeconds int `yaml:"idle_timeout_seconds"`
 }
 type MCP struct {
 	Enabled bool   `yaml:"enabled"`
@@ -93,6 +100,9 @@ type ModelGateway struct {
 }
 
 func (c *Server) DefaultV02() {
+	if c.HTTP.RateLimit == (RequestLimit{}) {
+		c.HTTP.RateLimit = RequestLimit{RatePerMinute: 300, Burst: 60, MaxEntries: 10000, IdleTimeoutSeconds: 600}
+	}
 	j := &c.Jobs
 	if j.MaxPartitions == 0 {
 		j.MaxPartitions = 32
@@ -166,6 +176,10 @@ func (c *Server) DefaultV02() {
 	}
 }
 func (c Server) ValidateV02() error {
+	r := c.HTTP.RateLimit
+	if r != (RequestLimit{}) && (r.RatePerMinute < 1 || r.RatePerMinute > 1000000 || r.Burst < 1 || r.Burst > 100000 || r.MaxEntries < 1 || r.MaxEntries > 1000000 || r.IdleTimeoutSeconds < 1 || r.IdleTimeoutSeconds > 86400) {
+		return fmt.Errorf("invalid HTTP request rate limit")
+	}
 	j := c.Jobs
 	profiles := map[string]ConversationProfile{}
 	if j.Enabled {

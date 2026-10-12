@@ -285,6 +285,9 @@ func (s *Server) HTTPHandler() http.Handler {
 			httpError(w, e)
 			return
 		}
+		if !s.rateLimitHTTP(w, r, r.Header.Get("Authorization")) {
+			return
+		}
 		streaming := strings.HasSuffix(r.URL.Path, "/events/stream")
 		timeout := 10 * time.Second
 		if strings.Contains(r.URL.Path, "/artifacts/") {

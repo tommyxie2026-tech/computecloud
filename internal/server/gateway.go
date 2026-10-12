@@ -166,6 +166,9 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		modelError(w, dbErr(e))
 		return
 	}
+	if !g.s.rateLimitHTTP(w, r, r.Header.Get("Authorization")) {
+		return
+	}
 	route := g.routes[id.route]
 	if r.URL.Path == "/v1/models" {
 		if r.Method != "GET" {
