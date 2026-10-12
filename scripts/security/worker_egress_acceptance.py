@@ -34,11 +34,17 @@ def probe(docker: str, network: str, image: str, url: str) -> tuple[bool, int | 
     return bool(payload.get("connected")), payload.get("status")
 
 
+def inspect_platform(docker: str, image: str) -> str:
+    result = subprocess.run([docker, "image", "inspect", image, "--format", "{{.Os}}/{{.Architecture}}"], text=True, capture_output=True, timeout=20, check=True)
+    return result.stdout.strip()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--network", required=True)
     parser.add_argument("--image", required=True, help="already present, digest-pinned Agent Runtime image")
+    parser.add_argument("--platform", required=True, choices=("linux/amd64", "linux/arm64"))
     parser.add_argument("--attempt-id", required=True, help="sanitized acceptance run identifier")
     parser.add_argument("--allowed-model-url", required=True, help="explicit Server model endpoint; only tests reachability")
     parser.add_argument("--metadata-url", required=True, help="explicit metadata test destination")
@@ -61,6 +67,8 @@ def main() -> int:
     try:
         for label, url in urls.items():
             validate_url(url, label)
+        if inspect_platform(args.docker, args.image) != args.platform:
+            raise ValueError("declared platform does not match the local pinned image")
         results = {}
         for label, url in urls.items():
             connected, status = probe(args.docker, args.network, args.image, url)
@@ -71,6 +79,7 @@ def main() -> int:
         )
         report = {
             "attempt_id": args.attempt_id,
+            "platform": args.platform,
             "image_digest": args.image.rsplit("@", 1)[1],
             "network": args.network,
             "results": results,
@@ -82,7 +91,7 @@ def main() -> int:
             stream.write("\n")
         print(json.dumps(report, sort_keys=True))
         return 0 if passed else 1
-    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         print(f"egress acceptance failed: {exc}", file=sys.stderr)
         return 2
 

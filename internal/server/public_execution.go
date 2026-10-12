@@ -13,7 +13,7 @@ func (s *Server) publicExecutionRequirements(spec *pb.TaskSpec) ([]string, bool)
 	if s.cfg.PublicExecutionMode != "isolated_only" {
 		return nil, true
 	}
-	if spec == nil || environment.RequiredName(spec.RequiredCapabilities) != "container" ||
+	if spec == nil || spec.RuntimeProfile != "codex_http" || environment.RequiredName(spec.RequiredCapabilities) != "container" ||
 		!s.cfg.ModelGateway.Enabled || s.cfg.ModelGateway.PublicBaseURL == "" ||
 		s.cfg.ModelGateway.CredentialRoutes[spec.CredentialRef] == "" {
 		return nil, false

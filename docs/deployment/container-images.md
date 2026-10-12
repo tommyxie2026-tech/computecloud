@@ -111,7 +111,7 @@ server:
 
 #### 公网不可信任务的严格执行模式（进行中）
 
-Server 和每台 Worker 都需要显式配置 `public_execution_mode: isolated_only` 才会执行本地拒绝检查。该模式默认不启用，兼容既有受信任部署。启用后，Server 仅调度要求 `environment:container` 且配置了 Attempt Gateway 凭据路由的任务，并要求 Worker 宣告 Gateway inference 能力；Worker 在准备工作区前再次拒绝非 container、无 Attempt Gateway 或不支持 Gateway auth 的 Runtime，返回 `PUBLIC_ISOLATION_REQUIRED`。例如：
+Server 和每台 Worker 都需要显式配置 `public_execution_mode: isolated_only` 才会执行本地拒绝检查。该模式默认不启用，兼容既有受信任部署。启用后，Server 仅调度要求 `environment:container` 且配置了 Attempt Gateway 凭据路由的任务，并要求 Worker 宣告 Gateway inference 能力；Worker 在准备工作区前再次拒绝非 container、无 Attempt Gateway、不支持 Gateway auth 或配置了静态 Runtime 环境变量的 Runtime，返回 `PUBLIC_ISOLATION_REQUIRED`。Codex HTTP/OCI Runtime 通过 Attempt Gateway 接收短期凭据；Claude 和其他未验证 Gateway 协议的 Runtime 在 strict 模式会失败关闭。示例：
 
 ```yaml
 server:
@@ -120,7 +120,7 @@ worker:
   public_execution_mode: isolated_only
 ```
 
-当前这是准入与双端复验边界，不代表 Docker seccomp、只读根文件系统、PID/内存限制或 egress firewall 已自动配置；这些 OCI 参数和目标主机负向网络测试仍在 P2 实施，未完成前不得将此配置视为允许不可信公网租户的完整认证。
+当前这是准入与双端复验边界，不代表 Docker seccomp 或 egress firewall 已由部署自动配置；OCI 限制由 Agent Runtime controller 的 strict flags 设置，目标主机负向网络测试仍待执行。未完成目标环境验收前，不得将此配置视为允许不可信公网租户的完整认证。
 
 以下能力属于 v0.4.7 之后的安全加固工作树，未包含在已发布的 v0.4.7 镜像中。工作树 Server 使用 schema v19；从 v18 升级前需停机、排空 Attempt、做可恢复备份。旧 v0.4.7 二进制不能打开 v19 数据库，回退时必须同时恢复 v18 数据快照和旧配置。
 

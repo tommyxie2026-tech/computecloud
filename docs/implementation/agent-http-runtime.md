@@ -103,6 +103,7 @@ credentials. Example invocation (use an isolated test endpoint you control):
 python3 scripts/security/worker_egress_acceptance.py \
   --network computecloud-attempt-egress \
   --image 'IMAGE@sha256:REPLACE_WITH_64_HEX_DIGEST' \
+  --platform linux/arm64 \
   --attempt-id egress-acceptance-YYYYMMDD \
   --allowed-model-url 'https://SERVER_HOST/v1/' \
   --metadata-url 'http://169.254.169.254/' \
@@ -115,6 +116,13 @@ python3 scripts/security/worker_egress_acceptance.py \
 A successful HTTP response of any status from the allowed model endpoint
 proves only network reachability; the four prohibited probes must fail at the
 network layer. Run only with test destinations approved for this Worker.
+Before those probes, verify the running controller's strict config without
+printing its environment or token values:
+
+```sh
+python3 scripts/security/validate_worker_runtime_config.py \
+  --container computecloud-agent-http
+```
 
 The controller requires the Docker socket, which grants host-level container
 control; only trusted operators should deploy or configure it. The child

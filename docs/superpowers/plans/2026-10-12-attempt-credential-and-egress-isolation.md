@@ -72,8 +72,8 @@
 - [ ] **Step 1: Add contract tests** for the real Codex and Claude CLI auth/base-URL behavior using pinned CLI versions in a credential-free fixture; capture no user credential or network call. Document the supported integration matrix before changing protocol fields.
 - [ ] **Step 2: Add failing Go tests** named `TestAttemptGatewayTokenExpiresWithLease`, `TestAttemptGatewayRejectsReleasedAttempt`, `TestAttemptGatewayRejectsRouteAndModelMismatch`, `TestAttemptGatewayEnforcesBudget`, and `TestStrictModeRejectsRuntimeWithoutGatewayAuth`.
 - [ ] **Step 3: Run** `go test ./internal/server ./internal/adapter ./internal/worker ./internal/agenthttp -run 'TestAttemptGateway|TestStrictModeRejectsRuntime' -count=1`; verify uncovered cases fail.
-- [ ] **Step 4: Implement** only the runtime protocol path proven by Step 1; preserve existing Codex behavior and fail closed for unsupported providers. Regenerate protobuf files using the checked-in project target if the contract changes.
-- [ ] **Step 5: Run** `go test ./internal/server ./internal/adapter ./internal/worker ./internal/agenthttp`, `go test -race ./internal/server ./internal/worker`, and `go test ./...`.
+- [x] **Step 4: Implement** Codex HTTP Attempt Gateway support using its existing Codex provider config and token, and fail closed for Claude HTTP. No protobuf change was needed.
+- [x] **Step 5: Run** targeted/full Go tests and race suites for adapter/Worker and server/Worker; all passed.
 - [ ] **Step 6: Commit** as `feat: scope runtime model access to active attempts`.
 
 ### Task 3: Harden the OCI Attempt boundary and secret file lifecycle
@@ -98,7 +98,7 @@
 - [x] **Step 2: Run** focused controller tests after implementing the file lifecycle; all passed.
 - [x] **Step 3: Implement** operator-owned OCI network/seccomp/resource settings, canonical workspace bind validation, private state-dir credential files, and stale file cleanup at controller recovery. Host egress rules still require target configuration.
 - [x] **Step 4: Run** full Go suite and Python egress tool tests; `go test -race ./internal/agenthttp` passed. Server/Worker race suite passed after P2 Task 1.
-- [ ] **Step 5: Commit** as `feat: harden per-attempt OCI and credential boundaries`.
+- [x] **Step 5: Commit** as `17f0a5e feat: harden per-attempt OCI runtime boundaries`.
 
 ### Task 4: Add Worker egress controls and real-host negative acceptance
 
@@ -110,9 +110,9 @@
 - Create: `scripts/security/worker_egress_acceptance_test.py`
 - Create: `scripts/security/validate_worker_runtime_config.py`
 
-- [ ] **Step 1: Write failing config tests** proving unsafe `process` environment, personal Codex HOME mounts, unrestricted host bridge, public Docker socket, and unpinned Runtime image are rejected by the public-production validator.
-- [ ] **Step 2: Run** `python3 -m unittest scripts.security.worker_egress_acceptance_test` and confirm unsafe fixture rejection tests fail.
-- [ ] **Step 3: Implement** a deployment contract requiring a dedicated Worker HOME, no personal profile mount, no Worker Docker socket, pinned Attempt image, enforced host/network egress policy, and explicit allowlisted model endpoint.
+- [x] **Step 1: Add tests** for unsafe process/credential admission, personal HOME mount, default bridge, public TCP port, and unpinned controller image.
+- [x] **Step 2: Run** `python3 -m unittest scripts.security.worker_egress_acceptance_test scripts.security.validate_worker_runtime_config_test`; all five fixtures passed.
+- [x] **Step 3: Implement** a deployment contract requiring a dedicated Runtime HOME, no personal profile mount, pinned Runtime image, no public TCP port, named egress network, and explicit model endpoint. Host firewall policy remains operator-owned.
 - [x] **Step 4: Implement** a target-host egress acceptance tool with harmless probes for the explicitly supplied allowed model endpoint, metadata, host gateway, private test destination, and unapproved public endpoint. It never scans arbitrary networks and stores labels/status only.
 - [ ] **Step 5: Run** Python fixture tests, `go test ./...`, then execute target-host ENV01-ENV05 plus egress cases on the pinned candidate image and retain only sanitized hashes/results.
 - [ ] **Step 6: Commit** as `test: gate public workers on egress and runtime isolation`.
