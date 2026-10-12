@@ -64,10 +64,10 @@ function codexStream(res) {
   res.end();
 }
 
-function claudeStream(res) {
+function claudeStream(res, model) {
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
   const message = {
-    id: "msg_contract_fixture", type: "message", role: "assistant", model: "fixture-model",
+    id: "msg_contract_fixture", type: "message", role: "assistant", model,
     content: [{ type: "text", text: "fixture-ok" }], stop_reason: "end_turn",
     stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 },
   };
@@ -106,9 +106,9 @@ const server = http.createServer((req, res) => {
       return;
     }
     if (req.method === "POST" && req.url === "/v1/messages" && claudeAuth) {
-      if (body.model !== "fixture-model") unexpected.push("Claude sent an unexpected model");
+      if (typeof body.model !== "string" || !body.model) unexpected.push("Claude omitted its model");
       observed.claude = true;
-      claudeStream(res);
+      claudeStream(res, body.model);
       return;
     }
     unexpected.push(`unexpected request ${req.method} ${req.url}`);
@@ -175,7 +175,7 @@ async function main() {
     };
     await run("claude", [
       "-p", "--input-format", "text", "--output-format", "stream-json", "--verbose",
-      "--include-partial-messages", "--permission-mode", "dontAsk", "--model", "fixture-model",
+      "--include-partial-messages", "--permission-mode", "dontAsk", "--model", "sonnet",
     ], claudeEnv, claudeHome);
 
     if (!observed.codex || !observed.claude || unexpected.length) {
