@@ -22,18 +22,26 @@ type TLS struct {
 	InsecureLoopback bool   `yaml:"insecure_loopback"`
 }
 type Identity struct {
-	GoalActorID         string   `yaml:"goal_actor_id"`
-	GoalActorKind       string   `yaml:"goal_actor_kind"`
-	TraceOwner          string   `yaml:"trace_owner"`
-	TokenFile           string   `yaml:"token_file"`
-	Owner               string   `yaml:"owner"`
-	Projects            []string `yaml:"projects"`
-	Credentials         []string `yaml:"credentials"`
-	WorkerID            string   `yaml:"worker_id"`
-	Scopes              []string `yaml:"scopes"`
-	ModelProject        string   `yaml:"model_project"`
-	ModelRoute          string   `yaml:"model_route"`
-	ConversationProfile string   `yaml:"conversation_profile"`
+	GoalActorID         string         `yaml:"goal_actor_id"`
+	GoalActorKind       string         `yaml:"goal_actor_kind"`
+	TraceOwner          string         `yaml:"trace_owner"`
+	TokenFile           string         `yaml:"token_file"`
+	Owner               string         `yaml:"owner"`
+	Projects            []string       `yaml:"projects"`
+	Credentials         []string       `yaml:"credentials"`
+	WorkerID            string         `yaml:"worker_id"`
+	Scopes              []string       `yaml:"scopes"`
+	ModelProject        string         `yaml:"model_project"`
+	ModelRoute          string         `yaml:"model_route"`
+	ConversationProfile string         `yaml:"conversation_profile"`
+	Limits              IdentityLimits `yaml:"limits"`
+}
+
+// IdentityLimits bounds work admitted for one configured user identity.
+type IdentityLimits struct {
+	MaxActiveJobs    int `yaml:"max_active_jobs"`
+	MaxQueuedJobs    int `yaml:"max_queued_jobs"`
+	MaxModelRequests int `yaml:"max_model_requests"`
 }
 type Server struct {
 	Listen                        string            `yaml:"listen"`

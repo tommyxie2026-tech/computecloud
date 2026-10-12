@@ -32,11 +32,12 @@ type gatewayRoute struct {
 	slots  chan struct{}
 }
 type modelGateway struct {
-	cliBlocked atomic.Bool
-	s          *Server
-	client     *http.Client
-	slots      chan struct{}
-	routes     map[string]*gatewayRoute
+	cliBlocked    atomic.Bool
+	s             *Server
+	client        *http.Client
+	slots         chan struct{}
+	routes        map[string]*gatewayRoute
+	identitySlots map[string]chan struct{}
 }
 type modelIdentity struct {
 	owner, project, job, attempt, route, model, traceOwner string
@@ -46,7 +47,15 @@ type modelIdentity struct {
 func newModelGateway(s *Server) (*modelGateway, error) {
 	g := s.cfg.ModelGateway
 	tr := &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: time.Duration(g.ConnectTimeoutSeconds) * time.Second, KeepAlive: 30 * time.Second}).DialContext, TLSHandshakeTimeout: time.Duration(g.ConnectTimeoutSeconds) * time.Second, ResponseHeaderTimeout: time.Duration(g.HeaderTimeoutSeconds) * time.Second, IdleConnTimeout: 90 * time.Second, MaxIdleConns: g.MaxInflight, MaxIdleConnsPerHost: g.MaxInflight, MaxConnsPerHost: g.MaxInflight, MaxResponseHeaderBytes: 64 << 10, DisableCompression: true}
-	out := &modelGateway{s: s, client: &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, slots: make(chan struct{}, g.MaxInflight), routes: map[string]*gatewayRoute{}}
+	out := &modelGateway{s: s, client: &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, slots: make(chan struct{}, g.MaxInflight), routes: map[string]*gatewayRoute{}, identitySlots: map[string]chan struct{}{}}
+	for _, u := range s.cfg.Users {
+		if u.ModelRoute != "" && u.Limits.MaxModelRequests > 0 {
+			key := u.Owner + "\x00" + u.ModelProject
+			if _, ok := out.identitySlots[key]; !ok {
+				out.identitySlots[key] = make(chan struct{}, u.Limits.MaxModelRequests)
+			}
+		}
+	}
 	for name, r := range g.Routes {
 		if r.Backend == "codex_cli" {
 			if e := out.prepareCLI(r); e != nil {
@@ -187,6 +196,16 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		w.WriteHeader(405)
 		return
+	}
+	identityKey := id.owner + "\x00" + id.project
+	if slots := g.identitySlots[identityKey]; slots != nil {
+		select {
+		case slots <- struct{}{}:
+			defer func() { <-slots }()
+		default:
+			gatewayBusy(w)
+			return
+		}
 	}
 	select {
 	case g.slots <- struct{}{}:

@@ -22,7 +22,7 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/testutil"
 )
 
-func TestGatewayForwardingUsageFailuresAndBinding(t *testing.T) {
+func TestModelGatewayEnforcesPerIdentityInflightLimit(t *testing.T) {
 	var calls atomic.Int32
 	streamStarted := make(chan struct{}, 2)
 	streamEnded := make(chan struct{}, 2)
@@ -77,7 +77,8 @@ func TestGatewayForwardingUsageFailuresAndBinding(t *testing.T) {
 	defer upstream.Close()
 	user, model, wt := testutil.Token(t, "job"), testutil.Token(t, "model"), testutil.Token(t, "worker")
 	wc := config.Worker{Runtimes: map[string]config.Runtime{"codex_exec": {Version: "fixture-1"}}, Policies: map[string]config.Policy{"review": {CodexSandbox: "read-only"}}, Verifiers: map[string][][]string{"check": {}}}
-	cfg := config.Server{DataDir: t.TempDir(), TLS: config.TLS{InsecureLoopback: true}, LeaseSeconds: 6, TickMS: 20, MaxArtifactBytes: 32 << 20, MaxProjectTasks: 4, Credentials: map[string]int{"account": 2}, Users: []config.Identity{{TokenFile: user, Owner: "owner", Projects: []string{"project"}, Credentials: []string{"account"}, Scopes: []string{"jobs:submit", "jobs:read", "jobs:cancel"}}, {TokenFile: model, Owner: "owner", Projects: []string{"project"}, Scopes: []string{"models:invoke"}, ModelProject: "project", ModelRoute: "route"}}, Workers: []config.Identity{{TokenFile: wt, WorkerID: "w", Projects: []string{"project"}, Credentials: []string{"account"}}}, Jobs: config.Jobs{Enabled: true, Templates: config.Templates(wc)}, ModelGateway: config.ModelGateway{Enabled: true, PublicBaseURL: "http://127.0.0.1:7444/v1", MaxInflight: 2, Routes: map[string]config.ModelRoute{"route": {BaseURL: upstream.URL + "/v1", APIKeyFile: testutil.Token(t, "upstream"), AllowedModels: []string{"model-c"}, MaxInflight: 2}}, CredentialRoutes: map[string]string{"account": "route"}}}
+	limits := config.IdentityLimits{MaxActiveJobs: 8, MaxQueuedJobs: 32, MaxModelRequests: 2}
+	cfg := config.Server{DataDir: t.TempDir(), TLS: config.TLS{InsecureLoopback: true}, LeaseSeconds: 6, TickMS: 20, MaxArtifactBytes: 32 << 20, MaxProjectTasks: 4, Credentials: map[string]int{"account": 2}, Users: []config.Identity{{TokenFile: user, Owner: "owner", Projects: []string{"project"}, Credentials: []string{"account"}, Scopes: []string{"jobs:submit", "jobs:read", "jobs:cancel"}, Limits: limits}, {TokenFile: model, Owner: "owner", Projects: []string{"project"}, Scopes: []string{"models:invoke"}, ModelProject: "project", ModelRoute: "route", Limits: limits}}, Workers: []config.Identity{{TokenFile: wt, WorkerID: "w", Projects: []string{"project"}, Credentials: []string{"account"}}}, Jobs: config.Jobs{Enabled: true, Templates: config.Templates(wc)}, ModelGateway: config.ModelGateway{Enabled: true, PublicBaseURL: "http://127.0.0.1:7444/v1", MaxInflight: 3, Routes: map[string]config.ModelRoute{"route": {BaseURL: upstream.URL + "/v1", APIKeyFile: testutil.Token(t, "upstream"), AllowedModels: []string{"model-c"}, MaxInflight: 3}}, CredentialRoutes: map[string]string{"account": "route"}}}
 	s, e := New(cfg)
 	if e != nil {
 		t.Fatal(e)

@@ -100,6 +100,12 @@ type ModelGateway struct {
 }
 
 func (c *Server) DefaultV02() {
+	for i := range c.Users {
+		l := &c.Users[i].Limits
+		if *l == (IdentityLimits{}) {
+			*l = IdentityLimits{MaxActiveJobs: 8, MaxQueuedJobs: 32, MaxModelRequests: 4}
+		}
+	}
 	if c.HTTP.RateLimit == (RequestLimit{}) {
 		c.HTTP.RateLimit = RequestLimit{RatePerMinute: 300, Burst: 60, MaxEntries: 10000, IdleTimeoutSeconds: 600}
 	}
@@ -176,6 +182,17 @@ func (c *Server) DefaultV02() {
 	}
 }
 func (c Server) ValidateV02() error {
+	owners := map[string]IdentityLimits{}
+	for _, u := range c.Users {
+		l := u.Limits
+		if l != (IdentityLimits{}) && (l.MaxActiveJobs < 1 || l.MaxActiveJobs > 10000 || l.MaxQueuedJobs < 1 || l.MaxQueuedJobs > 100000 || l.MaxModelRequests < 1 || l.MaxModelRequests > 256) {
+			return fmt.Errorf("invalid identity workload limits")
+		}
+		if prior, ok := owners[u.Owner]; ok && prior != l {
+			return fmt.Errorf("identities for one owner must share workload limits")
+		}
+		owners[u.Owner] = l
+	}
 	r := c.HTTP.RateLimit
 	if r != (RequestLimit{}) && (r.RatePerMinute < 1 || r.RatePerMinute > 1000000 || r.Burst < 1 || r.Burst > 100000 || r.MaxEntries < 1 || r.MaxEntries > 1000000 || r.IdleTimeoutSeconds < 1 || r.IdleTimeoutSeconds > 86400) {
 		return fmt.Errorf("invalid HTTP request rate limit")
