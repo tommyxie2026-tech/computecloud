@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -89,6 +90,36 @@ func TestHTTPHandlerRateLimitIgnoresForwardedFor(t *testing.T) {
 	}
 	if got := rateLimitRequest(s, tokens[0], "203.0.113.2").Code; got != http.StatusTooManyRequests {
 		t.Fatalf("spoofed source address bypassed identity limit: status=%d", got)
+	}
+}
+
+func TestManagedAPIKeyLookupIsRateLimitedByDirectIPBeforeResolver(t *testing.T) {
+	s, _ := rateLimitServer(t, 10, 600, "user-a")
+	lookups := 0
+	s.auth.SetAPIKeyResolver(func(_ context.Context, _ string) (config.Identity, error) {
+		lookups++
+		return config.Identity{Owner: "api-owner", Projects: []string{"p"}, Scopes: []string{"jobs:read"}}, nil
+	})
+	call := func(token, forwarded string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/v1/capabilities", nil)
+		r.RemoteAddr = "198.51.100.8:44321"
+		r.Header.Set("Authorization", "Bearer "+token)
+		if forwarded != "" {
+			r.Header.Set("X-Forwarded-For", forwarded)
+		}
+		w := httptest.NewRecorder()
+		s.HTTPHandler().ServeHTTP(w, r)
+		return w
+	}
+	if got := call("cc_live_first", "192.0.2.1").Code; got != http.StatusOK {
+		t.Fatalf("first managed-key request status=%d, want 200", got)
+	}
+	blocked := call("cc_live_second", "203.0.113.9")
+	if blocked.Code != http.StatusTooManyRequests || blocked.Header().Get("Retry-After") == "" {
+		t.Fatalf("second managed-key request status=%d retry-after=%q, want 429 with Retry-After", blocked.Code, blocked.Header().Get("Retry-After"))
+	}
+	if lookups != 1 {
+		t.Fatalf("API-key resolver called %d times, want 1; forwarded headers must not change direct-IP bucket", lookups)
 	}
 }
 
