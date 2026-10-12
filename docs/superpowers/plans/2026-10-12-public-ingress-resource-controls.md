@@ -42,12 +42,19 @@
 - Produce `type RequestLimit struct { RatePerMinute int; Burst int; MaxEntries int; IdleTimeoutSeconds int }` in config and a server-owned limiter keyed by SHA-256 of the presented credential plus a bounded route class.
 - Produce `func (s *Server) allowRequest(key, class string, now time.Time) (allowed bool, retryAfterSeconds int)` with bounded entry count and deterministic eviction of expired buckets.
 - HTTP rate limiting runs only after bearer authentication and before route handlers. It returns HTTP 429 and a `Retry-After` value calculated from the remaining token-bucket refill time.
+- Managed `cc_live_` key lookup also has a separate bounded pre-auth token bucket keyed by the direct socket peer IP, before any SQLite resolver lookup. It ignores forwarding headers and protects the DB path when callers rotate unknown key values; the existing post-auth per-credential limiter remains in force.
 
 - [x] **Step 1: Write failing tests** for `TestHTTPHandlerRateLimitPerCredential`, `TestHTTPHandlerRateLimitIgnoresForwardedFor`, `TestHTTPHandlerRateLimitEvictsIdleCredential`, and `TestRequestLimiterBoundsEntries`.
 - [x] **Step 2: Run** `go test ./internal/server -run 'TestHTTPHandlerRateLimit|TestRequestLimiter' -count=1`; confirm the tests fail because the limiter is absent.
 - [x] **Step 3: Implement** a token-bucket limiter with a fixed maximum entry count, cleanup on admission, config validation, and middleware placement after `s.auth.Bearer`.
 - [x] **Step 4: Run** the same targeted tests and `go test ./internal/config ./internal/server`.
 - [x] **Step 5: Commit** as `feat: limit authenticated public API request rates`.
+
+### Task 1a: Bound managed API-key lookups before authentication
+
+- [x] Add a regression test proving rotated unknown `cc_live_` tokens from one direct IP cannot each trigger a resolver lookup, and that spoofed `X-Forwarded-For` does not split the bucket.
+- [x] Apply the separate bounded limiter before bearer resolution on the standard HTTPS API, model gateway, and Agent conversation HTTP entry points; preserve the post-auth per-credential limiter.
+- [ ] Run focused, full, and race tests; record CI evidence before treating this code item as verified.
 
 ### Task 2: Enforce identity/project workload budgets
 
