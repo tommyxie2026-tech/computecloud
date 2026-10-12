@@ -151,7 +151,36 @@ func TestGRPCManagedAPIKeyLookupIsRateLimitedBeforeResolver(t *testing.T) {
 	if lookups != 1 {
 		t.Fatalf("gRPC API-key resolver called %d times, want 1", lookups)
 	}
+
+	// Streaming RPCs use a separate interceptor path and must enforce the same
+	// pre-auth budget before Auth.Stream reaches the key resolver.
+	lookups = 0
+	s.apiKeyLookupLimiter = newRequestLimiter(s.cfg.HTTP.RateLimit)
+	streamCall := func(token string) error {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+token))
+		ctx = peer.NewContext(ctx, &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("198.51.100.9"), Port: 44321}})
+		stream := &rateLimitServerStream{ctx: ctx}
+		return s.authStream(nil, stream, &grpc.StreamServerInfo{}, func(any, grpc.ServerStream) error { return nil })
+	}
+	if err := streamCall("cc_live_stream_first"); err != nil {
+		t.Fatalf("first managed-key streaming gRPC request returned %v, want success", err)
+	}
+	if err := streamCall("cc_live_stream_second"); status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("second managed-key streaming gRPC request returned %v, want ResourceExhausted", err)
+	}
+	if lookups != 1 {
+		t.Fatalf("streaming gRPC API-key resolver called %d times, want 1", lookups)
+	}
 }
+
+type rateLimitServerStream struct{ ctx context.Context }
+
+func (s *rateLimitServerStream) SetHeader(metadata.MD) error  { return nil }
+func (s *rateLimitServerStream) SendHeader(metadata.MD) error { return nil }
+func (s *rateLimitServerStream) SetTrailer(metadata.MD)       {}
+func (s *rateLimitServerStream) Context() context.Context     { return s.ctx }
+func (s *rateLimitServerStream) SendMsg(any) error             { return nil }
+func (s *rateLimitServerStream) RecvMsg(any) error             { return nil }
 
 func TestHTTPHandlerRateLimitEvictsIdleCredential(t *testing.T) {
 	s, tokens := rateLimitServer(t, 1, 1, "user-a")
