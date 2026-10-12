@@ -33,6 +33,15 @@ var dockerNetworkRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$`)
 var imageDigestRE = regexp.MustCompile(`@sha256:[0-9a-f]{64}$`)
 var runProcess = process.Run
 var containerCleanup = func(s *Server, id string) bool { return s.cleanupContainer(id) }
+var inspectDockerNetworkName = func(s *Server) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, s.cfg.DockerExecutable, "network", "inspect", "--format", "{{.Name}}", s.cfg.EgressNetwork).Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
+}
 var dockerReady = func(s *Server) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -711,6 +720,9 @@ func (s *Server) stop(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 func (s *Server) ValidateVersions(ctx context.Context) error {
+	if err := s.validateEgressNetwork(); err != nil {
+		return err
+	}
 	for _, profile := range []string{"codex_http", "claude_http"} {
 		exe, want, _, _ := s.profile(profile)
 		commandCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -726,6 +738,23 @@ func (s *Server) ValidateVersions(ctx context.Context) error {
 		if !found {
 			return fmt.Errorf("%s version mismatch: %q", profile, strings.TrimSpace(string(output)))
 		}
+	}
+	return nil
+}
+
+func (s *Server) validateEgressNetwork() error {
+	if !s.cfg.PublicStrict {
+		return nil
+	}
+	resolved, err := inspectDockerNetworkName(s)
+	if err != nil {
+		return fmt.Errorf("inspect strict egress network: %w", err)
+	}
+	if resolved != s.cfg.EgressNetwork {
+		return fmt.Errorf("public strict mode requires an operator network name, configured value resolves to %q", resolved)
+	}
+	if resolved == "bridge" || resolved == "host" || resolved == "none" {
+		return fmt.Errorf("public strict mode rejects Docker built-in network %q", resolved)
 	}
 	return nil
 }

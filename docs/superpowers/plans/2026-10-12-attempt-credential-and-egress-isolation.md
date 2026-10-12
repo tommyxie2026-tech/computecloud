@@ -96,6 +96,7 @@
 
 - [ ] **Step 1: Write remaining failing tests** for privilege overrides, arbitrary binds, and Worker secret mounts. Credential-file mode/location, stale-file restart, and strict network/seccomp tests are covered.
 - [x] **Follow-up regression:** `TestPublicStrictOCIRejectsBuiltInNetworks` first failed because strict mode accepted Docker `host` and `none`; strict validation now rejects all built-in networks, and focused plus full `internal/agenthttp` tests pass.
+- [x] **Follow-up network identity check:** strict startup resolves the configured Docker network to its actual name, rejecting network-ID aliases that resolve to built-in `host`; `TestPublicStrictOCIRejectsNetworkIDResolvingToHost` covers the rejection and named-network acceptance.
 - [x] **Follow-up egress review:** strict Attempt execution no longer inherits host proxy variables or TLS root overrides; trusted execution preserves prior proxy behavior. `TestIsolatedRuntimeDoesNotInheritHostNetworkOverrides` covers both modes.
 - [x] **Step 2: Run** focused controller tests after implementing the file lifecycle; all passed.
 - [x] **Step 3: Implement** operator-owned OCI network/seccomp/resource settings, canonical workspace bind validation, private state-dir credential files, and stale file cleanup at controller recovery. Host egress rules still require target configuration.

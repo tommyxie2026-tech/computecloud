@@ -383,6 +383,31 @@ func TestPublicStrictOCIRejectsBuiltInNetworks(t *testing.T) {
 	}
 }
 
+func TestPublicStrictOCIRejectsNetworkIDResolvingToHost(t *testing.T) {
+	_, cfg := testServer(t)
+	cfg.PublicStrict = true
+	cfg.EgressNetwork = "0123456789abcdef"
+	seccomp := filepath.Join(t.TempDir(), "seccomp.json")
+	if err := os.WriteFile(seccomp, []byte(`{"defaultAction":"SCMP_ACT_ERRNO"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SeccompProfile = seccomp
+	server, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := inspectDockerNetworkName
+	inspectDockerNetworkName = func(*Server) (string, error) { return "host", nil }
+	t.Cleanup(func() { inspectDockerNetworkName = original })
+	if err := server.validateEgressNetwork(); err == nil {
+		t.Fatal("public strict mode accepted a network ID resolving to Docker host network")
+	}
+	inspectDockerNetworkName = func(*Server) (string, error) { return cfg.EgressNetwork, nil }
+	if err := server.validateEgressNetwork(); err != nil {
+		t.Fatalf("public strict mode rejected a named operator network: %v", err)
+	}
+}
+
 func TestAttemptRestartReconcilesSecretFiles(t *testing.T) {
 	_, cfg := testServer(t)
 	stale := filepath.Join(cfg.StateDir, "attempt-credential-stale.env")
