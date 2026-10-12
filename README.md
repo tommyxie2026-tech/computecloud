@@ -297,6 +297,7 @@ Worker / Runtime / Tool / Environment
 
 - [文档索引](docs/README.md)
 - [长期路线图](docs/implementation/long-term-roadmap.md)
+- [执行级 Token 可观测与效率治理实施计划](docs/implementation/execution-token-observability-roadmap.md)（规划中；非通用 Token Gateway）
 - [3–5 人并行开发计划](docs/implementation/parallel-development-plan.md)
 - [Agent-aware 总体架构](docs/design/agent-job-executor-architecture.md)
 - [ADR-017：Goal-oriented Computing Model](docs/adr/0017-goal-oriented-computing-model.md)
