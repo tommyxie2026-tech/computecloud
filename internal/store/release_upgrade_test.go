@@ -39,7 +39,7 @@ func TestReleaseV13ToV17AndSnapshotRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version, count int
-	if err = upgraded.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 18 {
+	if err = upgraded.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 19 {
 		t.Fatalf("upgraded version=%d err=%v", version, err)
 	}
 	if err = upgraded.SQL.QueryRow("SELECT count(*) FROM jobs WHERE id='release-job' AND state='SUCCEEDED'").Scan(&count); err != nil || count != 1 {

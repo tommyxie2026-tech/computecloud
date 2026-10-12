@@ -43,10 +43,10 @@
 - Produce `CreateAPIKey(ctx, record)`, `LookupAPIKeyByDigest(ctx, digest, now)`, `ListAPIKeys(ctx, owner)`, and `RevokeAPIKey(ctx, owner, id, now)` on the store.
 - `CreateAPIKey` rejects malformed scope/project lists and invalid expiration; `LookupAPIKeyByDigest` treats revoked and expired keys identically as not found.
 
-- [ ] **Step 1: Write failing tests** named `TestServerV19APIMigration`, `TestAPIKeyCreateAndLookup`, `TestAPIKeyExpiredAndRevokedNotFound`, `TestAPIKeyRevokeRequiresOwner`, and `TestAPIKeyListOmitsDigest`.
-- [ ] **Step 2: Run** `go test ./internal/store -run 'Test(ServerV19|APIKey)' -count=1`; confirm the v19/repository behavior is absent.
-- [ ] **Step 3: Implement** the v19 migration, increment `ServerSchema` target from 18 to 19, and implement owner-filtered repository methods using transactions.
-- [ ] **Step 4: Run** `go test ./internal/store` and verify SQLite `integrity_check` and `foreign_key_check` in the migration test.
+- [x] **Step 1: Write failing tests** named `TestServerV19APIMigration`, `TestAPIKeyCreateAndLookup`, `TestAPIKeyExpiredAndRevokedNotFound`, `TestAPIKeyRevokeRequiresOwner`, and `TestAPIKeyListOmitsDigest`.
+- [x] **Step 2: Run** `go test ./internal/store -run 'Test(ServerV19|APIKey)' -count=1`; initial compile failed because the v19 repository was absent.
+- [x] **Step 3: Implement** the v19 migration, increment `ServerSchema` target from 18 to 19, and implement owner-filtered repository methods using transactions.
+- [x] **Step 4: Run** `go test ./internal/store` and verify SQLite `integrity_check` and `foreign_key_check` in the migration test.
 - [ ] **Step 5: Commit** as `feat: persist revocable API key metadata`.
 
 ### Task 2: Authenticate managed API keys and add management endpoints
