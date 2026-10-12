@@ -55,3 +55,5 @@
 - 2026-10-12：复审发现未知 `cc_live_` Bearer 值可在认证后限流之前触发 SQLite key 查询。已增加独立的直连来源 IP 有界限流，在普通 HTTPS、模型 Gateway、Agent conversation 入口的 resolver 之前拒绝过量查询；转发头不参与来源键。目标 NAT/代理后的合法客户端共享来源预算，边缘层仍需限流。回归测试覆盖 token 轮换与伪造 `X-Forwarded-For`；PR head `57e75ab` 的 CI run [38219776567](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38219776567) 30/30 jobs 成功，含 Linux/macOS 完整 verify。
 
 - 追加 gRPC 旁路复核（2026-10-12）：`7443` 的 unary/streaming RPC 共用托管 API key resolver，原来源限流未覆盖该入口。已在 Server gRPC 认证拦截器前接入同一个直连 peer IP 限流桶，并返回 `ResourceExhausted`/`retry-after`；转发 metadata 不参与来源键。新增 resolver 调用计数回归测试，等待 CI 验证。
+
+- gRPC 认证前 key 查找防护（2026-10-12）：Server unary/stream 拦截器复用 HTTP 的来源 IP 预算；未知 `cc_live_` 不会在限流前触发 resolver，超限返回 `ResourceExhausted` 与 `retry-after` trailer。新增 gRPC resolver 调用计数回归。本机 HTTP/gRPC focused 与 race tests 通过；PR head `86161ae` 的 CI run [38220975018](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38220975018) 30/30 jobs 成功，Linux/macOS 完整 verify 通过。
