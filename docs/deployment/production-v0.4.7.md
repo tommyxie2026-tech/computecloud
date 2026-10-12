@@ -56,6 +56,8 @@
 
 ### 不可信公网任务的准入与回退门禁
 
+按[公网 Agent Job 安全验收手册](../validation/public-access-security-acceptance.md)依序完成目标机、公网边缘、Worker A/B 和供应商额度验证，并保存脱敏证据。
+
 P0/P1/P2 的工作树实现及回归测试不能替代目标环境证据。在双机 Linux/macOS Worker 或目标 Linux Worker 上开放不可信租户前，必须逐项记录：
 
 | 验收证据 | 必需记录 | 放行条件 |
