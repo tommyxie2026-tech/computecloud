@@ -3,6 +3,8 @@ package worker
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
@@ -20,6 +22,44 @@ func (budgetRemoteProvider) Prepare(req adapter.PrepareRequest) (adapter.Prepare
 		return adapter.PreparedExecution{}, errors.New("Runtime budget not propagated")
 	}
 	return adapter.PreparedExecution{Profile: "budget_remote_fixture", Runtime: req.Runtime, Budget: req.Budget}, nil
+}
+
+func TestStrictClaudeRejectsWrongGatewayVersionBeforeWorkspaceCreation(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(dir, store.WorkerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	repo, commit := workspaceTestRepo(t)
+	w := &Worker{db: db, cfg: config.Worker{
+		DataDir: dir, PublicExecutionMode: "isolated_only", StopGraceMS: 50,
+		Runtimes:     map[string]config.Runtime{"claude_http": {Version: "2.1.291", Models: []string{"m"}, Credentials: []string{"cred"}}},
+		Repositories: map[string]string{"repo": repo}, Policies: map[string]config.Policy{"policy": {AllowedEnvironments: []string{"container"}}}, Verifiers: map[string][][]string{"check": {}},
+	}}
+	a := &pb.Assignment{TaskId: "strict-task", AttemptId: "strict-attempt", Generation: 1, LeaseToken: "lease", Gateway: &pb.GatewayAccess{BaseUrl: "https://gateway.example.invalid/agent", Token: "attempt-token"}, Spec: &pb.TaskSpec{
+		RuntimeProfile: "claude_http", Model: "m", CredentialRef: "cred", PolicyRef: "policy", AcceptanceProfile: "check",
+		Workspace: &pb.Workspace{RepositoryRef: "repo", BaseCommit: commit}, Input: &pb.Input{Text: "strict fixture"},
+		RequiredCapabilities: []string{"event_stream", "cancel", "job_io_v1", "environment:container", "gateway_anthropic_messages_v1"},
+	}}
+	if _, err = db.SQL.Exec("INSERT INTO runs(id,assignment,state) VALUES(?,?,?)", a.AttemptId, enc(a), "ACCEPTED"); err != nil {
+		t.Fatal(err)
+	}
+	w.execute(context.Background(), a)
+	var raw []byte
+	if err = db.SQL.QueryRow("SELECT completion FROM runs WHERE id=?", a.AttemptId).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	done := new(pb.CompleteRequest)
+	if err = dec(raw, done); err != nil {
+		t.Fatal(err)
+	}
+	if done.ErrorCode != "PUBLIC_ISOLATION_REQUIRED" {
+		t.Fatalf("completion=%+v", done)
+	}
+	if _, err = os.Stat(filepath.Join(dir, "workspaces")); !os.IsNotExist(err) {
+		t.Fatalf("workspace created before strict capability rejection: stat err=%v", err)
+	}
 }
 func (budgetRemoteProvider) Start(_ context.Context, _ adapter.PreparedExecution, started func(adapter.ExecutionRef) error) adapter.StartResult {
 	ref := adapter.ExecutionRef{Provider: "budget_remote_fixture", Transport: "remote_api", ID: "budget-exited"}

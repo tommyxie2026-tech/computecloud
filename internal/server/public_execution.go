@@ -13,16 +13,23 @@ func (s *Server) publicExecutionRequirements(spec *pb.TaskSpec) ([]string, bool)
 	if s.cfg.PublicExecutionMode != "isolated_only" {
 		return nil, true
 	}
-	if spec == nil || spec.RuntimeProfile != "codex_http" || environment.RequiredName(spec.RequiredCapabilities) != "container" ||
+	if spec == nil || environment.RequiredName(spec.RequiredCapabilities) != "container" ||
 		!s.cfg.ModelGateway.Enabled || s.cfg.ModelGateway.PublicBaseURL == "" ||
 		s.cfg.ModelGateway.CredentialRoutes[spec.CredentialRef] == "" {
 		return nil, false
 	}
 	route := s.cfg.ModelGateway.Routes[s.cfg.ModelGateway.CredentialRoutes[spec.CredentialRef]]
-	if route.BaseURL == "" || route.Backend == "codex_cli" || route.MaxAttemptTokens < 1 || route.MaxAttemptCostMicros < 1 || route.InputCostPerMillionTokensMicros < 1 || route.OutputCostPerMillionTokensMicros < 1 {
+	if route.BaseURL == "" || route.Backend == "codex_cli" || !config.Contains(route.AllowedModels, spec.Model) || route.MaxAttemptTokens < 1 || route.MaxAttemptCostMicros < 1 || route.InputCostPerMillionTokensMicros < 1 || route.OutputCostPerMillionTokensMicros < 1 {
 		return nil, false
 	}
-	return []string{"environment:container", "gateway_inference_v1"}, true
+	switch {
+	case spec.RuntimeProfile == "codex_http" && route.Backend != "anthropic_messages":
+		return []string{"environment:container", "gateway_inference_v1"}, true
+	case spec.RuntimeProfile == "claude_http" && route.Backend == "anthropic_messages":
+		return []string{"environment:container", "gateway_anthropic_messages_v1"}, true
+	default:
+		return nil, false
+	}
 }
 
 func publicExecutionMode(c config.Server) bool { return c.PublicExecutionMode == "isolated_only" }

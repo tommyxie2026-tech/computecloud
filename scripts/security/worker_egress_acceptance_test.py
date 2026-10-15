@@ -23,6 +23,7 @@ class EgressAcceptanceTests(unittest.TestCase):
                 "worker_egress_acceptance.py", "--network", "cc-egress",
                 "--image", "agent@sha256:" + "a" * 64, "--attempt-id", "acceptance-001",
                 "--platform", "linux/arm64",
+                "--worker-config-digest", "sha256:" + "c" * 64,
                 "--allowed-model-url", "https://server.example/v1/", "--metadata-url", "http://169.254.169.254/",
                 "--host-gateway-url", "http://172.17.0.1/", "--private-test-url", "http://10.10.10.20/",
                 "--unapproved-public-url", "https://example.net/", "--output", output,
@@ -34,6 +35,10 @@ class EgressAcceptanceTests(unittest.TestCase):
             self.assertTrue(report["passed"])
             self.assertFalse(report["secrets_included"])
             self.assertEqual(report["platform"], "linux/arm64")
+            self.assertEqual(report["worker_config_digest"], "sha256:" + "c" * 64)
+            self.assertTrue(report["target_host_checks"]["target_host_probe_executed"])
+            self.assertTrue(report["target_host_checks"]["attempt_gateway_allowed"])
+            self.assertTrue(report["target_host_checks"]["metadata_egress_denied"])
             self.assertNotIn("url", json.dumps(report))
 
     @mock.patch.object(acceptance, "inspect_platform", return_value="linux/amd64")
@@ -45,6 +50,7 @@ class EgressAcceptanceTests(unittest.TestCase):
                 "worker_egress_acceptance.py", "--network", "cc-egress",
                 "--image", "agent@sha256:" + "b" * 64, "--attempt-id", "acceptance-002",
                 "--platform", "linux/amd64",
+                "--worker-config-digest", "sha256:" + "d" * 64,
                 "--allowed-model-url", "https://server.example/v1/", "--metadata-url", "http://169.254.169.254/",
                 "--host-gateway-url", "http://172.17.0.1/", "--private-test-url", "http://10.10.10.20/",
                 "--unapproved-public-url", "https://example.net/", "--output", os.path.join(directory, "result.json"),

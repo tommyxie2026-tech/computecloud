@@ -161,7 +161,7 @@ func (e Execution) Validate() error {
 	if !Ref(e.RuntimeProfile) {
 		return fmt.Errorf("runtime_profile required")
 	}
-	if e.Engine != "" && LegacyRuntimeProfile(e.Engine) != e.RuntimeProfile {
+	if e.Engine != "" && LegacyRuntimeProfile(e.Engine) != e.RuntimeProfile && !(e.Engine == "claude" && e.RuntimeProfile == "claude_http") {
 		return fmt.Errorf("unsupported engine/runtime")
 	}
 	for _, v := range []string{e.Model, e.CredentialRef, e.PolicyRef, e.AcceptanceProfile} {

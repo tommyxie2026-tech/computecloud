@@ -148,7 +148,15 @@ func costTokenCapacity(costMicros, pricePerMillionMicros int64) int64 {
 }
 
 func applyAttemptBudget(fields map[string]json.RawMessage, body []byte, remaining attemptBudget, inputPrice, outputPrice int64, compact bool) ([]byte, error) {
-	bounded, err := applyAttemptTokenLimit(fields, body, remaining.tokens, compact)
+	return applyNamedAttemptBudget(fields, body, remaining, inputPrice, outputPrice, compact, "max_output_tokens")
+}
+
+func applyAnthropicAttemptBudget(fields map[string]json.RawMessage, body []byte, remaining attemptBudget, inputPrice, outputPrice int64) ([]byte, error) {
+	return applyNamedAttemptBudget(fields, body, remaining, inputPrice, outputPrice, false, "max_tokens")
+}
+
+func applyNamedAttemptBudget(fields map[string]json.RawMessage, body []byte, remaining attemptBudget, inputPrice, outputPrice int64, compact bool, tokenField string) ([]byte, error) {
+	bounded, err := applyNamedAttemptTokenLimit(fields, body, remaining.tokens, compact, tokenField)
 	if err != nil {
 		return nil, err
 	}
@@ -169,12 +177,12 @@ func applyAttemptBudget(fields map[string]json.RawMessage, body []byte, remainin
 		return nil, err
 	}
 	var tokenOutputLimit int64
-	if err := json.Unmarshal(adjusted["max_output_tokens"], &tokenOutputLimit); err != nil {
+	if err := json.Unmarshal(adjusted[tokenField], &tokenOutputLimit); err != nil {
 		return nil, status.Error(codes.InvalidArgument, "INVALID_MAX_OUTPUT_TOKENS")
 	}
 	if costOutputLimit < tokenOutputLimit {
 		tokenOutputLimit = costOutputLimit
-		adjusted["max_output_tokens"], _ = json.Marshal(tokenOutputLimit)
+		adjusted[tokenField], _ = json.Marshal(tokenOutputLimit)
 		bounded = job.JSON(adjusted)
 	}
 	if int64(len(bounded))+tokenOutputLimit > remaining.tokens {
@@ -184,6 +192,10 @@ func applyAttemptBudget(fields map[string]json.RawMessage, body []byte, remainin
 }
 
 func applyAttemptTokenLimit(fields map[string]json.RawMessage, body []byte, remaining int64, compact bool) ([]byte, error) {
+	return applyNamedAttemptTokenLimit(fields, body, remaining, compact, "max_output_tokens")
+}
+
+func applyNamedAttemptTokenLimit(fields map[string]json.RawMessage, body []byte, remaining int64, compact bool, tokenField string) ([]byte, error) {
 	if compact {
 		return nil, status.Error(codes.FailedPrecondition, "ATTEMPT_TOKEN_BUDGET_UNSUPPORTED_ENDPOINT")
 	}
@@ -197,7 +209,7 @@ func applyAttemptTokenLimit(fields map[string]json.RawMessage, body []byte, rema
 	if outputLimit > 1_000_000 {
 		outputLimit = 1_000_000
 	}
-	if raw, ok := fields["max_output_tokens"]; ok {
+	if raw, ok := fields[tokenField]; ok {
 		var requested int64
 		if err := json.Unmarshal(raw, &requested); err != nil || requested < 1 {
 			return nil, status.Error(codes.InvalidArgument, "INVALID_MAX_OUTPUT_TOKENS")
@@ -210,7 +222,7 @@ func applyAttemptTokenLimit(fields map[string]json.RawMessage, body []byte, rema
 	if err != nil {
 		return nil, err
 	}
-	fields["max_output_tokens"] = rawLimit
+	fields[tokenField] = rawLimit
 	bounded := job.JSON(fields)
 	if int64(len(bounded))+outputLimit > remaining {
 		outputLimit -= int64(len(bounded)) + outputLimit - remaining
@@ -221,7 +233,7 @@ func applyAttemptTokenLimit(fields map[string]json.RawMessage, body []byte, rema
 		if err != nil {
 			return nil, err
 		}
-		fields["max_output_tokens"] = rawLimit
+		fields[tokenField] = rawLimit
 		bounded = job.JSON(fields)
 	}
 	if int64(len(bounded))+outputLimit > remaining {

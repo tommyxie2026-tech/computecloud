@@ -1,0 +1,35 @@
+# Compose override example for a Server behind a separately hardened TLS proxy.
+# Replace every placeholder with reviewed values before use.
+services:
+  computecloud-server:
+    image: ${COMPUTECLOUD_SERVER_IMAGE:?set a digest-pinned Server image}
+    user: "65532:65532"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "${SERVER_CPUS:-2.0}"
+    mem_limit: ${SERVER_MEMORY_LIMIT:-2g}
+    pids_limit: ${SERVER_PIDS_LIMIT:-256}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:17443:17443"
+      - "127.0.0.1:17444:17444"
+    volumes:
+      - ${SERVER_CONFIG_DIR:?set a dedicated Server config directory}:/etc/computecloud:ro
+      - ${SERVER_STATE_DIR:?set a dedicated Server state directory}:/var/lib/computecloud:rw
+      - ${SERVER_CERT_DIR:?set the Server certificate directory}:/run/computecloud/certs:ro
+      - ${SERVER_SECRET_DIR:?set a protected Server secret directory}:/run/computecloud/secrets:ro
+    networks:
+      - computecloud-control
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  computecloud-control:
+    external: true
+    name: computecloud-control

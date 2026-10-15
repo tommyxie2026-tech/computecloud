@@ -16,6 +16,13 @@ const fixtures = {
 const observed = { codex: false, claude: false };
 const unexpected = [];
 const requests = [];
+const claudeContract = [];
+const allowedClaudeBetas = new Set([
+  "claude-code-20250219", "interleaved-thinking-2025-05-14", "thinking-token-count-2026-05-13",
+  "context-management-2025-06-27", "prompt-caching-scope-2026-01-05", "per-turn-control-2026-07-01",
+  "mid-conversation-system-2026-04-07", "mid-conversation-tool-changes-2026-07-01",
+  "effort-2025-11-24", "thinking-display-updates-2026-08-18",
+]);
 
 function sendSSE(res, event, payload) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
@@ -89,7 +96,7 @@ function json(res, status, value) {
 const server = http.createServer((req, res) => {
   const auth = req.headers.authorization || "";
   const codexAuth = auth === `Bearer ${fixtures.codex}`;
-  const claudeAuth = auth === `Bearer ${fixtures.claude}` || req.headers["x-api-key"] === fixtures.claude;
+  const claudeAuth = auth === `Bearer ${fixtures.claude}`;
   const authKind = codexAuth ? "codex-fixture" : claudeAuth ? "claude-fixture" : auth || req.headers["x-api-key"] ? "wrong-credential" : "missing-credential";
   const pathname = new URL(req.url, "http://localhost").pathname;
   requests.push(`${req.method} ${req.url} auth=${authKind}`);
@@ -98,6 +105,13 @@ const server = http.createServer((req, res) => {
   req.on("end", () => {
     let body = {};
     try { body = JSON.parse(Buffer.concat(parts).toString("utf8") || "{}"); } catch {}
+    if (claudeAuth) {
+      claudeContract.push({
+        method: req.method, path: req.url, authorization: auth.startsWith("Bearer "),
+        xApiKey: Boolean(req.headers["x-api-key"]), anthropicVersion: req.headers["anthropic-version"] || "",
+        anthropicBeta: req.headers["anthropic-beta"] || "", bodyFields: Object.keys(body).sort(),
+      });
+    }
     if (req.method === "POST" && pathname === "/v1/responses" && codexAuth) {
       if (body.model !== "fixture-model") unexpected.push("Codex sent an unexpected model");
       observed.codex = true;
@@ -182,10 +196,19 @@ async function main() {
       "--include-partial-messages", "--permission-mode", "dontAsk", "--model", "sonnet",
     ], claudeEnv, claudeHome);
 
+    const allowedFields = new Set(["model", "max_tokens", "messages", "system", "metadata", "stop_sequences", "stream", "temperature", "top_p", "top_k", "tools", "tool_choice", "thinking", "output_config", "context_management", "service_tier", "betas"]);
+    if (!claudeContract.length || claudeContract.some(item => {
+      const betas = item.anthropicBeta ? item.anthropicBeta.split(",").map(value => value.trim()) : [];
+      return !item.authorization || item.xApiKey || item.anthropicVersion !== "2023-06-01" ||
+        item.path.split("?")[0] !== "/v1/messages" || (item.path.includes("?") && !/^\/v1\/messages\?beta=true$/.test(item.path)) ||
+        betas.some(value => !allowedClaudeBetas.has(value)) || item.bodyFields.some(field => !allowedFields.has(field));
+    })) {
+      throw new Error(`Claude Messages protocol contract mismatch: ${JSON.stringify(claudeContract)}`);
+    }
     if (!observed.codex || !observed.claude || unexpected.length) {
       throw new Error(`contract not satisfied: Codex=${observed.codex}, Claude=${observed.claude}, unexpected=${unexpected.join("; ")}`);
     }
-    console.log("PASS: pinned Codex and Claude CLIs used the local fixture endpoint and fixture-only auth; no provider credentials were supplied.");
+    console.log(`PASS: isolated Codex/Claude CLI fixture contract; Claude requests=${JSON.stringify(claudeContract)}; provider credentials were not supplied.`);
   } finally {
     server.close();
     fs.rmSync(root, { recursive: true, force: true });

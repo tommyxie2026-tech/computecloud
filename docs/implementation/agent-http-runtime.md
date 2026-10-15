@@ -5,7 +5,7 @@ Job Executor. This service runs the configured Codex or Claude Code CLI for a
 Worker Attempt; it is not an LLM gateway, model server, or general workflow
 engine.
 
-The pinned upstream release snapshot on 2026-10-07 is Codex CLI `0.160.1`
+The pinned upstream release snapshot is Codex CLI `0.160.1`
 (`rust-v0.160.1`) and Claude Code `2.1.292`. The Worker and service must agree
 on the exact version. Build and deployment records must pin the resulting OCI
 image by digest. Updating either CLI requires a new compatibility run.
@@ -59,9 +59,10 @@ token are not mounted into Agent containers. The shared socket directory must
 be accessible to the Worker UID because the HTTP socket is mode 0600. Supply
 model credentials at runtime, never in the image.
 
-For a Linux Worker using `/srv/computecloud/workspaces`, the controller launch
-has this shape (replace the image reference and prepare the mounted directories
-as UID 65532 with private permissions):
+For a Linux Worker, set `WORKER_WORKSPACE_ROOT` and `WORKER_AGENT_STATE_DIR` to
+dedicated operator-managed directories. The following paths are placeholders,
+not a record of any particular host layout. Prepare mounted directories for UID
+65532 with private permissions:
 
 ```sh
 docker run -d --name computecloud-agent-http \
@@ -69,12 +70,12 @@ docker run -d --name computecloud-agent-http \
   --group-add "$(stat -c %g /var/run/docker.sock)" \
   --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
   --mount type=bind,src=/run/computecloud-agent,dst=/run/computecloud-agent \
-  --mount type=bind,src=/srv/computecloud/workspaces,dst=/srv/computecloud/workspaces \
-  --mount type=bind,src=/srv/computecloud/agent-state,dst=/var/lib/computecloud-agent/runs \
+  --mount type=bind,src=${WORKER_WORKSPACE_ROOT},dst=${WORKER_WORKSPACE_ROOT} \
+  --mount type=bind,src=${WORKER_AGENT_STATE_DIR},dst=/var/lib/computecloud-agent/runs \
   --mount type=bind,src=/etc/computecloud/seccomp-agent.json,dst=/etc/computecloud/seccomp-agent.json,readonly \
   --tmpfs /tmp:rw,nosuid,noexec,size=64m \
   IMAGE@sha256:REPLACE_WITH_64_HEX_DIGEST \
-  --workspace-root /srv/computecloud/workspaces \
+  --workspace-root ${WORKER_WORKSPACE_ROOT} \
   --runtime-image IMAGE@sha256:REPLACE_WITH_64_HEX_DIGEST \
   --public-strict \
   --egress-network computecloud-attempt-egress \
@@ -167,6 +168,13 @@ starting even when Docker is unavailable. If the controller or Docker daemon
 cannot prove cleanup, the Worker records `UNKNOWN` and fails closed.
 
 ## Claude estimated-cost boundary
+
+`claude_http` 仅在固定 Claude Code `2.1.292` 协议下使用独立、显式启用的
+Anthropic Messages Attempt Gateway，并声明专用能力
+`gateway_anthropic_messages_v1`，不会复用 Codex Responses 能力。Gateway 将长期
+供应商 Key 保存在 Server，只向每个 Attempt 容器注入短期 Attempt Token。协议边界、
+占位配置和验收限制见
+[`../deployment/claude-attempt-gateway.md`](../deployment/claude-attempt-gateway.md)。
 
 Authenticated health for `claude_http` 2.1.217 or later advertises
 `budget_claude_estimated_usd_v1`. When a Goal has only `max_cost_units`, the

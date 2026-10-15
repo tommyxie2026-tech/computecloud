@@ -9,12 +9,17 @@ def passing_report():
         "server_image_digest": "sha256:" + "1" * 64,
         "worker_image_digest": "sha256:" + "2" * 64,
         "agent_runtime_image_digest": "sha256:" + "3" * 64,
+        "worker_config_digest": "sha256:" + "4" * 64,
         "platform": "linux/amd64",
-        "worker_id": "worker-a",
+        "worker_id": "worker-template",
         "attempt_id": "public-acceptance-001",
-        "target_host": True,
         "secrets_included": False,
-        "results": {name: True for name in (
+        "static_config_checks": {
+            "worker_container_config_passed": True,
+            "runtime_controller_config_passed": True,
+        },
+        "target_host_checks": {name: True for name in (
+            "target_host_verified",
             "container_isolation", "host_cli_fallback_denied", "workspace_escape_denied",
             "metadata_egress_denied", "host_gateway_egress_denied", "private_egress_denied",
             "unapproved_public_egress_denied", "attempt_gateway_allowed", "cleanup_confirmed",
@@ -29,11 +34,27 @@ class PublicSecurityEvidenceTests(unittest.TestCase):
 
     def test_rejects_incomplete_or_fixture_only_evidence(self):
         report = passing_report()
-        report["target_host"] = False
-        report["results"].pop("metadata_egress_denied")
+        report["target_host_checks"]["target_host_verified"] = False
+        report["target_host_checks"].pop("metadata_egress_denied")
         errors = validator.validate(report)
         self.assertTrue(any("target-host" in error for error in errors))
         self.assertTrue(any("metadata_egress_denied" in error for error in errors))
+
+    def test_requires_worker_config_digest(self):
+        report = passing_report()
+        del report["worker_config_digest"]
+        self.assertIn("worker_config_digest is missing or invalid", validator.validate(report))
+
+    def test_static_config_cannot_substitute_for_target_host_checks(self):
+        report = passing_report()
+        del report["target_host_checks"]
+        errors = validator.validate(report)
+        self.assertTrue(any("target_host_checks" in error for error in errors))
+
+    def test_requires_static_config_results_separately(self):
+        report = passing_report()
+        report["static_config_checks"]["worker_container_config_passed"] = False
+        self.assertIn("static config check worker_container_config_passed is absent or failed", validator.validate(report))
 
     def test_rejects_missing_worker_identity(self):
         report = passing_report()

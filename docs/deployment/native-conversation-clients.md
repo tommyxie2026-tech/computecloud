@@ -1,5 +1,7 @@
 # Native Claude and Codex clients
 
+中文 Claude CLI 客户端设置步骤见[Claude CLI 客户端配置](claude-cli-client-configuration.md)。
+
 This experimental interface submits a normal single Agent Job through a native text conversation endpoint. Keep the feature disabled until an operator configures a profile, protected API Key file, and tested Worker runtime. Never place upstream model credentials in the client API Key file.
 
 ## Fixed Server profile

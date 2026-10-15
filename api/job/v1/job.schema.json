@@ -263,7 +263,10 @@
           "then": {
             "properties": {
               "runtime_profile": {
-                "const": "claude_print"
+                "enum": [
+                  "claude_print",
+                  "claude_http"
+                ]
               }
             }
           }

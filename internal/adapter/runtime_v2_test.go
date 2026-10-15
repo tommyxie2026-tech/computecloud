@@ -68,13 +68,13 @@ func hasExactString(values []string, want string) bool {
 	return false
 }
 
-func TestClaudeHTTPRejectsAttemptGateway(t *testing.T) {
+func TestClaudeHTTPSupportsExplicitAttemptGatewayProfile(t *testing.T) {
 	provider, ok := Lookup("claude_http")
-	if !ok || provider.SupportsGateway() {
-		t.Fatal("Claude HTTP runtime must remain unsupported for Attempt Gateway")
+	if !ok || !provider.SupportsGateway() {
+		t.Fatal("Claude HTTP runtime does not expose its explicit Gateway path")
 	}
-	if _, err := provider.Prepare(PrepareRequest{Gateway: &pb.GatewayAccess{BaseUrl: "https://server.example/v1", Token: "ephemeral"}}); err == nil {
-		t.Fatal("Claude HTTP accepted an unverified Gateway auth mode")
+	if _, err := provider.Prepare(PrepareRequest{Runtime: config.Runtime{Version: "2.1.291"}, Gateway: &pb.GatewayAccess{BaseUrl: "https://server.example/agent", Token: "ephemeral"}}); err == nil {
+		t.Fatal("Claude HTTP accepted a Gateway without the pinned CLI contract")
 	}
 }
 func (f fixtureProvider) Parser(func(string, []byte) error) StreamParser { return fixtureParser{} }
@@ -123,7 +123,7 @@ func TestRuntimeV2BuiltinsAndCapabilityNamespaces(t *testing.T) {
 		t.Fatal("claude provider missing")
 	}
 	if claude.SupportsGateway() {
-		t.Fatal("claude unexpectedly supports gateway")
+		t.Fatal("local claude_print runtime unexpectedly supports the HTTP Gateway")
 	}
 	caps := codex.Capabilities().Advertised()
 	for _, required := range []string{

@@ -31,6 +31,15 @@ func TestExecutionKeepsLegacyEngineAliasFenced(t *testing.T) {
 	if err := bad.Validate(); err == nil {
 		t.Fatal("legacy engine alias was allowed to select another runtime")
 	}
+	claudeHTTP := Execution{Engine: "claude", RuntimeProfile: "claude_http", Model: "m", CredentialRef: "cred", PolicyRef: "policy", AcceptanceProfile: "verify"}
+	if err := claudeHTTP.Validate(); err != nil {
+		t.Fatalf("Claude HTTP alias rejected: %v", err)
+	}
+	wrongProtocol := claudeHTTP
+	wrongProtocol.Engine = "codex"
+	if err := wrongProtocol.Validate(); err == nil {
+		t.Fatal("Codex alias selected Anthropic HTTP runtime")
+	}
 }
 
 func TestJobSchemaAllowsProviderNeutralRuntimeWithoutLegacyEngine(t *testing.T) {

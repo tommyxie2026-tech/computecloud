@@ -229,7 +229,10 @@ func (s *Server) SubmitJob(ctx context.Context, key string, b []byte) (*Job, err
 				return status.Error(codes.FailedPrecondition, "TEMPLATE_NOT_CONFIGURED")
 			}
 			if route := s.cfg.ModelGateway.CredentialRoutes[ex.CredentialRef]; route != "" {
-				if !s.cfg.ModelGateway.Enabled || ex.Engine != "codex" || !config.Contains(s.cfg.ModelGateway.Routes[route].AllowedModels, ex.Model) {
+				routeConfig := s.cfg.ModelGateway.Routes[route]
+				compatible := ex.Engine == "codex" && ex.RuntimeProfile != "claude_http" && routeConfig.Backend != "anthropic_messages"
+				compatible = compatible || ex.Engine == "claude" && ex.RuntimeProfile == "claude_http" && routeConfig.Backend == "anthropic_messages"
+				if !s.cfg.ModelGateway.Enabled || !compatible || !config.Contains(routeConfig.AllowedModels, ex.Model) {
 					return status.Error(codes.FailedPrecondition, "GATEWAY_ROUTE_UNAVAILABLE")
 				}
 				frozen.Routes[ex.CredentialRef] = route
@@ -310,7 +313,12 @@ func (s *Server) insertJobTask(ctx context.Context, q store.Query, jid, owner st
 		t.RequiredCapabilities = append(t.RequiredCapabilities, "artifact_inputs_v1")
 	}
 	if frozen.Routes[ex.CredentialRef] != "" {
-		t.RequiredCapabilities = append(t.RequiredCapabilities, "gateway_inference_v1")
+		route := s.cfg.ModelGateway.Routes[frozen.Routes[ex.CredentialRef]]
+		if route.Backend == "anthropic_messages" {
+			t.RequiredCapabilities = append(t.RequiredCapabilities, "gateway_anthropic_messages_v1")
+		} else {
+			t.RequiredCapabilities = append(t.RequiredCapabilities, "gateway_inference_v1")
+		}
 	}
 	id := store.ID()
 	raw := encode(t)

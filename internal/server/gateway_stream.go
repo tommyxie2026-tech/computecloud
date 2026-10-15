@@ -34,6 +34,36 @@ func (o *gatewayOutcome) readUsage(raw []byte) {
 	o.known = true
 }
 
+func (o *gatewayOutcome) readAnthropicUsage(raw []byte) {
+	var envelope struct {
+		Usage json.RawMessage `json:"usage"`
+	}
+	if json.Unmarshal(raw, &envelope) != nil || len(envelope.Usage) == 0 || len(envelope.Usage) > 64<<10 {
+		return
+	}
+	var usage struct {
+		Input       *int64 `json:"input_tokens"`
+		CacheCreate int64  `json:"cache_creation_input_tokens"`
+		CacheRead   int64  `json:"cache_read_input_tokens"`
+		Output      *int64 `json:"output_tokens"`
+	}
+	if json.Unmarshal(envelope.Usage, &usage) != nil || usage.Input == nil || usage.Output == nil || *usage.Input < 0 || *usage.Output < 0 || usage.CacheCreate < 0 || usage.CacheRead < 0 {
+		return
+	}
+	input, ok := addNonNegative(*usage.Input, usage.CacheCreate)
+	if !ok {
+		return
+	}
+	input, ok = addNonNegative(input, usage.CacheRead)
+	if !ok {
+		return
+	}
+	o.input = &input
+	o.output = usage.Output
+	o.usage = append([]byte(nil), envelope.Usage...)
+	o.known = true
+}
+
 type sseUsage struct {
 	line, event []byte
 	size        int

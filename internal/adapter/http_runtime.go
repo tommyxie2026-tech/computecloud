@@ -70,7 +70,9 @@ func (p httpRuntimeProvider) Args(spec *pb.TaskSpec, policy config.Policy) ([]st
 func (p httpRuntimeProvider) Parser(emit func(string, []byte) error) StreamParser {
 	return p.cli.Parser(emit)
 }
-func (p httpRuntimeProvider) SupportsGateway() bool { return p.profile == "codex_http" }
+func (p httpRuntimeProvider) SupportsGateway() bool {
+	return p.profile == "codex_http" || p.profile == "claude_http"
+}
 func (p httpRuntimeProvider) Capabilities() CapabilitySet {
 	runtime := []string{"event_stream", "cancel", "remote_api"}
 	legacy := []string{"event_stream", "cancel", "job_io_v1", "artifact_inputs_v1"}
@@ -179,6 +181,9 @@ func (p httpRuntimeProvider) ConfiguredRuntimeCapabilities(ctx context.Context, 
 	allowed := map[string]bool{}
 	if p.profile == "claude_http" {
 		allowed["budget_claude_estimated_usd_v1"] = true
+		if r.Version == "2.1.292" {
+			allowed["gateway_anthropic_messages_v1"] = true
+		}
 	}
 	runtime := append([]string(nil), p.Capabilities().Runtime...)
 	for _, capability := range health.Capabilities {
@@ -205,7 +210,11 @@ func (p httpRuntimeProvider) Prepare(req PrepareRequest) (PreparedExecution, err
 		return PreparedExecution{}, errors.New("HTTP runtime requires attempt identity, workspace and input")
 	}
 	if req.Gateway != nil {
-		prepared, err = configureCodexGateway(prepared, req.Gateway)
+		if p.profile == "claude_http" {
+			prepared, err = configureClaudeGateway(prepared, req.Gateway)
+		} else {
+			prepared, err = configureCodexGateway(prepared, req.Gateway)
+		}
 		if err != nil {
 			return PreparedExecution{}, err
 		}
