@@ -6,9 +6,25 @@
 
 | 阶段 | 状态 | 计划 | 退出条件 |
 | --- | --- | --- | --- |
-| P0 公网入口与资源限制 | 进行中 | [实施计划](../superpowers/plans/2026-10-12-public-ingress-resource-controls.md) | 认证主体速率/并发/成本限额生效；公网入口拓扑、源站保护、429/过载行为通过验收 |
-| P1 API Key 生命周期与 Worker mTLS | 本地实现完成，待目标环境验收 | [实施计划](../superpowers/plans/2026-10-12-api-keys-and-worker-mtls.md) | key 创建/撤销/过期有效；A/B 独立证书验证、逐台轮换、撤销和回退完成 |
-| P2 Attempt 凭据与网络隔离 | 进行中 | [实施计划](../superpowers/plans/2026-10-12-attempt-credential-and-egress-isolation.md) | 公网严格模式拒绝 process；Attempt 凭据限时限域；目标 Worker 逃逸/出站负向测试通过；Attempt token 与估算费用边界代码完成；上游账单硬限额及目标环境验收仍待完成 |
+| P0 公网入口与资源限制 | 代码/CI 完成，已合并并进入 v0.4.8；公网验收待执行 | [实施计划](../superpowers/plans/2026-10-12-public-ingress-resource-controls.md) | 认证主体速率/并发/成本限额生效；公网入口拓扑、源站保护、429/过载行为通过目标环境验收 |
+| P1 API Key 生命周期与 Worker mTLS | 代码完成，已合并；双机演练待执行 | [实施计划](../superpowers/plans/2026-10-12-api-keys-and-worker-mtls.md) | key 创建/撤销/过期有效；A/B 独立证书验证、逐台轮换、撤销和回退完成 |
+| P2 Attempt 凭据与网络隔离 | 实现与 CI 完成，已合并；目标 Worker/供应商验收待执行 | [实施计划](../superpowers/plans/2026-10-12-attempt-credential-and-egress-isolation.md) | 公网严格模式拒绝 process；Attempt 凭据限时限域；目标 Worker 逃逸/出站负向测试通过；上游账单硬限额可验证 |
+
+## 当前进展
+
+- **PR #144 已合并**：安全加固合并提交为 [`18c748e`](https://github.com/tommyxie2026-tech/computecloud/commit/18c748eac72065f81ba476adc6e5501c7060b561)，PR 不再是草稿。限流、认证前直连 IP 防护、Worker mTLS/API Key 生命周期、strict OCI 与 Attempt Gateway 等代码已进入 `main`。
+- **v0.4.8 已正式发布**：[`v0.4.8`](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.8) 的 tag 指向 `3a6ec3b`，其历史包含上述 PR 合并提交；Release 附有 Linux amd64/arm64 包、校验和及容器镜像信息。
+- **当前 main 与 CI**：最新检查到 `main` 为 [`428c6ae`](https://github.com/tommyxie2026-tech/computecloud/commit/428c6ae0c31badf65ee0dfbfe72408d2fc1d7e36)，包含 PR #148 的长时 Agent HTTP 请求修复。CI run [38738244108](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38738244108) 44 项检查中 43 项成功、1 项 release job 因该次运行不是发布事件而跳过；Linux/macOS `verify`、`package` 与 `container-publish` 成功。
+- **安全验收状态**：代码与模拟/CI 门禁已落地，但仓库中没有按 [公网安全验收手册](../validation/public-access-security-acceptance.md) 生成的目标环境 `dist/public-security/evidence.json`。尚无证据证明真实公网源站保护、Worker A/B 证书轮换/撤销、目标 OCI/egress 负向测试或供应商账单硬上限已通过。
+- **开放范围**：v0.4.8 已发布不等于不可信公网租户准入已获安全验收。目标环境门禁完成并经审阅前，继续限于可信用户/受控租户；不得把 CI fixture、配置样例或 validator 通过结果当作真实环境证明。
+
+### 下一步验收顺序
+
+1. 固定候选 `main` SHA 与 Server、Worker、Agent Runtime 镜像 digest/平台，并记录在同一验收批次。
+2. 从外部主机验证 7443/7444、TLS、源站绕过拒绝、WAF/安全组和限流/过载行为。
+3. 在两台目标 Worker 上分别完成 mTLS 签发、连接、轮换、旧指纹撤销及回退，并分别记录稳定 `worker_id`。
+4. 在目标 OCI runtime 和每台 Worker 上完成 workspace/宿主隔离、网络拒绝、Attempt 清理与凭据重放负向测试。
+5. 验证供应商账户/组织侧硬支出上限和告警；Gateway 估算费用上限不能替代供应商账单硬限额。把脱敏证据写入 evidence JSON，经 validator 和人工审阅后再决定是否扩大公网租户范围。
 
 ## 跟踪规则
 
@@ -17,7 +33,7 @@
 - 仅在所有阶段完成并有目标环境证据后标记“可面向不可信公网租户”；此前的部署范围保持受信任用户/受控租户。
 - 任何凭据泄露或 mTLS 撤销演练失败都暂停扩大流量，先吊销相关凭据并复核审计。
 
-## 当前记录（2026-10-12）
+## 历史实施记录
 
 - 已完成：安全审查报告与架构设计规格；规格提交 `53cb5a1`。
 - 已完成：P0/P1/P2 三份逐任务实施计划；P0 Task 1 已提交 `79cc1df`（认证 HTTP 请求限流）。
@@ -58,6 +74,6 @@
 
 - 来源限流器压力路径优化（2026-10-12）：复审发现每次请求都遍历来源桶清理过期项，容量满时还会排序全部条目淘汰最旧项。提交 `8418d0b` 改为 map + LRU 链表；单次请求过期清理最多处理 64 项，容量淘汰为 O(1)，并新增有界清理和最近使用顺序回归测试。相关普通与 race 测试通过。PR head `8418d0b` 的 CI run [38252321597](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38252321597) 44 个 job 中 34 成功、10 个按 PR 条件跳过；Linux/macOS 完整 verify 成功。该修复降低高基数来源流量下限流器自身的 CPU 放大风险，但不代表公网压力/DoS 验收通过。
 
-- 当前 PR [#144](https://github.com/tommyxie2026-tech/computecloud/pull/144) 仍为草稿。未完成的发布门禁仍包括真实公网端口与源站绕过核验、边缘 WAF/安全组实配、Worker A/B mTLS 轮换及撤销演练、目标 OCI 文件/进程隔离和出站网络负向测试，以及供应商可验证的账单硬上限。上述各项均须绑定同一候选 SHA 和实际镜像 digest 的目标环境证据；CI 不能替代这些证据。
+- PR [#144](https://github.com/tommyxie2026-tech/computecloud/pull/144) 合并前曾为草稿，之后已合并并进入 v0.4.8。尚未完成的目标环境门禁包括真实公网端口与源站绕过核验、边缘 WAF/安全组实配、Worker A/B mTLS 轮换及撤销演练、目标 OCI 文件/进程隔离和出站网络负向测试，以及供应商可验证的账单硬上限。上述各项均须绑定同一候选 SHA 和实际镜像 digest 的目标环境证据；CI 不能替代这些证据。
 
 - 目标环境验收证据现在要求填写安全格式的 `worker_id`，并在每台 Worker 的独立报告中记录，降低 A/B 结果混用风险；validator 明确只校验字段格式，不证明目标主机身份。提交 `ea39aca` 的缺失字段和路径注入拒绝测试、23 项 Python 验收工具测试、边缘策略样例检查及脚本编译通过。PR head `ea39aca` 的 CI run [38255474804](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38255474804) 34 个 job 成功、10 个按条件跳过，Linux/macOS 全量 verify 均成功。
