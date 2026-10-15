@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go config/runtime already in the repository, Python 3 validator/fixtures, Docker inspect JSON, Chinese deployment docs.
 
-**Spec:** `docs/superpowers/specs/2026-10-15-worker-deployment-hardening-design.md`
+**Spec:** `docs/superpowers/specs/worker-deployment-hardening-design.md`
 
 ## Global Constraints
 

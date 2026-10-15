@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go `net/http`, existing SQLite-backed gateway accounting, config/YAML, Anthropic Messages JSON/SSE, fixed-version Claude CLI contract fixture, Go tests and Python CI contract tests.
 
-**Spec:** `docs/superpowers/specs/2026-10-15-claude-attempt-gateway-design.md`
+**Spec:** `docs/superpowers/specs/claude-attempt-gateway-design.md`
 
 ## Global Constraints
 
