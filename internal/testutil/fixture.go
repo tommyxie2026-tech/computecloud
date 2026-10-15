@@ -91,6 +91,7 @@ if os.environ.get('COMPUTECLOUD_MODEL_TOKEN'):
 emit({'type':'thread.started' if codex else 'system','thread_id':'fixture','session_id':'fixture'})
 if 'slow-job' in prompt: time.sleep(60)
 if 'long-job' in prompt: time.sleep(4)
+if 'conversation-over-10-seconds' in prompt: time.sleep(11)
 if 'fail-job' in prompt: sys.exit(2)
 result = 'single fixture completed'
 if 'long-output' in prompt: result = 'x' * 6000

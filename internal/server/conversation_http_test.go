@@ -45,7 +45,7 @@ func TestConversationMessagesExecutesDurableWorkerJob(t *testing.T) {
 	h := newJobHarness(t, true, configure)
 	// The fixture Worker repository commit is owned by the shared Job harness.
 	h.s.cfg.ConversationJobs.Profiles[0].Workspace.BaseCommit = h.commit
-	server := httptest.NewServer(h.s.conversationHTTP(true))
+	server := httptest.NewTLSServer(h.s.HTTPHandler())
 	defer server.Close()
 	unauth, _ := http.NewRequest(http.MethodGet, server.URL+"/agent/v1/models", nil)
 	unauth.Header.Set("Authorization", "Bearer invalid-token")
@@ -148,6 +148,40 @@ func TestConversationMessagesExecutesDurableWorkerJob(t *testing.T) {
 	res2, data2 := call("model-check-1")
 	if res2.StatusCode != 200 || data2["id"] != data["id"] {
 		t.Fatalf("idempotency replay changed result: %d %#v", res2.StatusCode, data2)
+	}
+	body = []byte(`{"model":"agent-codex","max_tokens":128,"messages":[{"role":"user","content":"conversation-over-10-seconds"}]}`)
+	longStarted := time.Now()
+	longHTTP, longHTTPData := call("conversation-over-10-seconds-1")
+	if elapsed := time.Since(longStarted); elapsed <= 10*time.Second {
+		t.Fatalf("slow fixture did not cross the HTTP deadline: elapsed=%s", elapsed)
+	}
+	if longHTTP.StatusCode != http.StatusOK {
+		t.Fatalf("conversation exceeding the generic 10-second HTTP deadline failed: status=%d response=%#v", longHTTP.StatusCode, longHTTPData)
+	}
+	longContent := longHTTPData["content"].([]any)[0].(map[string]any)
+	if longContent["text"] != "single fixture completed" {
+		t.Fatalf("long-running conversation result missing: %#v", longHTTPData)
+	}
+	streamBody := []byte(`{"model":"agent-codex","max_tokens":128,"stream":true,"messages":[{"role":"user","content":"conversation-over-10-seconds-stream"}]}`)
+	streamReq, _ := http.NewRequest(http.MethodPost, server.URL+"/agent/v1/messages", bytes.NewReader(streamBody))
+	streamReq.Header.Set("Content-Type", "application/json")
+	streamReq.Header.Set("Authorization", "Bearer "+mustToken(t, token))
+	streamReq.Header.Set("Idempotency-Key", "conversation-over-10-seconds-stream-1")
+	streamStarted := time.Now()
+	longStreamResp, streamErr := server.Client().Do(streamReq)
+	if streamErr != nil {
+		t.Fatal(streamErr)
+	}
+	longStreamBytes, streamErr := io.ReadAll(longStreamResp.Body)
+	longStreamResp.Body.Close()
+	if streamErr != nil {
+		t.Fatalf("read long-running conversation stream: %v", streamErr)
+	}
+	if elapsed := time.Since(streamStarted); elapsed <= 10*time.Second {
+		t.Fatalf("stream fixture did not cross the HTTP deadline: elapsed=%s", elapsed)
+	}
+	if longStreamResp.StatusCode != http.StatusOK || !strings.Contains(string(longStreamBytes), "event: message_stop") || strings.Contains(string(longStreamBytes), "event: error") {
+		t.Fatalf("conversation stream exceeding 10 seconds failed: status=%d body=%s", longStreamResp.StatusCode, longStreamBytes)
 	}
 	body = []byte(`{"model":"agent-codex","max_tokens":128,"messages":[{"role":"user","content":"long-output"}]}`)
 	longRes, longData := call("large-output-1")

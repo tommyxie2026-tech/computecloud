@@ -294,12 +294,12 @@ func (s *Server) HTTPHandler() http.Handler {
 		if !s.rateLimitHTTP(w, r, r.Header.Get("Authorization")) {
 			return
 		}
-		streaming := strings.HasSuffix(r.URL.Path, "/events/stream")
+		longLived := strings.HasSuffix(r.URL.Path, "/events/stream") || strings.HasPrefix(r.URL.Path, "/agent/")
 		timeout := 10 * time.Second
 		if strings.Contains(r.URL.Path, "/artifacts/") {
 			timeout = 5 * time.Minute
 		}
-		if !streaming {
+		if !longLived {
 			var cancel context.CancelFunc
 			ctx, cancel = context.WithTimeout(ctx, timeout)
 			defer cancel()
