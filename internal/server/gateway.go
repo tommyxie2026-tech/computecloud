@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -33,14 +34,15 @@ type gatewayRoute struct {
 	slots  chan struct{}
 }
 type modelGateway struct {
-	cliBlocked    atomic.Bool
-	s             *Server
-	client        *http.Client
-	slots         chan struct{}
-	routes        map[string]*gatewayRoute
-	identitySlots map[string]chan struct{}
-	attemptMu     sync.Mutex
-	attemptSlots  map[string]chan struct{}
+	cliBlocked      atomic.Bool
+	s               *Server
+	client          *http.Client
+	anthropicClient *http.Client
+	slots           chan struct{}
+	routes          map[string]*gatewayRoute
+	identitySlots   map[string]chan struct{}
+	attemptMu       sync.Mutex
+	attemptSlots    map[string]chan struct{}
 }
 type modelIdentity struct {
 	owner, project, job, attempt, route, model, traceOwner string
@@ -49,8 +51,13 @@ type modelIdentity struct {
 
 func newModelGateway(s *Server) (*modelGateway, error) {
 	g := s.cfg.ModelGateway
-	tr := &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: time.Duration(g.ConnectTimeoutSeconds) * time.Second, KeepAlive: 30 * time.Second}).DialContext, TLSHandshakeTimeout: time.Duration(g.ConnectTimeoutSeconds) * time.Second, ResponseHeaderTimeout: time.Duration(g.HeaderTimeoutSeconds) * time.Second, IdleConnTimeout: 90 * time.Second, MaxIdleConns: g.MaxInflight, MaxIdleConnsPerHost: g.MaxInflight, MaxConnsPerHost: g.MaxInflight, MaxResponseHeaderBytes: 64 << 10, DisableCompression: true}
-	out := &modelGateway{s: s, client: &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, slots: make(chan struct{}, g.MaxInflight), routes: map[string]*gatewayRoute{}, identitySlots: map[string]chan struct{}{}, attemptSlots: map[string]chan struct{}{}}
+	transport := func(proxy func(*http.Request) (*url.URL, error)) *http.Transport {
+		return &http.Transport{Proxy: proxy, DialContext: (&net.Dialer{Timeout: time.Duration(g.ConnectTimeoutSeconds) * time.Second, KeepAlive: 30 * time.Second}).DialContext, TLSHandshakeTimeout: time.Duration(g.ConnectTimeoutSeconds) * time.Second, ResponseHeaderTimeout: time.Duration(g.HeaderTimeoutSeconds) * time.Second, IdleConnTimeout: 90 * time.Second, MaxIdleConns: g.MaxInflight, MaxIdleConnsPerHost: g.MaxInflight, MaxConnsPerHost: g.MaxInflight, MaxResponseHeaderBytes: 64 << 10, DisableCompression: true}
+	}
+	client := func(tr *http.Transport) *http.Client {
+		return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	}
+	out := &modelGateway{s: s, client: client(transport(http.ProxyFromEnvironment)), anthropicClient: client(transport(nil)), slots: make(chan struct{}, g.MaxInflight), routes: map[string]*gatewayRoute{}, identitySlots: map[string]chan struct{}{}, attemptSlots: map[string]chan struct{}{}}
 	for _, u := range s.cfg.Users {
 		if u.ModelRoute != "" && u.Limits.MaxModelRequests > 0 {
 			key := u.Owner + "\x00" + u.ModelProject
@@ -161,6 +168,10 @@ func (g *modelGateway) identity(ctx context.Context, header string) (modelIdenti
 	return id, "", nil
 }
 func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/v1/messages" {
+		g.serveAnthropicMessages(w, r)
+		return
+	}
 	if r.Header.Get("Upgrade") != "" {
 		modelError(w, status.Error(codes.InvalidArgument, "WEBSOCKET_UNSUPPORTED"))
 		return
@@ -185,6 +196,10 @@ func (g *modelGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	route := g.routes[id.route]
+	if route.config.Backend == "anthropic_messages" {
+		modelError(w, status.Error(codes.NotFound, "UNSUPPORTED_MODEL_ENDPOINT"))
+		return
+	}
 	if r.URL.Path == "/v1/models" {
 		if r.Method != "GET" {
 			w.WriteHeader(405)

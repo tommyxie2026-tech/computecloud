@@ -148,7 +148,7 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE", ErrorMessage: "conflicting environment requirements"})
 		return
 	}
-	if !publicExecutionSupported(w.cfg.PublicExecutionMode, envName, a.Gateway != nil, provider.Capabilities().Runtime, r.Env) {
+	if !publicExecutionSupported(w.cfg.PublicExecutionMode, a.Spec.RuntimeProfile, r.Version, envName, a.Gateway != nil, a.Spec.RequiredCapabilities, r.Env) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "PUBLIC_ISOLATION_REQUIRED", ErrorMessage: "isolated execution requires a container and Attempt Gateway capable runtime"})
 		return
 	}

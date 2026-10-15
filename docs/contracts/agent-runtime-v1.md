@@ -1,7 +1,6 @@
 # Agent Runtime v1 接口与事件契约
 
 - 项目：computecloud
-- 日期：2026-09-22
 - 状态：目标契约；v0.1 已有生成的 Protobuf / Go 实现，尚未开放的扩展保留为设计
 - 适用范围：Go 调度器、Go Worker、Codex / Claude Code 适配器
 - 上层设计：[Go 多客户端 Agent RPC 调度实施方案](../design/agent-orchestration-go.md)
@@ -32,7 +31,7 @@
 | `project_id` | 是 | 已授权项目 |
 | `idempotency_key` | 是 | 在身份 + 项目范围内唯一 |
 | `engine` | 是 | codex / claude |
-| `runtime_profile` | 是 | codex_exec / claude_print；交互 profile 后续启用 |
+| `runtime_profile` | 是 | codex_exec / claude_print / claude_http；`claude_http` 需匹配支持的 Attempt Gateway 能力 |
 | `model` | 否 | 省略时使用平台固定配置；保存解析后的实际值 |
 | `provider_ref` | 否 | 受信 provider 配置引用；与 model、runtime_profile 共同校验并冻结配置版本，不接受任意 endpoint |
 | `credential_ref` | 是 | 已授权凭据引用；不含密钥 |

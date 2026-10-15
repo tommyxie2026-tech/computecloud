@@ -261,6 +261,9 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	if name == "claude_http" && versionAtLeast(version, 2, 1, 217) {
 		capabilities = append(capabilities, "budget_claude_estimated_usd_v1")
 	}
+	if name == "claude_http" && version == "2.1.292" {
+		capabilities = append(capabilities, "gateway_anthropic_messages_v1")
+	}
 	respond(w, http.StatusOK, map[string]any{"profile": name, "version": version, "isolation": "container", "capabilities": capabilities})
 }
 

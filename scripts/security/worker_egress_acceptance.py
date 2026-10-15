@@ -9,6 +9,7 @@ import sys
 from urllib.parse import urlsplit
 
 PINNED_IMAGE = re.compile(r"^.+@sha256:[0-9a-f]{64}$")
+SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 PROBE = r'''const u=process.argv[1];
 const c=new AbortController(); const t=setTimeout(()=>c.abort(),5000);
 fetch(u,{method:"GET",signal:c.signal,redirect:"manual"}).then(r=>{clearTimeout(t);console.log(JSON.stringify({connected:true,status:r.status}));process.exit(0)}).catch(e=>{clearTimeout(t);console.log(JSON.stringify({connected:false}));process.exit(2)});'''
@@ -45,6 +46,7 @@ def main() -> int:
     parser.add_argument("--network", required=True)
     parser.add_argument("--image", required=True, help="already present, digest-pinned Agent Runtime image")
     parser.add_argument("--platform", required=True, choices=("linux/amd64", "linux/arm64"))
+    parser.add_argument("--worker-config-digest", required=True, help="sha256 digest of the reviewed Worker deployment config")
     parser.add_argument("--attempt-id", required=True, help="sanitized acceptance run identifier")
     parser.add_argument("--allowed-model-url", required=True, help="explicit Server model endpoint; only tests reachability")
     parser.add_argument("--metadata-url", required=True, help="explicit metadata test destination")
@@ -55,6 +57,8 @@ def main() -> int:
     args = parser.parse_args()
     if not PINNED_IMAGE.fullmatch(args.image):
         parser.error("--image must be pinned by @sha256 digest")
+    if not SHA256.fullmatch(args.worker_config_digest):
+        parser.error("--worker-config-digest must be sha256:<64 lowercase hex>")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}", args.network):
         parser.error("invalid Docker network name")
     urls = {
@@ -74,6 +78,14 @@ def main() -> int:
             connected, status = probe(args.docker, args.network, args.image, url)
             results[label] = {"connected": connected, "http_status": status}
         outcomes = {name: value["connected"] for name, value in results.items()}
+        target_host_checks = {
+            "target_host_probe_executed": True,
+            "attempt_gateway_allowed": outcomes["allowed_model_endpoint"],
+            "metadata_egress_denied": not outcomes["metadata_destination"],
+            "host_gateway_egress_denied": not outcomes["worker_host_gateway"],
+            "private_egress_denied": not outcomes["private_test_destination"],
+            "unapproved_public_egress_denied": not outcomes["unapproved_public_destination"],
+        }
         passed = outcomes["allowed_model_endpoint"] and not any(
             outcomes[name] for name in ("metadata_destination", "worker_host_gateway", "private_test_destination", "unapproved_public_destination")
         )
@@ -81,8 +93,10 @@ def main() -> int:
             "attempt_id": args.attempt_id,
             "platform": args.platform,
             "image_digest": args.image.rsplit("@", 1)[1],
+            "worker_config_digest": args.worker_config_digest,
             "network": args.network,
             "results": results,
+            "target_host_checks": target_host_checks,
             "passed": passed,
             "secrets_included": False,
         }

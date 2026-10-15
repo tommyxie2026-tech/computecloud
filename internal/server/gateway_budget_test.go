@@ -162,3 +162,27 @@ func TestAttemptTokenLimitFailsClosed(t *testing.T) {
 		t.Fatalf("invalid output limit err=%v", err)
 	}
 }
+
+func TestAnthropicAttemptBudgetClampsMaxTokensWithoutOpenAIFields(t *testing.T) {
+	fields := map[string]json.RawMessage{
+		"model":      json.RawMessage(`"claude-safe"`),
+		"max_tokens": json.RawMessage(`400`),
+		"messages":   json.RawMessage(`[ {"role":"user","content":"hello"} ]`),
+	}
+	body, _ := json.Marshal(fields)
+	bounded, err := applyAnthropicAttemptBudget(fields, body, attemptBudget{tokens: 200, costMicros: 1000}, 1_000_000, 2_000_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(bounded, &got); err != nil {
+		t.Fatal(err)
+	}
+	var max int64
+	if err := json.Unmarshal(got["max_tokens"], &max); err != nil || max < 1 || max >= 400 {
+		t.Fatalf("Anthropic max_tokens=%d err=%v body=%s", max, err, bounded)
+	}
+	if _, ok := got["max_output_tokens"]; ok {
+		t.Fatalf("budget helper injected a Responses field into Anthropic JSON: %s", bounded)
+	}
+}

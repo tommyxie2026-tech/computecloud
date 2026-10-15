@@ -1,0 +1,34 @@
+# Compose override for a dedicated, trusted Worker host.
+# The named Docker network does not enforce egress policy by itself.
+services:
+  computecloud-worker:
+    image: ${COMPUTECLOUD_WORKER_IMAGE:?set a digest-pinned Worker image}
+    user: "${COMPUTECLOUD_WORKER_UID:-10001}:${COMPUTECLOUD_WORKER_GID:-10001}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "${WORKER_CPUS:-2.0}"
+    mem_limit: "${WORKER_MEMORY_LIMIT:-4g}"
+    pids_limit: ${WORKER_PIDS_LIMIT:-256}
+    restart: unless-stopped
+    environment:
+      HOME: /home/computecloud
+      CODEX_HOME: /home/computecloud/.codex
+    volumes:
+      - ${WORKER_CONFIG_DIR:?set a dedicated Worker config directory}:/etc/computecloud:ro
+      - ${WORKER_STATE_DIR:?set a dedicated Worker state directory}:/var/lib/computecloud:rw
+      - ${WORKER_CODEX_HOME:?set a dedicated per-Worker Codex home}:/home/computecloud/.codex:rw
+    networks:
+      - computecloud-control
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  computecloud-control:
+    external: true
+    name: computecloud-control

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -212,6 +213,33 @@ func configureCodexGateway(prepared PreparedExecution, gateway *pb.GatewayAccess
 		prepared.Args = append(prepared.Args, "-c", setting)
 	}
 	prepared.Args = append(prepared.Args, "-")
+	return prepared, nil
+}
+
+func configureClaudeGateway(prepared PreparedExecution, gateway *pb.GatewayAccess) (PreparedExecution, error) {
+	if gateway == nil || gateway.Token == "" || gateway.BaseUrl == "" {
+		return PreparedExecution{}, errors.New("gateway token/base_url required")
+	}
+	if prepared.Profile != "claude_http" || prepared.Runtime.Version != "2.1.292" {
+		return PreparedExecution{}, errors.New("Claude Attempt Gateway requires pinned Claude CLI 2.1.292")
+	}
+	u, err := url.Parse(gateway.BaseUrl)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return PreparedExecution{}, errors.New("Claude Gateway base_url must be an HTTPS URL without userinfo, query or fragment")
+	}
+	filtered := prepared.Env[:0]
+	for _, item := range prepared.Env {
+		key, _, _ := strings.Cut(item, "=")
+		if strings.HasPrefix(key, "ANTHROPIC_") || strings.HasPrefix(key, "CLAUDE_CODE_USE_") {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	prepared.Env = append(filtered,
+		"ANTHROPIC_BASE_URL="+strings.TrimRight(gateway.BaseUrl, "/"),
+		"ANTHROPIC_AUTH_TOKEN="+gateway.Token,
+	)
+	prepared.Sensitive = append(prepared.Sensitive, gateway.Token)
 	return prepared, nil
 }
 func (p codexProvider) Start(ctx context.Context, prepared PreparedExecution, started func(ExecutionRef) error) StartResult {

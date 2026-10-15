@@ -186,7 +186,7 @@ func TestHTTPRuntimeHealthCapabilities(t *testing.T) {
 		}
 		return body.Capabilities
 	}
-	if got := read(t, server, "claude_http"); len(got) != 1 || got[0] != "budget_claude_estimated_usd_v1" {
+	if got := read(t, server, "claude_http"); len(got) != 2 || got[0] != "budget_claude_estimated_usd_v1" || got[1] != "gateway_anthropic_messages_v1" {
 		t.Fatalf("current Claude capabilities=%v", got)
 	}
 	if got := read(t, server, "codex_http"); len(got) != 0 {
@@ -200,7 +200,7 @@ func TestHTTPRuntimeHealthCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := read(t, old, "claude_http"); len(got) != 0 {
-		t.Fatalf("old Claude claimed budget capability=%v", got)
+		t.Fatalf("old Claude claimed unsupported capability=%v", got)
 	}
 
 	cfg.StateDir = filepath.Join(t.TempDir(), "state")

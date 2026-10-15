@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -83,6 +84,8 @@ type ModelRoute struct {
 	CLI                              *CodexCLI `yaml:"cli"`
 	BaseURL                          string    `yaml:"base_url"`
 	APIKeyFile                       string    `yaml:"api_key_file"`
+	APIKeyRef                        string    `yaml:"api_key_ref"`
+	ProtocolVersion                  string    `yaml:"protocol_version"`
 	AllowedModels                    []string  `yaml:"allowed_models"`
 	MaxInflight                      int       `yaml:"max_inflight"`
 	MaxAttemptTokens                 int64     `yaml:"max_attempt_tokens"`
@@ -284,18 +287,43 @@ func (c Server) ValidateV02() error {
 			if hasCostConfig && (r.MaxAttemptCostMicros < 1 || r.InputCostPerMillionTokensMicros < 1 || r.OutputCostPerMillionTokensMicros < 1) {
 				return fmt.Errorf("incomplete gateway Attempt cost budget")
 			}
-			if r.Backend == "codex_cli" {
+			switch r.Backend {
+			case "codex_cli":
 				if r.CLI == nil || r.CLI.Executable == "" || r.CLI.Version == "" || r.BaseURL != "" || r.APIKeyFile != "" {
 					return fmt.Errorf("codex_cli route requires executable/version and no upstream credentials")
 				}
-			} else {
-				if r.Backend != "" && r.Backend != "http" || r.CLI != nil {
+			case "anthropic_messages":
+				if r.CLI != nil || r.APIKeyFile == "" || !conversationAliasRE.MatchString(r.APIKeyRef) || r.ProtocolVersion != "2023-06-01" {
+					return fmt.Errorf("Anthropic route requires a key reference, key file and supported protocol version")
+				}
+				u, e := url.Parse(r.BaseURL)
+				if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || strings.TrimRight(u.Path, "/") != "/v1" {
+					return fmt.Errorf("Anthropic route requires a fixed HTTPS /v1 endpoint")
+				}
+				if r.MaxAttemptTokens < 1 || r.MaxAttemptCostMicros < 1 || r.InputCostPerMillionTokensMicros < 1 || r.OutputCostPerMillionTokensMicros < 1 {
+					return fmt.Errorf("Anthropic route requires complete positive Attempt budgets and prices")
+				}
+				seen := map[string]bool{}
+				for _, model := range r.AllowedModels {
+					if !conversationAliasRE.MatchString(model) || seen[model] {
+						return fmt.Errorf("Anthropic route has invalid model allowlist")
+					}
+					seen[model] = true
+				}
+				info, err := os.Lstat(r.APIKeyFile)
+				if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+					return fmt.Errorf("Anthropic route key file must be a private regular file")
+				}
+			case "", "http":
+				if r.CLI != nil || r.APIKeyRef != "" || r.ProtocolVersion != "" {
 					return fmt.Errorf("invalid gateway backend")
 				}
 				u, e := url.Parse(r.BaseURL)
 				if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || r.APIKeyFile == "" {
 					return fmt.Errorf("invalid HTTPS gateway route")
 				}
+			default:
+				return fmt.Errorf("invalid gateway backend")
 			}
 		}
 		for cred, route := range g.CredentialRoutes {
@@ -457,6 +485,9 @@ func RouteDigest(r ModelRoute) string {
 	sort.Strings(models)
 	if r.Backend == "codex_cli" {
 		return job.Hash(job.JSON(map[string]any{"version": "codex-cli-route-v1", "cli": r.CLI, "models": models, "max_attempt_tokens": r.MaxAttemptTokens, "max_attempt_cost_microusd": r.MaxAttemptCostMicros, "input_cost_per_million_tokens_microusd": r.InputCostPerMillionTokensMicros, "output_cost_per_million_tokens_microusd": r.OutputCostPerMillionTokensMicros}))
+	}
+	if r.Backend == "anthropic_messages" {
+		return job.Hash(job.JSON(map[string]any{"version": "anthropic-messages-route-v1", "base_url": strings.TrimRight(r.BaseURL, "/"), "api_key_ref": r.APIKeyRef, "protocol_version": r.ProtocolVersion, "models": models, "max_inflight": r.MaxInflight, "max_attempt_tokens": r.MaxAttemptTokens, "max_attempt_cost_microusd": r.MaxAttemptCostMicros, "input_cost_per_million_tokens_microusd": r.InputCostPerMillionTokensMicros, "output_cost_per_million_tokens_microusd": r.OutputCostPerMillionTokensMicros}))
 	}
 	return job.Hash(job.JSON(map[string]any{"version": "model-route-v1", "base_url": strings.TrimRight(r.BaseURL, "/"), "models": models, "max_attempt_tokens": r.MaxAttemptTokens, "max_attempt_cost_microusd": r.MaxAttemptCostMicros, "input_cost_per_million_tokens_microusd": r.InputCostPerMillionTokensMicros, "output_cost_per_million_tokens_microusd": r.OutputCostPerMillionTokensMicros}))
 }

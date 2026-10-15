@@ -33,24 +33,34 @@ def validate(report: dict) -> list[str]:
     for name in ("server_image_digest", "worker_image_digest", "agent_runtime_image_digest"):
         if not DIGEST.fullmatch(str(report.get(name, ""))):
             errors.append(f"{name} is missing or invalid")
+    if not DIGEST.fullmatch(str(report.get("worker_config_digest", ""))):
+        errors.append("worker_config_digest is missing or invalid")
     if report.get("platform") not in ("linux/amd64", "linux/arm64"):
         errors.append("platform is missing or invalid")
     if not WORKER_ID.fullmatch(str(report.get("worker_id", ""))):
         errors.append("worker_id is missing or invalid")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", str(report.get("attempt_id", ""))):
         errors.append("attempt_id is missing or invalid")
-    if report.get("target_host") is not True or report.get("secrets_included") is not False:
-        errors.append("evidence must be target-host and secret-scrubbed")
-    required = (
-        "container_isolation", "host_cli_fallback_denied", "workspace_escape_denied",
+    if report.get("secrets_included") is not False:
+        errors.append("evidence must be secret-scrubbed")
+    static_required = ("worker_container_config_passed", "runtime_controller_config_passed")
+    static_checks = report.get("static_config_checks") or {}
+    for key in static_required:
+        if static_checks.get(key) is not True:
+            errors.append(f"static config check {key} is absent or failed")
+    target_required = (
+        "target_host_verified", "container_isolation", "host_cli_fallback_denied", "workspace_escape_denied",
         "metadata_egress_denied", "host_gateway_egress_denied", "private_egress_denied",
         "unapproved_public_egress_denied", "attempt_gateway_allowed", "cleanup_confirmed",
         "revocation_confirmed", "origin_bypass_denied",
     )
-    results = report.get("results") or {}
-    for key in required:
-        if results.get(key) is not True:
-            errors.append(f"required result {key} is absent or failed")
+    target_checks = report.get("target_host_checks")
+    if not isinstance(target_checks, dict):
+        errors.append("target_host_checks is missing or invalid")
+        target_checks = {}
+    for key in target_required:
+        if target_checks.get(key) is not True:
+            errors.append(f"required target-host check {key} is absent or failed")
     if contains_secret(report):
         errors.append("evidence contains credential-shaped data")
     return errors

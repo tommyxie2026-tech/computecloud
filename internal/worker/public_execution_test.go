@@ -18,18 +18,38 @@ func TestWorkerFailsClosedBeforeWorkspaceForUnsafeCredentialMode(t *testing.T) {
 		{name: "runtime cannot use gateway", environment: "container", gateway: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if publicExecutionSupported("isolated_only", tc.environment, tc.gateway, tc.capabilities, nil) {
+			if publicExecutionSupported("isolated_only", "codex_http", "0.160.1", tc.environment, tc.gateway, tc.capabilities, nil) {
 				t.Fatal("unsafe execution path accepted")
 			}
 		})
 	}
-	if publicExecutionSupported("isolated_only", "container", true, []string{"gateway_inference_v1"}, map[string]string{"ANTHROPIC_API_KEY": "local-secret"}) {
+	if publicExecutionSupported("isolated_only", "codex_http", "0.160.1", "container", true, []string{"gateway_inference_v1"}, map[string]string{"ANTHROPIC_API_KEY": "local-secret"}) {
 		t.Fatal("strict mode accepted operator runtime environment secrets")
 	}
 }
 
+func TestPublicClaudeRequiresExactAnthropicGatewayContract(t *testing.T) {
+	for _, tc := range []struct {
+		name, profile, version string
+		caps                   []string
+		want                   bool
+	}{
+		{"supported", "claude_http", "2.1.292", []string{"gateway_anthropic_messages_v1"}, true},
+		{"wrong protocol", "claude_http", "2.1.292", []string{"gateway_inference_v1"}, false},
+		{"wrong version", "claude_http", "2.1.293", []string{"gateway_anthropic_messages_v1"}, false},
+		{"codex protocol", "codex_http", "0.160.1", []string{"gateway_anthropic_messages_v1"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := publicExecutionSupported("isolated_only", tc.profile, tc.version, "container", true, tc.caps, nil)
+			if got != tc.want {
+				t.Fatalf("supported=%v want=%v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestTrustedOnlyModePreservesExistingLocalBehavior(t *testing.T) {
-	if !publicExecutionSupported("trusted_only", "process", false, nil, map[string]string{"CUSTOM": "value"}) {
+	if !publicExecutionSupported("trusted_only", "claude_http", "any", "process", false, nil, map[string]string{"CUSTOM": "value"}) {
 		t.Fatal("trusted mode changed existing local process behavior")
 	}
 }

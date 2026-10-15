@@ -1,0 +1,17 @@
+{
+  "network_mode": "computecloud-control",
+  "allowed_mounts": {
+    "/etc/computecloud": {
+      "mode": "ro",
+      "source_prefix": "/srv/agent-platform/worker-template/config"
+    },
+    "/var/lib/computecloud": {
+      "mode": "rw",
+      "source_prefix": "/srv/agent-platform/worker-template/state"
+    },
+    "/home/computecloud/.codex": {
+      "mode": "rw",
+      "source_prefix": "/srv/agent-platform/worker-template/codex-home"
+    }
+  }
+}

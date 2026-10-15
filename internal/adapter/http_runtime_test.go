@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -57,6 +58,8 @@ func TestConfiguredHTTPRuntimeCapabilitiesFailClosedByVersion(t *testing.T) {
 	}{
 		{name: "minimum Claude", profile: "claude_http", version: "2.1.217", caps: []string{"budget_claude_estimated_usd_v1"}, want: true},
 		{name: "current Claude", profile: "claude_http", version: "2.1.292", caps: []string{"budget_claude_estimated_usd_v1"}, want: true},
+		{name: "Claude gateway contract", profile: "claude_http", version: "2.1.292", caps: []string{"budget_claude_estimated_usd_v1", "gateway_anthropic_messages_v1"}, want: true},
+		{name: "Claude gateway hidden on other version", profile: "claude_http", version: "2.1.293", caps: []string{"gateway_anthropic_messages_v1"}, wantErr: true},
 		{name: "old Claude remains unbudgeted", profile: "claude_http", version: "2.1.216"},
 		{name: "Codex never inherits Claude budget", profile: "codex_http", version: "0.160.1"},
 		{name: "unknown capability", profile: "claude_http", version: "2.1.292", caps: []string{"invented_budget"}, wantErr: true},
@@ -84,13 +87,66 @@ func TestConfiguredHTTPRuntimeCapabilitiesFailClosedByVersion(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := false
+			gateway := false
 			for _, capability := range caps.Advertised() {
 				got = got || capability == "runtime:budget_claude_estimated_usd_v1"
+				gateway = gateway || capability == "runtime:gateway_anthropic_messages_v1"
 			}
 			if got != tc.want {
 				t.Fatalf("budget capability=%v want=%v advertised=%v", got, tc.want, caps.Advertised())
 			}
+			if gateway != (tc.profile == "claude_http" && tc.version == "2.1.292" && contains(tc.caps, "gateway_anthropic_messages_v1")) {
+				t.Fatalf("Anthropic gateway capability=%v advertised=%v", gateway, caps.Advertised())
+			}
 		})
+	}
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestClaudeHTTPPrepareInjectsOnlyAttemptGatewayCredentials(t *testing.T) {
+	runtime := testHTTPRuntime(t, http.NotFoundHandler())
+	runtime.Version = "2.1.292"
+	provider, _ := Lookup("claude_http")
+	prepared, err := provider.Prepare(PrepareRequest{
+		AttemptID: "attempt-1", Generation: 1, Runtime: runtime,
+		Spec: &pb.TaskSpec{Model: "claude-safe"}, Policy: config.Policy{ClaudePermissionMode: "dontAsk"},
+		Gateway: &pb.GatewayAccess{BaseUrl: "https://gateway.example.invalid/agent", Token: "attempt-canary"},
+		Env:     []string{"KEEP=value", "ANTHROPIC_API_KEY=provider-canary", "ANTHROPIC_AUTH_TOKEN=stale", "ANTHROPIC_BASE_URL=https://evil.invalid", "CLAUDE_CODE_USE_BEDROCK=1"},
+		CWD:     "/workspace", Input: "hello",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasExactString(prepared.Env, "KEEP=value") || !hasExactString(prepared.Env, "ANTHROPIC_BASE_URL=https://gateway.example.invalid/agent") || !hasExactString(prepared.Env, "ANTHROPIC_AUTH_TOKEN=attempt-canary") {
+		t.Fatalf("Gateway environment missing: %v", prepared.Env)
+	}
+	for _, item := range prepared.Env {
+		if strings.Contains(item, "provider-canary") || strings.Contains(item, "stale") || strings.Contains(item, "evil.invalid") || strings.Contains(item, "BEDROCK") {
+			t.Fatalf("unsafe provider override survived: %s", item)
+		}
+	}
+	if !contains(prepared.Sensitive, "attempt-canary") {
+		t.Fatal("Attempt token not marked sensitive")
+	}
+}
+
+func TestClaudeHTTPPrepareRejectsUnsupportedGatewayVersionAndURL(t *testing.T) {
+	runtime := testHTTPRuntime(t, http.NotFoundHandler())
+	provider, _ := Lookup("claude_http")
+	for _, tc := range []struct{ version, base string }{{"2.1.291", "https://gateway.example.invalid/agent"}, {"2.1.292", "http://gateway.example.invalid/agent"}, {"2.1.292", "https://user@gateway.example.invalid/agent"}, {"2.1.292", "https://gateway.example.invalid/agent?x=1"}} {
+		runtime.Version = tc.version
+		_, err := provider.Prepare(PrepareRequest{AttemptID: "a", Generation: 1, Runtime: runtime, Spec: &pb.TaskSpec{Model: "m"}, Policy: config.Policy{ClaudePermissionMode: "dontAsk"}, Gateway: &pb.GatewayAccess{BaseUrl: tc.base, Token: "t"}, CWD: "/workspace", Input: "hello"})
+		if err == nil {
+			t.Fatalf("accepted version=%q base=%q", tc.version, tc.base)
+		}
 	}
 }
 

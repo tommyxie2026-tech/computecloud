@@ -76,16 +76,17 @@ python3 scripts/security/worker_egress_acceptance.py \
   --network <operator-egress-network> \
   --image <agent-runtime-image>@sha256:<64-hex-digest> \
   --platform linux/amd64 \
+  --worker-config-digest sha256:<64-hex-config-digest> \
   --attempt-id <sanitized-attempt-id> \
   --allowed-model-url https://<approved-gateway>/v1/ \
   --metadata-url http://<operator-metadata-test-address>/ \
   --host-gateway-url http://<worker-host-gateway-test-address>/ \
   --private-test-url http://<operator-private-test-address>/ \
   --unapproved-public-url https://<operator-unapproved-public-test-host>/ \
-  --output dist/public-security/worker-a-egress.json
+  --output dist/public-security/worker-egress.json
 ```
 
-Worker B 重复运行，替换其实际镜像平台并使用独立 Attempt ID。若 `docker` 命令不在 PATH 中，可显式传 `--docker <docker-cli-path>`。脚本会启动仅用于网络探测的容器：批准模型 Gateway 端点必须可达；metadata、Worker host gateway、专用私网目标和未批准公网目标都必须在网络层不可达。单纯 HTTP 401/403 仍表示 TCP/HTTP 可达，不符合“网络拒绝”预期。检查脚本报告只含目标标签、HTTP 状态、digest 和平台，不含 URL/token。
+每台 Worker 和每个平台都要独立运行，并使用独立 Attempt ID。`--worker-config-digest` 应为已审核、脱敏部署配置清单的 SHA-256；不要把密钥文件纳入该清单。若 `docker` 命令不在 PATH 中，可显式传 `--docker <docker-cli-path>`。脚本会启动仅用于网络探测的容器：批准模型 Gateway 端点必须可达；metadata、Worker host gateway、专用私网目标和未批准公网目标都必须在网络层不可达。单纯 HTTP 401/403 仍表示 TCP/HTTP 可达，不符合“网络拒绝”预期。脚本报告只含目标标签、HTTP 状态、digest、平台和探测结果，不含 URL/token；它只记录目标机网络探测，不代表静态容器配置已通过。
 
 此测试探测的是指定网络上的临时 probe container，不能单独证明生产 Attempt 所有 DNS、IPv6、代理、重定向和主机防火墙路径都受控。结合 OCI 运行时实际 Attempt 检查、宿主出站防火墙规则和网络侧日志审阅。任何被拒绝的目标意外可达都应停止放量并修复网络策略。
 
@@ -99,12 +100,17 @@ Worker B 重复运行，替换其实际镜像平台并使用独立 Attempt ID。
   "server_image_digest": "sha256:<64位digest>",
   "worker_image_digest": "sha256:<64位digest>",
   "agent_runtime_image_digest": "sha256:<64位digest>",
+  "worker_config_digest": "sha256:<64位脱敏配置清单摘要>",
   "platform": "linux/amd64",
-  "worker_id": "worker-a",
+  "worker_id": "<stable-worker-id>",
   "attempt_id": "<sanitized-attempt-id>",
-  "target_host": true,
   "secrets_included": false,
-  "results": {
+  "static_config_checks": {
+    "worker_container_config_passed": true,
+    "runtime_controller_config_passed": true
+  },
+  "target_host_checks": {
+    "target_host_verified": true,
     "container_isolation": true,
     "host_cli_fallback_denied": true,
     "workspace_escape_denied": true,
@@ -120,7 +126,7 @@ Worker B 重复运行，替换其实际镜像平台并使用独立 Attempt ID。
 }
 ```
 
-按每台 Worker、每个平台和候选部署分别保留证据；必填 `worker_id` 使用部署配置中的稳定 Worker ID，避免把 A 的通过结果套用到 B。校验器只检查字段存在和安全字符格式，不能证明该 ID 对应真实目标主机。不要将私钥、API key、证书内容、Authorization 值、提示词、原始模型响应、完整请求 URL 或个人配置写入 JSON/工单。报告中的 `target_host: true` 是操作人员对证据来源的声明，必须由审阅者对照受限原始日志、外部探测结果和变更记录核验。
+按每台 Worker、每个平台和候选部署分别保留证据。`static_config_checks` 来自 Docker inspect validator；`target_host_checks` 必须来自对应目标主机上的实际负向测试和网络探测。静态检查通过不能填充或推断任何目标机测试结果。`target_host_verified` 是证据审阅者对测试确实来自目标机的声明，结构 validator 不能证明其真实性。必填 Worker ID 使用部署配置中的稳定 ID，避免跨 Worker 复用证据。不要将私钥、API key、证书内容、Authorization 值、提示词、原始模型响应、完整请求 URL 或个人配置写入 JSON/工单。
 
 运行结构门禁：
 
