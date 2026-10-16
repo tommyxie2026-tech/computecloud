@@ -47,4 +47,6 @@
 
 ## 回退
 
-停止新任务并排空或停止所有 Attempt；停止 v0.4.8 进程。恢复升级前完整 Server/Worker 数据快照与原配置，再固定回退版本的镜像 digest 启动。v0.4.7 Server 不能打开 v19 数据库；不得通过降低 `PRAGMA user_version` 回退。回退后核对旧 schema 和 SQLite 完整性，并确认已撤销的 API key、Worker 证书指纹不会因快照恢复而重新启用。升级后新写入数据不在旧快照内，记录恢复窗口及其数据损失。
+停止新任务并排空或停止所有 Attempt；关闭公网入口并停止 v0.4.8 进程。恢复升级前完整 Server/Worker 数据快照与原配置，再固定回退版本的镜像 digest 启动。v0.4.7 Server 不能打开 v19 数据库；不得通过降低 `PRAGMA user_version` 回退。核对旧 schema 和 SQLite 完整性。
+
+恢复快照会回到快照时的 API key 数据和 Worker 证书 fingerprint 配置，快照之后的撤销不会自动保留。保持公网入口关闭，按独立保存的凭据变更记录重新撤销已吊销的 key 和证书，并逐项确认旧凭据被拒绝。若无法完整核对变更记录，则在恢复服务前轮换仍有效的 API key 和 Worker 客户端证书、更新服务端 fingerprint 清单，并验证旧凭据不可用。完成凭据核验后才重新开放入口。升级后新写入数据不在旧快照内，记录恢复窗口及其数据损失。

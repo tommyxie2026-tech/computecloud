@@ -1,5 +1,5 @@
 GO ?= go
-VERSION ?= 0.4.8
+VERSION ?= 0.4.9
 V047_CANDIDATE_SHA ?= $(shell git rev-parse HEAD)
 GOVULNCHECK_VERSION ?= v1.2.0
 

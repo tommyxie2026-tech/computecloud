@@ -1,67 +1,34 @@
-# P0–P2 execution ledger
+# P0–P2 实施与验收台账
 
-Initial baseline: main `8540e06` (2026-09-30). Current pre-PR baseline: `dd36008` (2026-10-08).
-Product: Agent-aware Distributed Job Execution Platform / Agent Job Executor.
+本台账区分实现、自动化验证、合并/发布和目标环境验收。代码与 CI 通过不能替代真实主机、Provider、生产网络或性能证据。
 
-This ledger separates implementation, automated validation, merge/release, and
-real-environment acceptance. A role assignment is not proof of delivery.
+## 当前基线
 
-The scoped previews `v0.4.7-rc.1` and `v0.4.7-rc.2` were published as
-prereleases. The latter freezes Goal governance and the bounded Runtime budget
-slice; its release gates, artifacts and limitations are tracked in
-[the release record](v0.4.7-rc.2-release-status.md).
-The [certification simulation gate](../validation/certification-simulation.md)
-collects repeatable CI evidence, but cannot close the real-environment baseline.
-The [v0.4.x closeout plan](v0.4-closeout-plan.md) now tracks the remaining
-ecosystem, Goal, Relay and real-acceptance slices against explicit release gates.
+- 稳定版：v0.4.8，发布记录见 [v0.4.8 release status](v0.4.8-release-status.md)。
+- 主线后续已合入 PR #148（长请求处理）和 PR #150（Worker 部署加固、Claude Attempt Gateway）；主线 push CI run [38815497011](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38815497011) 成功。上述改进尚未纳入 v0.4.8 已发布产物。
+- Server schema v19 / Worker schema v6；升级必须先备份，禁止降低 SQLite `user_version`。
+- 发版规则：精确候选 SHA 的所有必需 CI 通过且没有未解决的严重正确性问题即可授权稳定版发布；目标环境验收继续单独跟踪，不得宣称已完成。
 
-| Order | Scope | Status / acceptance |
-| --- | --- | --- |
-| P0 | Retry storage gate, deterministic process-stop fixture, schema documentation | COMPLETE: PR #92 merged; full matrix and main CI 37435035493 PASS |
-| P1-A | Workspace cache, bounded GC, warm materialization, metrics and benchmark | PR #93, #109 and #111 merged. Bounded parallel file copies plus overlapped integrity validation give three local macOS fixture P50 ratios of 20.2%, 20.1% and 20.7%. Linux single-runner simulation Gate passed in full matrix 37564049429, including cached/cold P50 <=40%; representative Linux Worker/real Job acceptance remains pending |
-| P1-B | Readiness advertisement, stale/unknown handling, explainability and deterministic scoring | PR #94 observer merged; opt-in `readiness-v1` scoring is implemented locally and defaults off. Remote CI/merge and performance evidence remain pending |
-| P1-C | Production Baseline | BLOCKED on external environment: two independent Linux Workers, pinned real Runtime/MCP versions, accounts/budgets and a 24h+ window; #1/#9 remain open |
-| P1-D | Goal compatibility, persistence, execution/evaluation integration, RPG-4 and Control bridge | PR #95–100 and #124–125 merged; the current code/CI slice was published in prerelease v0.4.7-rc.2. Synthetic execution, atomic reservations, artifact evaluation, human decisions, Control audit projection, atomic Guard → Plan/Job publication, one-use permission consumption and cost-only `claude_http` enforcement are implemented. PR #125 exact-head CI 37805837985 and release CI 37858141897 passed, including real Docker/fake-Claude OCI coverage; real Provider and independent-host acceptance remain pending, so RPG remains PARTIAL |
-| P2-A | Experimental relay | PR #102–104 merged; full matrices 37465996087 / 37468359266 / 37468567184 PASS. Explicit operator TLS rendezvous fixture, direct-first connector and dual Worker Job recovery Gate are implemented. Unattended ticket provisioning, default-config opt-in wiring, control/event/bulk priority, full operations and real NAT acceptance remain pending |
-| P2-B | Control review UX | PR #101 merged; full matrix 37465407006 PASS. Authenticated bounded report/patch text preview with full hash and Attempt provenance; no patch execution |
-| P2-C | Mobile follow-ups | Existing foundation preserved. Pairing/push implementation, platform signing and device acceptance remain pending; no signed native package is claimed |
+| 优先级 | 范围 | 代码/CI 状态 | 仍需验收 |
+| --- | --- | --- | --- |
+| P0 | v0.4.9 收尾与版本一致性 | PR #148/#150 已合并；README、路线图、台账与候选发布文档已对齐，主线 CI 通过 | 精确候选提交的全量 CI、package、多架构镜像和 release evidence |
+| P1 | Runtime / Environment / Trigger | HTTP Runtime、Container EnvironmentProvider、CI Trigger/Delivery 已有代码与 CI 路径 | 固定版本真实 Runtime、服务重启/恢复、真实 CI→Server 幂等和来源证明、OCI/网络隔离负向测试 |
+| P1 | Goal / RPG 与受限预算 | Synthetic Goal、原子 Plan/Job 发布、一次性审批消费及受限 `claude_http` 估算费用控制已有代码与 CI | 固定版本真实 Runtime、独立主机恢复及真实 Provider 合约；自动 Re-plan 继续关闭，真实账单上限不由应用侧估算替代 |
+| P1 | Workspace 缓存 | provider fixture 和 CI 缓存 P50 目标通过，准备缓存代码与观测已合入 | 代表性 Linux Worker/真实 Job 的冷/热准备 P50/P95 与完整 Job 时延 |
+| P1 | Agent-aware readiness scoring | 可选、确定性评分与解释性 Gate 已存在，默认关闭；硬过滤优先 | 代表性负载下的性能基线和受控启用验收；不得绕过能力、安全、权限或并发限制 |
+| P1 | 公网安全 | API key 生命周期、Worker mTLS、strict OCI 与 Codex/Claude Attempt Gateway 代码和 CI 已实现 | 公网边缘/源站防护、证书轮换撤销、真实 OCI/egress 负向测试、固定 CLI/Provider 验收和供应商硬账单上限 |
+| P2 | 实验性 Relay | Transport seam、direct-first/显式 relay fallback、控制流背压、恢复 Gate、指标与运维说明已具备；`direct` 仍是默认 | 真实 NAT、断网、Relay 重启、长任务及目标网络故障验收；未通过前不宣称生产默认可用 |
+| P2 | Control / Mobile | Control 观察、提交/有限重试和 Artifact 审阅已交付；Mobile foundation 已有 | Mobile pairing/push、平台签名和设备验收归 v0.5.x 独立切片 |
 
-## P0 compatibility correction
+## v0.4.9 执行顺序
 
-- v0.4.5: Server schema v12 / Worker v6 (historical evidence remains unchanged).
-- v0.4.6 tag: Server schema v13 / Worker v6; Control write lease migration.
-- Current main: Server schema v16 / Worker v6; v15 adds Goal execution records, v16 adds governance/usage.
-- Never downgrade `PRAGMA user_version`. Drain execution and back up complete data
-  directories before upgrade. Restore compatible pre-upgrade backups for rollback.
-- The earlier main run 36688523493 failed retry-flow (expected 13, actual 14)
-  and the macOS process-stop fixture (fixed startup delay raced Python signal
-  setup). PR #92 corrected both and passed the full matrix; this is historical
-  failure context, not the current main status.
-- C1 Observe and UI-03b Submit/bounded Retry are merged and included in v0.4.6.
-  Control artifact review and synthetic Goal execution are now merged. Complete Mobile Beta, RPG closure and production Relay remain separate.
+1. 对齐 README、长期路线图、release status、安全跟踪和历史实施台账，明确哪些只是历史记录。
+2. 核验 Claude Attempt Gateway 与 Worker strict 边界的定向、安全负向、恢复和漏洞扫描 Gate；只修复可复现缺口。
+3. 验证 v0.4.8 数据升级兼容性、备份/恢复测试和 amd64/arm64 package/container Gate。
+4. 冻结精确候选 SHA，运行所有必需 main/release CI，生成脱敏 release evidence 后再请求正式发布。
 
-## Execution rules
+详见 [v0.4.9 稳定收尾迭代计划](../superpowers/plans/v0.4.9-release-iteration.md)。真实主机、真实 Provider、NAT Relay、证书撤销、OCI escape、供应商账单硬上限和代表性缓存性能仍按目标环境记录为 `目标环境待验收` 或 `延期`，不由 CI 关闭。
 
-Keep changes in independently reviewable PRs. Public contracts and migrations
-are separate from dependent feature changes. Preserve existing CI gates and
-run the full main/release matrix before claiming a new stable baseline.
-不得根据 fixture 测试或部署指南推断已完成生产认证、移动端签名分发或 RPG 闭环。稳定版可按上文规则依据精确候选 CI 全绿授权发版，但不得声称待办的生产验收项已完成。
+## v0.5.0 后续主线
 
-## Remaining work in priority order
-
-1. v0.4 ecosystem: validate the implemented self-hosted HTTP Runtime, isolated
-   Container Environment Provider and authenticated Trigger/Delivery adapter
-   against fixed real versions. Keep each negative/restart Gate independently
-   reviewable. Token limits, Codex cost limits and mixed-provider finite budgets
-   remain fail-closed.
-2. P2: complete Relay traffic priority, metrics and operations. Keep `direct`
-   the default and validate real NAT/fault/long-task behavior separately.
-3. Last: measure cache targets on representative Linux Worker workloads and
-   complete the real Production Baseline with independent hosts and authorized
-   real-runtime budgets. The local ten-Attempt concurrency Gate and CI
-   provider-fixture P50 target do not substitute for real Job acceptance.
-
-Mobile pairing/push, signing and device acceptance remain in the v0.5.x C3
-Mobile Beta lane, separate from v0.4.x exit gates.
-
-发版策略更新（2026-10-11）：精确候选 SHA 的所有必需 CI 任务通过，即可授权稳定版发版。真实 Runtime、独立主机、生产网络和代表性性能验收仍未完成，必须继续标记为待办；CI/fixture 通过不会关闭这些验收项，也不代表生产就绪。这些事项不再阻塞发版；限定范围的预览版本身仍不等于稳定版。
+聚焦 Agent-aware Scheduler：硬能力/安全/凭据/环境约束保持先行，确定性软评分默认关闭，并记录候选过滤原因、主要评分因素、选中 Worker 和回退原因。Mobile pairing/push、Execution Usage MVP、Private Worker Pool 和跨节点 Artifact 各自切片，不作为 v0.4.9 发版条件。

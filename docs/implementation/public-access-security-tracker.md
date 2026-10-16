@@ -6,9 +6,15 @@
 
 | 阶段 | 状态 | 计划 | 退出条件 |
 | --- | --- | --- | --- |
-| P0 公网入口与资源限制 | 进行中 | [实施计划](../superpowers/plans/2026-10-12-public-ingress-resource-controls.md) | 认证主体速率/并发/成本限额生效；公网入口拓扑、源站保护、429/过载行为通过验收 |
-| P1 API Key 生命周期与 Worker mTLS | 本地实现完成，待目标环境验收 | [实施计划](../superpowers/plans/2026-10-12-api-keys-and-worker-mtls.md) | key 创建/撤销/过期有效；A/B 独立证书验证、逐台轮换、撤销和回退完成 |
-| P2 Attempt 凭据与网络隔离 | 进行中 | [实施计划](../superpowers/plans/2026-10-12-attempt-credential-and-egress-isolation.md) | 公网严格模式拒绝 process；Attempt 凭据限时限域；目标 Worker 逃逸/出站负向测试通过；Attempt token 与估算费用边界代码完成；上游账单硬限额及目标环境验收仍待完成 |
+| P0 公网入口与资源限制 | 代码与 CI 验证完成；目标边缘待验收 | P0 实施计划 | 认证主体速率/并发/成本限额由代码和 CI 覆盖；目标公网入口、源站保护、429/过载行为需在部署环境核验 |
+| P1 API Key 生命周期与 Worker mTLS | 代码与 CI 验证完成；证书演练待验收 | P1 实施计划 | key 创建/撤销/过期由测试覆盖；逐台 Worker 证书轮换、撤销和回退需有目标环境证据 |
+| P2 Attempt 凭据与网络隔离 | strict OCI/Codex/Claude Gateway 代码与 CI 验证完成；目标隔离待验收 | [Worker 部署加固](../superpowers/plans/worker-deployment-hardening.md)、[Claude Attempt Gateway](../superpowers/plans/claude-attempt-gateway.md) | Attempt 凭据限时限域、固定 CLI 协议和预算边界由代码/CI 覆盖；真实 OCI 逃逸、出站拒绝、供应商账单硬上限及目标主机验收仍待完成 |
+
+### 当前安全结论
+
+- v0.4.8 已发布的入口限流、身份配额、API key 生命周期、Worker mTLS 与 strict OCI/Codex Gateway 不等于目标环境公网安全验收。
+- PR #150 的 Worker 部署加固和 Claude Attempt Gateway 已合入主线，主线 CI 通过；仍未证明真实供应商、目标 Worker 的文件/进程/网络隔离、证书轮换撤销或账单硬上限。
+- 当前证据不能支持接纳任意不可信公网租户；应维持受信用户/受控租户范围，直到对应目标环境 Gate 有证据。
 
 ## 跟踪规则
 
@@ -17,7 +23,9 @@
 - 仅在所有阶段完成并有目标环境证据后标记“可面向不可信公网租户”；此前的部署范围保持受信任用户/受控租户。
 - 任何凭据泄露或 mTLS 撤销演练失败都暂停扩大流量，先吊销相关凭据并复核审计。
 
-## 当前记录
+## 历史实施记录
+
+以下条目保留实现过程的提交与 CI 证据，仅作历史追溯；如与上方“当前安全结论”或状态表冲突，以当前摘要为准。
 
 - 已完成：安全审查报告与架构设计规格；规格提交 `53cb5a1`。
 - 已完成：P0/P1/P2 三份逐任务实施计划；P0 Task 1 已提交 `79cc1df`（认证 HTTP 请求限流）。
