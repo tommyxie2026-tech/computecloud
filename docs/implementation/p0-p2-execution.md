@@ -4,14 +4,14 @@
 
 ## 当前基线
 
-- 稳定版：v0.4.8，发布记录见 [v0.4.8 release status](v0.4.8-release-status.md)。
-- 主线后续已合入 PR #148（长请求处理）和 PR #150（Worker 部署加固、Claude Attempt Gateway）；主线 push CI run [38815497011](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38815497011) 成功。上述改进尚未纳入 v0.4.8 已发布产物。
+- 稳定版：[v0.4.9](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.9)，发布记录见 [v0.4.9 release status](v0.4.9-release-status.md)。
+- PR #148（长请求处理）和 PR #150（Worker 部署加固、Claude Attempt Gateway）已包含在 v0.4.9 正式产物中；候选 CI run [38902679414](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38902679414) 与发布 CI run [38917287479](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38917287479) 均通过。
 - Server schema v19 / Worker schema v6；升级必须先备份，禁止降低 SQLite `user_version`。
 - 发版规则：精确候选 SHA 的所有必需 CI 通过且没有未解决的严重正确性问题即可授权稳定版发布；目标环境验收继续单独跟踪，不得宣称已完成。
 
 | 优先级 | 范围 | 代码/CI 状态 | 仍需验收 |
 | --- | --- | --- | --- |
-| P0 | v0.4.9 收尾与版本一致性 | PR #148/#150 已合并；README、路线图、台账与候选发布文档已对齐，主线 CI 通过 | 精确候选提交的全量 CI、package、多架构镜像和 release evidence |
+| P0 | v0.4.9 收尾与版本一致性 | 正式 Release 已发布；精确候选 CI、package、多架构镜像、资产校验和 README/路线图/台账已完成 | 仅剩目标环境验收：真实双 Worker 升级恢复、Provider、安全隔离、Relay、缓存性能和供应商硬账单上限 |
 | P1 | Runtime / Environment / Trigger | HTTP Runtime、Container EnvironmentProvider、CI Trigger/Delivery 已有代码与 CI 路径 | 固定版本真实 Runtime、服务重启/恢复、真实 CI→Server 幂等和来源证明、OCI/网络隔离负向测试 |
 | P1 | Goal / RPG 与受限预算 | Synthetic Goal、原子 Plan/Job 发布、一次性审批消费及受限 `claude_http` 估算费用控制已有代码与 CI | 固定版本真实 Runtime、独立主机恢复及真实 Provider 合约；自动 Re-plan 继续关闭，真实账单上限不由应用侧估算替代 |
 | P1 | Workspace 缓存 | provider fixture 和 CI 缓存 P50 目标通过，准备缓存代码与观测已合入 | 代表性 Linux Worker/真实 Job 的冷/热准备 P50/P95 与完整 Job 时延 |
@@ -25,7 +25,7 @@
 1. 对齐 README、长期路线图、release status、安全跟踪和历史实施台账，明确哪些只是历史记录。
 2. 核验 Claude Attempt Gateway 与 Worker strict 边界的定向、安全负向、恢复和漏洞扫描 Gate；只修复可复现缺口。
 3. 验证 v0.4.8 数据升级兼容性、备份/恢复测试和 amd64/arm64 package/container Gate。
-4. 冻结精确候选 SHA，运行所有必需 main/release CI，生成脱敏 release evidence 后再请求正式发布。
+4. 精确候选 CI、正式 Release 与产物证据复核已完成；持续跟进的唯一 v0.4.9 项为目标环境验收，按独立双机计划执行。
 
 详见 [v0.4.9 稳定收尾迭代计划](../superpowers/plans/v0.4.9-release-iteration.md)。真实主机、真实 Provider、NAT Relay、证书撤销、OCI escape、供应商账单硬上限和代表性缓存性能仍按目标环境记录为 `目标环境待验收` 或 `延期`，不由 CI 关闭。
 
