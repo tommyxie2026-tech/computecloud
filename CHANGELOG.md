@@ -1,5 +1,13 @@
 # 版本记录
 
+## 0.4.9 — Gateway 与 Worker 安全边界收敛（候选范围）
+
+- 修复长时间运行的 Agent HTTP 请求超时处理。
+- 为 Worker strict 部署增加容器边界校验与凭据收敛。
+- 增加受限 Claude Anthropic Messages Attempt Gateway，支持 SSE 与 usage/估算费用 fail-closed 结算。
+- Server / Worker schema 分别保持 v19 / v6；不新增迁移。
+- 固定版本真实 Provider、独立主机升级恢复、OCI/egress 负向测试、证书轮换撤销和供应商账单硬上限仍需目标环境验收；候选 CI 不代表生产认证。
+
 ## 0.4.8 — 公网入口与 Agent Job 执行边界加固
 
 - 增加认证请求来源限流、身份/项目配额、模型并发上限和 Worker gRPC 入场限制。

@@ -1,7 +1,7 @@
 # computecloud
 
-当前执行台账：[P0–P2 实施与验收](docs/implementation/p0-p2-execution.md)（2026-10-07）。
-0.4.x 收尾与双机验收：[实施计划](docs/implementation/v0.4-closeout-plan.md) / [双机预检](docs/validation/dual-host-preflight.md)。
+当前执行台账：[P0–P2 实施与验收](docs/implementation/p0-p2-execution.md)。
+v0.4.x 收尾：[实施计划](docs/implementation/v0.4-closeout-plan.md) / [v0.4.9 迭代计划](docs/superpowers/plans/v0.4.9-release-iteration.md) / [双机预检](docs/validation/dual-host-preflight.md)。
 
 轻量的 **Agent-aware Distributed Job Execution Platform**。使用 Go、gRPC 和本机 SQLite，把 Agent Job 可靠地分配到远程 Worker 执行，并围绕 Runtime、Tool、Environment、Workspace、Artifact、Retry、Control 与 Goal-oriented Computing 建立可恢复、可审计的执行语义。
 
@@ -9,27 +9,14 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 
 ## 当前状态
 
-- 稳定发布基线：**[v0.4.8](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.8)**，tag 指向 `3a6ec3bd8402c64ff4a97e889e9b516812221164`；正式 Release、Linux amd64/arm64 归档和 Server/Worker 多架构容器已发布。发布 CI、归档 SHA-256 与镜像 digest 见 [v0.4.8 发布记录](docs/implementation/v0.4.8-release-status.md)和[部署指南](docs/deployment/production-v0.4.8.md)。
-- 限定范围预览版 **[v0.4.7-rc.1](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7-rc.1) 已发布**（prerelease，非生产认证）；范围与证据见 [发布记录](docs/implementation/v0.4.7-rc.1-release-status.md)
-- 限定范围预览版 **[v0.4.7-rc.2](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7-rc.2) 已发布**（prerelease，非生产认证）；它纳入原子 Goal Plan/Job 发布、一次性批准消费和限定 `claude_http` 估算费用强制，仍不宣称真实模型、独立双机或生产认证；范围、产物与 CI 证据见 [发布记录](docs/implementation/v0.4.7-rc.2-release-status.md)
-- v0.4.6 已通过完整 CI、package、multi-arch container 与 release；发布范围和升级步骤见 [v0.4.6 部署指南](docs/deployment/production-v0.4.6.md)，验收证据见 [v0.4.6 发布记录](docs/implementation/v0.4.6-release-status.md)
-- v0.4.7 稳定版发布记录：[GitHub Release](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.7)，发布 CI [#1559](https://github.com/tommyxie2026-tech/computecloud/actions/runs/38151088330) 成功。真实 Runtime、独立双机升级恢复、代表性缓存和 NAT Relay 仍是发布后生产验收，详见[稳定版台账](docs/implementation/v0.4.7-stable-tracker.md)
-- v0.4.8 纳入公网入口限流、认证身份配额、可撤销 API key、Worker mTLS 和 strict OCI/Codex HTTP Attempt 边界；这些能力不等于完成目标环境公网安全验收。
-- 当前稳定功能基线：**v0.4.8 Agent Job Executor + v0.4.x Runtime / Tool / Environment、Prepared Workspace、synthetic Goal 与实验性 Relay**
-- 已完成：EnvironmentCapability、EnvironmentProvider Execution、Runtime/Tool/Environment 分层、Agent Control ACP-4a durable approval
-- 当前功能主线：Goal 的原子 Plan/Job 发布、一次性批准消费和限定 `claude_http` 费用上限已完成代码与 CI 闭环；Relay 运维代码闭环已完成。真机 Runtime/Environment/Trigger、独立双机、缓存与 NAT Relay 验收继续跟踪为生产验收，不阻塞 CI 全绿后的稳定发布。CI Trigger/Delivery 的 CLI 适配器和本地交付记录已合入，真实 CI→Server 验收仍待完成；隔离 Environment 不能由宿主机 CLI 虚报执行边界
-- 自托管 HTTP Runtime：`codex_http` / `claude_http` 的 Unix-socket Provider、HTTP 服务和固定版本 OCI 镜像已实现，服务为每个 Attempt 启动独立 Docker 容器；Container EnvironmentProvider 已接入持久引用、恢复检查与清理证明。部署与契约见 [HTTP Runtime 说明](docs/implementation/agent-http-runtime.md)。真实 CLI、Docker 隔离负向测试和双机验收仍待完成。
-- Relay/P2P 当前进度：Transport seam、实验性 TLS Relay fixture、direct-first fallback 与 Worker 双 Job 恢复 Gate 已合入；Broker 侧短期一次性票据签发/领取接口和 Server 直连/隧道共用 gRPC 服务的接入点已实现。Server/Worker 的自动签发、领取与连接循环已提供显式 `direct_then_relay` 配置，`direct` 仍为默认路径；真实 NAT/长任务验收未完成
-- Relay 设计与实施计划：[ADR-021](docs/adr/0021-relay-assisted-p2p-transport.md) / [v0.4.x Relay 传输计划](docs/implementation/relay-p2p-transport-plan.md)
-- 下一步 Relay：按运维手册完成真实 NAT、direct fallback、Relay 重启重连、事件水位和 Attempt 去重验收；`direct` 继续为默认路径
-- Goal-oriented Computing：Legacy Job 的 synthetic Goal/Plan/Graph、Attempt 预算预留、Artifact 证据评估和 Control 治理审计已接入执行路径；显式提议可通过受控 HTTP 入口原子发布新 Plan/Job，自动 Re-plan 仍关闭
-- Runtime 预算：自托管 `claude_http` 已支持 Claude 客户端估算费用的微美元硬停止边界，包含能力协商、Assignment 冻结、单在途 Attempt、原子 usage 结算和未知用量 fail-closed。一次 API 调用可能越过阈值；它不是供应商账单上限。公网 `isolated_only` 模式下 Codex HTTP 每 Attempt 同时有 token 与按管理员配置单价计算的估算费用边界；Gateway 按已结算 usage 累计并在请求前夹紧 `max_output_tokens`。这不是供应商账单硬上限；目标主机/锁定 CLI 的真实合同验证待完成。Claude token 上限仍不支持。
-- RPG：RPG-1～RPG-3 原语已具备；Guard 与新 Plan/Job 的原子发布、一次性批准消费、显式提议入口和限定范围 Runtime cost enforcement 已实现。固定版本真实 Runtime 与独立主机验收仍待完成，RPG-4 保持 PARTIAL；完成后关闭，不新增 RPG-5
-- 当前稳定版本 Server schema：**v19**（v0.4.7 为 v18，v0.4.6 tag 为 v13）；Worker schema：**v6**
-- v0.4.8 安全能力已发布；不可信公网租户准入仍须完成目标主机双机证书、OCI escape、egress firewall、供应商硬账单上限和源站保护验收。状态与证据门禁见[安全实施台账](docs/implementation/public-access-security-tracker.md)和[v0.4.8 公网部署与回退指南](docs/deployment/production-v0.4.8.md)
-- 下一轮任务与缺口：[0.4.x 收尾计划](docs/implementation/v0.4-closeout-plan.md)；先推进代码与 CI，最后使用独立主机完成真实生产基线和缓存验收
-- 认证模拟 Gate：[CI 范围与证据](docs/validation/certification-simulation.md) 汇总 v13→v16 升级/恢复、单 runner 双 Worker、Relay 回退和缓存 P50；它不代表真实独立主机、真实 Runtime 或生产环境验收
-- 发布状态以 [GitHub Actions](https://github.com/tommyxie2026-tech/computecloud/actions) 与 [GitHub Releases](https://github.com/tommyxie2026-tech/computecloud/releases) 为准；代码实现完成不等于已发布
+- 稳定发布基线：**[v0.4.8](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.8)**。Linux amd64/arm64 归档和 Server/Worker 多架构容器已发布；发布证据见 [v0.4.8 发布记录](docs/implementation/v0.4.8-release-status.md) 与[部署指南](docs/deployment/production-v0.4.8.md)。
+- 主线已有未包含在 v0.4.8 产物中的后续改进：PR #148 延长 Agent HTTP 请求处理时间；PR #150 加入 Worker 部署加固与 Claude Attempt Gateway。两项均已合入主线，合并后主线 CI 通过；它们的发布状态以新的候选版本为准。
+- 当前功能基线：Agent Job Executor、Runtime / Tool / Environment、Prepared Workspace、synthetic Goal、Control 与实验性 Relay。
+- 已实现并有 CI 覆盖：Goal 原子 Plan/Job 发布和受限 `claude_http` 估算费用控制、Relay direct-first 运维基础、Worker strict OCI 边界、Codex/Claude Attempt Gateway 合约及敏感值脱敏。
+- Server schema：**v19**；Worker schema：**v6**。
+- 仍待目标环境验收：固定版本真实 Runtime、独立双 Worker 故障/升级恢复、代表性 Linux Worker 缓存性能、真实 NAT Relay、OCI/egress 隔离负向测试、mTLS 轮换/撤销、公网源站保护及供应商账单硬上限。CI 通过不等于这些验收完成，也不代表可接纳任意不可信公网租户。
+- v0.4.9 收尾范围与门槛见[迭代计划](docs/superpowers/plans/v0.4.9-release-iteration.md)；v0.5.0 主线仍是 Agent-aware Scheduler，保持确定性软评分、默认关闭。
+- 发布状态以 [GitHub Actions](https://github.com/tommyxie2026-tech/computecloud/actions) 与 [GitHub Releases](https://github.com/tommyxie2026-tech/computecloud/releases) 为准；代码合入不等于版本已发布。
 
 当前演进关系：
 

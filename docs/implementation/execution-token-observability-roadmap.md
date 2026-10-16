@@ -1,6 +1,6 @@
 # Execution Token Observability & Efficiency — 分阶段实施计划
 
-状态：PLANNED（2026-10-12）。属于 computecloud **Agent Job Executor** 的执行可观测和治理能力，不是通用 LLM/Token Gateway 或独立 AI Execution OS。
+状态：规划中。属于 computecloud **Agent Job Executor** 的执行可观测和治理能力，不是通用 LLM/Token Gateway 或独立 AI Execution OS。
 
 ## 目标与边界
 为 Goal → Plan → Job → Stage → Task → Attempt 建立可追溯的模型用量、估算费用、质量证据与效率信号。保持单 Go Server、SQLite、Worker 主动连接、durable execution truth。不引入强制 LiteLLM 代理，不复制 Usage/Budget/Evaluator 事实源。
@@ -9,7 +9,7 @@
 **范围外**：通用 LLM Gateway、跨所有应用 Prompt 仓库、全局模型价格计费平台、自动改写生产 Prompt、将 LiteLLM/Langfuse 作为核心依赖。
 
 ## 当前事实与缺口
-README 基线：主线 server schema v18（Conversation 请求度量）、Worker v6；`claude_http` 已有客户端估算费用强制边界，真实 Provider 和独立主机验收未完成；Codex token/cost 和 Claude token 上限尚未支持。不得把预计费用声明为提供商最终账单，也不能把不完整 Usage 作为 0。
+README 基线：主线 Server schema v19、Worker v6。Codex HTTP Attempt Gateway 支持按管理员配置的单价估算费用并实施 token/估算费用边界；Claude Attempt Gateway 已支持 Anthropic Messages 的受限路径和估算费用预算，但 Claude token 上限仍不支持。真实 Provider 与独立主机验收未完成。估算费用不是供应商最终账单；未知或不完整 Usage 不得作为 0。
 
 ## 统一执行 Usage Contract（新增前先复用现有结构）
 - event_id、source、source_event_id、observed_at、usage_schema_version
@@ -23,11 +23,11 @@ README 基线：主线 server schema v18（Conversation 请求度量）、Worker
 不变量：按 event_id + source_event_id 去重；累计计数与 delta 必须显式区分；stale generation 不可写入新的 Attempt；接入 LiteLLM/旁路两个来源时按 provider_request_id/attempt/时间窗口和来源优先级仲裁，不能重复结算。原始事件只追加、聚合可重建。预算消费与观测统计区分，不能用异步遥测覆盖 durable accounting。
 
 ## 路线图与验收 Gate
-### v0.4.x — Contract / Correctness，不扩大当前发布范围
-- 盘点当前 Runtime / Conversation usage / Goal budget / SQLite schema，形成字段映射与精度矩阵。
-- 为 `claude_http` 现有估算费用路径补齐增量结算、缺失值、重放、失败重试、恢复后的不重复计费测试。
-- 规划只读导出协议和 Feature Flags；不承诺 Codex token hard limit。
-- Gate `ci-execution-usage-contract`：缺失/累计/重放/故障、版本隔离、重复事件；保持现有 CI 时延预算。
+### v0.4.x — Contract / Correctness
+- 已有 Gateway 与 Goal usage/budget 合同继续作为单一执行事实源；不新增旁路计费事实源。
+- Claude Gateway 费用上限依赖 Server 侧已结算 usage 和管理员配置价格，不能限制供应商账单，也不支持 Claude token hard limit。
+- 真实 Provider、固定 CLI 与独立 Worker 恢复验收仍待执行；后续 Usage 功能先复用现有 schema 与预算合同，再单独提出只读导出方案。
+- `ci-execution-usage-contract` 的缺失值、重复事件、恢复与版本隔离 Gate 属于下一 Usage 切片，不视为现有 Gateway 真实 Provider 验收的替代。
 
 ### v0.5 — Execution Usage MVP（Agent-aware Scheduler 主线的子能力）
 - Runtime Provider 可选上报 Token/Cache/Reasoning 用量，保留来源和置信级别。

@@ -1,24 +1,20 @@
 # computecloud Agent-aware Distributed Job Execution Platform 长期路线图
 
-> 2026-10-09 执行更新：P0、缓存及 provider fixture P50、readiness 观测、synthetic Goal 执行、治理审计、Control 产物审阅、原子 Plan/Job 发布与限定 `claude_http` 估算费用强制已完成代码和 CI Gate。真实 Runtime/Worker/Job 与独立主机生产验收、完整 Relay 与 Mobile Beta 尚未完成；当前证据与剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 为准。
-当前执行台账：[P0–P2 实施与验收](p0-p2-execution.md)（2026-10-06）。
+当前稳定基线为 v0.4.8。主线后续已合入长请求处理、Worker 部署加固与 Claude Attempt Gateway；这些变更尚未包含在 v0.4.8 发布产物中。当前实现、CI、发布和环境验收的唯一执行入口为 [P0–P2 实施台账](p0-p2-execution.md) 与 [v0.4.x 收尾计划](v0.4-closeout-plan.md)。
 
-- 项目：computecloud
-- 日期：2026-09-29
-- 当前稳定发布基线：v0.4.6 Post-0.4.5 Stabilization；main 已包含 C2 Job Submit、bounded Manual Retry、UI-04a Mobile Control Foundation 与 v0.4.5 既有能力
-- 产品类别：**Agent Job Executor**
-- 长期定位：**Agent-aware Distributed Job Execution Platform**
-- 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)
-- 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)
-- 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)
-- 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)
-- Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)
-- 当前实现依据：[v0.4.6 发布记录](v0.4.6-release-status.md)、[Prepared Workspace Core](prepared-workspace-core.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[P0–P2 实施台账](p0-p2-execution.md)；当前 main Server v16 / Worker v6；v0.4.6 tag Server v13
-- 当前实施跟踪：WS-A Core、WS-B 缓存基础及 provider fixture P50 Gate、WS-C readiness 观测与默认关闭的确定性评分代码、synthetic Goal 执行/评估、Goal 治理审计、一次性审批消费、Server Plan/Job 原子发布、限定 `claude_http` cost enforcement、CI Trigger/Delivery 首个适配器和 C1 Observe PWA 已完成代码；readiness 评分远端 CI/合并与性能观测待完成。完整 Relay、Mobile Beta、真实 Worker/Job 性能与独立主机生产验收继续由 [Tracker #9](https://github.com/tommyxie2026-tech/computecloud/issues/9) 跟踪
-- 产品调研依据：[Agent-aware 产品与竞品调研（2026）](../research/agent-job-execution-product-landscape-2026.md)
-- 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md)、[Agent Control Protocol 实施计划](agent-control-protocol-plan.md)、[ADR-008](../adr/0008-client-control-plane.md)
+- 产品类别：**Agent Job Executor**。
+- 长期定位：**Agent-aware Distributed Job Execution Platform**。
+- 总体架构：[Agent-aware 总体架构](../design/agent-job-executor-architecture.md)。
+- 产品边界：[ADR-003](../adr/0003-agent-job-executor-product-scope.md)。
+- 执行语义：[ADR-004](../adr/0004-agent-aware-execution-semantics.md)。
+- 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)。
+- Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)。
+- 当前稳定版本：Server schema v19 / Worker schema v6；历史版本状态以对应 Release Status 为准。
+- 下一稳定迭代计划：[v0.4.9 稳定收尾](../superpowers/plans/v0.4.9-release-iteration.md)。
+- 产品调研依据：[Agent-aware 产品与竞品调研](../research/agent-job-execution-product-landscape-2026.md)。
+- 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md) 与 [ADR-008](../adr/0008-client-control-plane.md)。
 
-- CI 合并顺序恢复记录：[2026-09-29 CI Merge Order Recovery](ci-merge-order-recovery-2026-09-29.md)
+本文件保留长期方向与历史设计切片；若其旧分段的实现状态与当前台账不同，以当前台账和对应发布证据为准，不把历史计划文字视作当前完成状态。
 
 > 本路线图继续坚持 v0.2 的 Agent Job Executor 本质，不再向 AI Execution OS 演变。长期差异化来自 **Agent-aware execution semantics**，而不是扩大成通用 AI 基础设施。
 
@@ -209,11 +205,11 @@ Relay 传输基础纳入 v0.4.x，定位为 Runtime/Tool/Environment 横向传�
 | --- | --- | --- |
 | RLY-0 | ADR-021、Transport contract、威胁模型与版本边界 | 设计已合并 |
 | RLY-1 | Transport seam；direct 路径零回归 | 已合入 PR #102 |
-| RLY-2 | 轻量无状态 Relay、一次性短期配对票据、内层 TLS | 实验性 TLS fixture 和 Broker 一次性票据签发/领取接口已实现；运维指标与真实网络验收待完成 |
-| RLY-3 | direct-first / relay-fallback、`connection_epoch` fencing、重连 | direct-first fallback 及 Server/Worker 显式 `direct_then_relay` 签发、领取与连接循环已实现；`direct` 仍为默认，运营验收待完成 |
-| RLY-4 | Contract、安全负向、回退、重启恢复 CI Gate 与双机/NAT 验证 | 自动化回退和双 Job 恢复 Gate 已合入；真实双机/NAT/长任务验收待完成 |
+| RLY-2 | 轻量无状态 Relay、一次性短期配对票据、内层 TLS | 实验性 TLS fixture、Broker 票据签发/领取、边界指标与运维说明有代码/CI 覆盖；真实网络验收待完成 |
+| RLY-3 | direct-first / relay-fallback、`connection_epoch` fencing、重连 | 显式 `direct_then_relay` 连接循环已实现；`direct` 仍为默认；目标环境运营验收待完成 |
+| RLY-4 | Contract、安全负向、回退、重启恢复 CI Gate 与双机/NAT 验证 | 自动化回退、控制流背压与双 Job 恢复 Gate 已合入；真实双机/NAT/长任务验收待完成 |
 
-v0.4.x 的发布门槛是：`direct` 仍为默认模式，`direct_then_relay` 必须显式启用；在真实双主机、NAT、断网和长任务证据完成前，不宣称 Relay 已达到生产默认状态。设备身份、OIDC/RBAC、审计、企业 Lease 与可选 Blind E2EE Relay 仍属于 v0.6.x 治理范围。
+v0.4.x 的兼容与发布约束是：`direct` 仍为默认模式，`direct_then_relay` 必须显式启用；在真实双主机、NAT、断网和长任务证据完成前，不宣称 Relay 已达到生产默认状态。设备身份、OIDC/RBAC、审计、企业 Lease 与可选 Blind E2EE Relay 仍属于 v0.6.x 治理范围。详细当前状态以 [v0.4.x 收尾计划](v0.4-closeout-plan.md)为准。
 
 ### 3.1 Control 客户端横向能力线
 
