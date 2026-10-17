@@ -2,6 +2,7 @@
 
 当前执行台账：[P0–P2 实施与验收](docs/implementation/p0-p2-execution.md)。
 v0.4.x 收尾：[实施计划](docs/implementation/v0.4-closeout-plan.md) / [v0.4.9 迭代计划](docs/superpowers/plans/v0.4.9-release-iteration.md) / [双机预检](docs/validation/dual-host-preflight.md)。
+IU 计算模型迭代：[实现范围](docs/implementation/iu-computation-model.md) / [后续路线](docs/implementation/long-term-roadmap.md#iu-计算模型迭代台账) / [CI 模拟验收](docs/validation/iu-ci-simulation.md)。
 v0.5.0 Scheduler 跟踪：[实施计划](docs/superpowers/plans/2026-10-17-v05-agent-aware-scheduler.md) / [缺口矩阵](docs/implementation/v0.5-scheduler-gap-matrix.md) / [受控试运行](docs/validation/agent-aware-scheduler-pilot.md)。
 
 轻量的 **Agent-aware Distributed Job Execution Platform**。使用 Go、gRPC 和本机 SQLite，把 Agent Job 可靠地分配到远程 Worker 执行，并围绕 Runtime、Tool、Environment、Workspace、Artifact、Retry、Control 与 Goal-oriented Computing 建立可恢复、可审计的执行语义。
@@ -14,6 +15,7 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - v0.4.9 已包含 PR #148 的 Agent HTTP 长请求处理修复，以及 PR #150 的 Worker 部署加固与 Claude Attempt Gateway。真实 Provider、独立双 Worker 升级恢复、OCI/egress 负向、证书轮换撤销、NAT Relay、缓存性能和供应商硬账单上限仍待目标环境验收；CI 发布不代表公网生产认证完成。
 - 当前功能基线：Agent Job Executor、Runtime / Tool / Environment、Prepared Workspace、synthetic Goal、Control 与实验性 Relay。
 - 已实现并有 CI 覆盖：Goal 原子 Plan/Job 发布和受限 `claude_http` 估算费用控制、Relay direct-first 运维基础、Worker strict OCI 边界、Codex/Claude Attempt Gateway 合约及敏感值脱敏。
+- 实验性 IU 有限计算图：在既有 Task / Attempt 上支持 agent / command / join、冻结原文上下文、不可变记忆与准入、独立业务评估及 Guard 下一代；默认关闭，代码合入不代表真实模型效果或生产验收完成。
 - Server schema：**v20**；Worker schema：**v6**。
 - 仍待目标环境验收：固定版本真实 Runtime、独立双 Worker 故障/升级恢复、代表性 Linux Worker 缓存性能、真实 NAT Relay、OCI/egress 隔离负向测试、mTLS 轮换/撤销、公网源站保护及供应商账单硬上限。CI 通过不等于这些验收完成，也不代表可接纳任意不可信公网租户。
 - v0.4.9 发布收尾记录见[迭代计划](docs/superpowers/plans/v0.4.9-release-iteration.md)；v0.5.0 主线仍是 Agent-aware Scheduler，保持确定性软评分、默认关闭。
@@ -117,6 +119,22 @@ Goal / Plan / Execution Graph
 ~~~
 
 因此现有 Job API 不需要一次性重写；Legacy Job 可以逐步映射成 Synthetic Goal / Plan / Graph。
+
+### IU 有限图（实验性，默认关闭）
+
+IU 是既有执行系统中的算元契约。agent / command 节点就绪后绑定实际 Task，由既有 Attempt、Scheduler 和 Worker 执行；join 合并输入与记忆视图，不创建额外 Worker Task。原 single / map_reduce 模式继续可用。
+
+~~~text
+原文快照 + UTF-8 spans + 全局规则
+  -> 冻结 Context / Memory read-view
+  -> Ready 节点 -> Task / Attempt -> Artifact
+  -> PENDING -> ADMITTED / REJECTED
+  -> join / 下游算元 -> 独立 Evaluator -> Re-plan Guard
+~~~
+
+原文可按来源重建；模型提取或压缩仍可能丢失语义，不能由字节完整性推定语义无损。模型写入的记忆保持 unchecked；Job 执行成功后仍需独立授权业务验收。当前新代全量重算，跨代 Memory import 和持久动态失效事件尚未交付。aicloud 负责模型 Registry / Evaluation / Router，computecloud 负责执行、证据与恢复。
+
+运行 `make ci-iu-graph` 可重复执行 18 个确定性场景、26 项必测检查，以及独立 Server / 双 Worker 的四组订单图和硬重启验收。报告上传 GitHub Actions Artifact；模拟通过不代表真实模型正确率、速度或费用收益。使用入口见[订单示例](examples/iu-graph/README.md)，启用与限制见[运行契约](docs/contracts/iu-graph-v1.md)，迭代顺序见[IU 路线台账](docs/implementation/long-term-roadmap.md#iu-计算模型迭代台账)。
 
 ## 已实现能力
 
@@ -314,5 +332,3 @@ Worker / Runtime / Tool / Environment
 更具体地说：
 
 > **可靠、可恢复、可治理地把 Agent Job 分配到合适的远程 Worker，并让 Runtime、Tool、Environment、Workspace、Artifact、Evaluator 和 Control 都服从同一个执行事实源。**
-
-实验性 IU 计算图（默认关闭）：[契约与限制](docs/contracts/iu-graph-v1.md) / [订单示例](examples/iu-graph/README.md) / [实现范围](docs/implementation/iu-computation-model.md)。

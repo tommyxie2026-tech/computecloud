@@ -18,6 +18,8 @@
 | 费用边界 | 仅受支持 claude_http 估算费用串行模式；明确拒绝 max_tokens、command 混合费用与 Gateway route |
 | 兼容性 | 默认关闭、已接受图继续恢复、旧 single / map_reduce 执行器不切换；Server schema v20，Worker v6 |
 
+后续迭代以[长期路线图中的 IU 台账](long-term-roadmap.md#iu-计算模型迭代台账)为准：先持久失效事件，再授权跨代 import 和依赖增量重算；真实模型基线单独取证。
+
 ## 设计中尚未交付的部分
 
 设计规格保留完整目标，不能把上述切片误认为全部设计已完成：
@@ -45,3 +47,5 @@
 ## CI 模拟验收
 
 [CI 模拟与原生执行方案](../validation/iu-ci-simulation.md) 增加 18 个语义/故障场景，以及独立 Server / 双 Worker OS 进程的四图验收、授权评估和 Server 硬重启证据。必测项必须 PASS，报告与 JSONL 日志作为 Actions Artifact 保存；不将模拟通过写成真实模型收益。
+
+代码提交 `32547db` 的 [CI 39035469279](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39035469279) 已完成，35 项运行检查成功（含 Linux/macOS 全量回归）；IU 专项 7 阶段、26 项必测检查及 18 个场景通过。[Artifact](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39035469279/artifacts/12101479992) 保存对应报告和日志。此记录绑定该次代码，后续修改仍须通过最新 CI。

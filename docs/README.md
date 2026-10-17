@@ -1,23 +1,23 @@
 # computecloud 文档
 
 
-## 当前进度快照（2026-09-30）
+## 当前进度快照（2026-10-17）
 
-- 稳定发布基线：v0.4.6；main 已包含 Runtime/Tool/Environment、Control 与移动端基础能力的持续迭代。
-- Relay/P2P：设计已冻结并纳入 v0.4.x，当前仍是 Planned，尚未进入运行时代码交付。
-- 下一步：RLY-1 Transport seam，保持 direct 路径零回归；Relay 默认关闭、无 SQLite migration。
-- v0.6.x 保留设备身份、OIDC/RBAC、审计、企业 Lease 与可选 Blind E2EE Relay。
+- 稳定发布基线：[v0.4.9](implementation/v0.4.9-release-status.md)；代码合入与版本发布分开跟踪。
+- v0.5 Scheduler、Prepared Workspace 与目标环境验收按[长期路线图](implementation/long-term-roadmap.md)和 [P0–P2 台账](implementation/p0-p2-execution.md)推进。
+- IU 有限图已实现并通过 CI，默认关闭；后续持久失效事件、跨代授权 Memory import 与增量重算见 [IU 迭代台账](implementation/long-term-roadmap.md#iu-计算模型迭代台账)。当前新代全量重算，真实模型效果尚待验证。
+- Relay direct-first / fallback 已有实验性实现和 CI；真实双机/NAT/生产验收仍待完成。v0.6.x 保留设备身份、OIDC/RBAC 与审计。
 
 | 文档 | 内容 | 状态 |
 | --- | --- | --- |
 | [IU CI 模拟验收](validation/iu-ci-simulation.md) | 18 场景、双 Worker 进程、故障检测、重启证据与报告 | CI 验收入口 |
 | [IU 计算图契约](contracts/iu-graph-v1.md) | 原生 DAG、冻结上下文、记忆准入、独立评估与 Guard | 实验性，默认关闭 |
-| [IU 实现范围](implementation/iu-computation-model.md) | 当前交付、验收证据与后续边界 | 分支实现 |
+| [IU 实现范围](implementation/iu-computation-model.md) | 当前交付、验收证据与后续边界 | 实验切片已实现，后续见路线台账 |
 | [自托管 Agent HTTP Runtime](implementation/agent-http-runtime.md) | Codex/Claude 固定版本、Unix HTTP 契约、OCI 服务镜像与尚待完成的每 Attempt 隔离 | ECO-02 代码切片；真实验收未完成 |
 | [多架构容器镜像部署与发布](deployment/container-images.md) | Server scratch、Worker Debian slim、amd64/arm64、size gate、GHCR/SBOM/provenance | 当前容器部署依据 |
 | [ADR-020：多架构最小容器镜像交付](adr/0020-multiarch-container-packaging.md) | 双 target image、体积预算、Runtime 不入基础 Worker、发布边界 | Accepted |
-| [ADR-021：Server–Worker Relay-assisted P2P 传输](adr/0021-relay-assisted-p2p-transport.md) | 直连优先、Relay 回退、内层 TLS 端到端、无状态转发与 P2P 边界 | 设计冻结，尚未实现 |
-| [Relay/P2P 传输实施计划](implementation/relay-p2p-transport-plan.md) | v0.4.x 实验性配对票据、Transport seam、回退、背压、安全负向测试与 CI Gate | v0.4.x Planned；设计已冻结 |
+| [ADR-021：Server–Worker Relay-assisted P2P 传输](adr/0021-relay-assisted-p2p-transport.md) | 直连优先、Relay 回退、内层 TLS 端到端、无状态转发与 P2P 边界 | 实验性实现；目标环境验收待完成 |
+| [Relay/P2P 传输实施计划](implementation/relay-p2p-transport-plan.md) | v0.4.x 实验性配对票据、Transport seam、回退、背压、安全负向测试与 CI Gate | 实验性实现与 CI；双机/NAT 验收待完成 |
 | [任务追踪与运行用量](observability/tracing.md) | Job Trace、模型请求与 Worker 用量 | schema 14 |
 | [Codex CLI 模型网关](deployment/codex-cli-gateway.md) | macOS CLI 模型桥接与协议边界 | 实验性 |
 | [v0.4.6 Ubuntu Server + MacBook Air Worker 容器化验证](deployment/v0.4.6-ubuntu-server-mac-air.md) | Ubuntu Server、Docker Desktop Worker、TLS、故障恢复与容量验证 | 验证文档 |

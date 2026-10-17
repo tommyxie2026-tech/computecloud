@@ -10,6 +10,8 @@
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)。
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)。
 - 当前稳定版本：Server schema v19 / Worker schema v6；历史版本状态以对应 Release Status 为准。
+- 当前开发树包含实验性 IU 图：Server schema v20 / Worker v6；与上面的稳定发布基线区分。
+- IU 后续迭代：[IU 计算模型迭代台账](#iu-计算模型迭代台账)。
 - 当前后续迭代计划：[v0.5.0 Agent-aware Scheduler](../superpowers/plans/2026-10-17-v05-agent-aware-scheduler.md)。
 - 产品调研依据：[Agent-aware 产品与竞品调研](../research/agent-job-execution-product-landscape-2026.md)。
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md) 与 [ADR-008](../adr/0008-client-control-plane.md)。
@@ -1506,6 +1508,34 @@ Phase G6  Adaptive Scheduling
 evaluation history / runtime capability / cost / latency
 作为可解释调度信号，但不允许 Scheduler 修改 Plan
 ~~~
+
+### IU 计算模型迭代台账
+
+IU 是 Goal-oriented Computing 的受限计算图切片，与 v0.5 Scheduler 主线配合，复用 Task / Attempt、Artifact、Scheduler 和 Guard。computecloud 不新增执行引擎，也不承担 aicloud 的模型 Registry / Evaluation / Router 职责。以下阶段是迭代顺序，不构成版本号或发布日期承诺。
+
+| 阶段 | 状态 | 交付与退出门槛 |
+| --- | --- | --- |
+| IU-0 有限图与执行契约 | 已实现，默认关闭；PR #156 | agent / command / join、冻结 Schema 与原文来源、记忆 read-view、Artifact 事务准入、独立业务评估和 Guard 新代；通过现有 Task / Attempt 恢复与兼容性检查 |
+| IU-1 可重复模拟验收 | 已通过 CI | 18 场景、26 项必测实际 PASS；独立 Server / 两 Worker 四图验收，规则修订与错误输出、授权评估、硬重启前后 Attempt 不增加；保留报告和日志 |
+| IU-2 持久失效事件 | 待设计与实现，下一优先项 | 定义规则修订/反证事件、版本及审计；激活和评估事务统一重查；覆盖事件重放、重启、迟到产物及并发失效，不允许旧证据继续准入 |
+| IU-3 授权跨代 Memory import | 依赖 IU-2，未实现 | 显式授权、来源/依赖/版本约束、不可变导入快照；覆盖失效、冲突、越权与旧代隔离；验证服务独立于模型，模型不能自行提升 verified |
+| IU-4 按依赖增量重算 | 依赖 IU-2/3，未实现 | 与全量重算对照，验证规则变更后的受影响闭包、未失效结果复用、恢复和取消；先证明业务结果一致，再测重算量与端到端成本 |
+| IU-5 真实 Provider 与 aicloud 对接 | 可先做小样本基线；远程集成未实现 | 固定模型/CLI/提示词与任务集，对照单节点、全量 IU 和后续增量 IU；记录有效输出、成功率、调用数、延迟、实际 usage 与费用来源；aicloud 接口按能力及评估契约接入 |
+| IU-6 受控部署验收 | 依赖前序证据，未完成 | 独立主机、升级/回滚、真实 Runtime、隔离和副作用策略；通过目标环境 Gate 后再决定扩大能力范围或改变默认开关 |
+
+当前证据：[PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) 的代码提交 `32547db` 已通过 [CI 39035469279](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39035469279)，35 项运行检查成功；18 个模拟场景与 26 项 IU 必测检查通过，详见[报告与日志](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39035469279/artifacts/12101479992)。该记录只证明对应代码与模拟验收，不替代后续 SHA 的 CI 或正式发布证据。
+
+下一轮待办：
+
+- [ ] 先冻结失效事件与授权 import 的状态机、事务边界、威胁与失败用例，再修改运行时。
+- [ ] 给跨代复用补齐来源快照、规则版本、授权主体和拒绝原因查询。
+- [ ] 建立全量重算与增量重算的同数据对照，避免旧规则或上下文丢失被最终金额碰巧正确掩盖。
+- [ ] 固定真实模型小样本，保留失败及有效输出分母；未知 token/费用保持未知，不推算收益。
+- [ ] 将通过验收的能力逐项回填本台账及实现范围，保留 `make ci-iu-graph` 回归门禁。
+
+当前边界：原始输入采用 UTF-8 字节 span 与快照，不拆分模型内部 token 状态；尚无 tokenizer 精确计数和普遍语义无损保证。跨代现在全量重算；纯 Invalidate / MergeViews 不等于持久运行时失效服务。只读订单 fixture 不证明外部副作用 exactly-once 或真实模型收益。
+
+设计、实现、用法和验收分别见 [IU 实现范围](iu-computation-model.md)、[运行契约](../contracts/iu-graph-v1.md)、[订单示例](../../examples/iu-graph/README.md)、[CI 方案](../validation/iu-ci-simulation.md)及[本机质量实验](../validation/iu-local-quality-experiment.md)。
 
 ### 19.1 Re-plan Guard 实施切片
 
