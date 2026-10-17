@@ -146,7 +146,7 @@ func projectedRuntimeBudgetSupport(ctx context.Context, q store.Query, gid strin
 	if maxTokens.Valid || !maxCost.Valid {
 		return false, capabilities, nil
 	}
-	rows, err := q.QueryContext(ctx, `SELECT j.spec FROM goal_job_bindings b JOIN goals g ON g.id=b.goal_id
+	rows, err := q.QueryContext(ctx, `SELECT j.mode,j.spec FROM goal_job_bindings b JOIN goals g ON g.id=b.goal_id
 		JOIN jobs j ON j.id=b.job_id WHERE b.goal_id=? AND b.plan_revision=g.active_plan_revision
 		AND b.graph_generation=g.active_graph_generation`, gid)
 	if err != nil {
@@ -157,10 +157,27 @@ func projectedRuntimeBudgetSupport(ctx context.Context, q store.Query, gid strin
 	for rows.Next() {
 		found = true
 		var raw []byte
-		if err = rows.Scan(&raw); err != nil {
+		var mode string
+		if err = rows.Scan(&mode, &raw); err != nil {
 			return false, nil, err
 		}
 		var frozen job.Frozen
+		if mode == "iu_graph" {
+			var f frozenGraph
+			if err = json.Unmarshal(raw, &f); err != nil {
+				return false, nil, err
+			}
+			for _, op := range f.Plan.Spec.Operators {
+				if op.Kind == "join" {
+					continue
+				}
+				ex := graphExecutionFor(&f, op)
+				if ex == nil || ex.RuntimeProfile != "claude_http" {
+					return false, capabilities, nil
+				}
+			}
+			continue
+		}
 		if err = json.Unmarshal(raw, &frozen); err != nil {
 			return false, nil, err
 		}

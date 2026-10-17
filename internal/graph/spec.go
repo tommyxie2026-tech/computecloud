@@ -83,6 +83,7 @@ type Limits struct {
 }
 
 type Spec struct {
+	Evaluator Evaluator     `json:"evaluator"`
 	Version   string        `json:"version"`
 	ProjectID string        `json:"project_id"`
 	Workspace job.Workspace `json:"workspace"`
@@ -93,6 +94,11 @@ type Spec struct {
 	Edges     []Edge        `json:"edges"`
 	Outputs   []Output      `json:"outputs"`
 	Limits    Limits        `json:"limits"`
+}
+
+type Evaluator struct {
+	Profile string `json:"profile"`
+	Version string `json:"version"`
 }
 
 type Plan struct {
@@ -170,6 +176,9 @@ func Compile(in Spec) (Plan, error) {
 	fail := func(reason string) (Plan, error) { return Plan{}, invalid(reason) }
 	if s.Version != Version || !job.Ref(s.ProjectID) || !job.Ref(s.Workspace.RepositoryRef) || !commitPattern.MatchString(s.Workspace.BaseCommit) {
 		return fail("version, project or workspace")
+	}
+	if !job.Ref(s.Evaluator.Profile) || !job.Ref(s.Evaluator.Version) {
+		return fail("frozen evaluator required")
 	}
 	l := s.Limits
 	if l.Parallelism < 1 || l.Parallelism > 8 || l.TimeoutSeconds < 1 || l.TimeoutSeconds > 86400 || l.MaxAttemptsPerTask < 1 || l.MaxAttemptsPerTask > 3 || l.MaxReplans < 0 || l.MaxReplans > 8 {
@@ -291,6 +300,7 @@ func Compile(in Spec) (Plan, error) {
 	}
 	bound := map[string]bool{}
 	seenEdges := map[string]bool{}
+	conditions := map[string]map[string]bool{}
 	for _, edge := range s.Edges {
 		from, fok := nodes[edge.FromNode]
 		to, tok := nodes[edge.ToNode]
@@ -304,6 +314,17 @@ func Compile(in Spec) (Plan, error) {
 		seenEdges[key] = true
 		if edge.When != "" && edge.When != "PASS" && edge.When != "FAIL" && edge.When != "UNKNOWN" {
 			return fail("edge condition")
+		}
+		if edge.When != "" {
+			port, ok := findPort(ops[from.Operator].Outputs, edge.FromPort)
+			if !ok || ops[from.Operator].Kind != "command" || port.Schema != "verdict-v1" {
+				return fail("condition requires trusted verdict-v1 command output")
+			}
+			group := from.ID + "/" + edge.FromPort
+			if conditions[group] == nil {
+				conditions[group] = map[string]bool{}
+			}
+			conditions[group][edge.When] = true
 		}
 		switch edge.Type {
 		case "artifact", "memory":
@@ -333,6 +354,11 @@ func Compile(in Spec) (Plan, error) {
 		}
 		indegree[to.ID]++
 		next[from.ID] = append(next[from.ID], to.ID)
+	}
+	for _, branches := range conditions {
+		if !branches["PASS"] || !branches["FAIL"] || !branches["UNKNOWN"] {
+			return fail("conditional output requires explicit PASS/FAIL/UNKNOWN handlers")
+		}
 	}
 	for _, n := range s.Nodes {
 		for _, port := range ops[n.Operator].Inputs {
@@ -413,7 +439,7 @@ func Lower(in job.Spec) (Spec, error) {
 	if e := in.Validate(32, 8); e != nil {
 		return Spec{}, e
 	}
-	s := Spec{Version: Version, ProjectID: in.ProjectID, Workspace: in.Workspace, Limits: Limits{Parallelism: 1, TimeoutSeconds: in.Limits.TimeoutSeconds, MaxAttemptsPerTask: in.Limits.MaxAttemptsPerTask}}
+	s := Spec{Version: Version, ProjectID: in.ProjectID, Workspace: in.Workspace, Evaluator: Evaluator{Profile: "job-artifact-v1", Version: "1"}, Limits: Limits{Parallelism: 1, TimeoutSeconds: in.Limits.TimeoutSeconds, MaxAttemptsPerTask: in.Limits.MaxAttemptsPerTask}}
 	add := func(id, text string, ex job.Execution, inputs []Port, scopes []string) {
 		s.Operators = append(s.Operators, Operator{ID: id, Version: "legacy-v02", Kind: "agent", Execution: &ex, Inputs: inputs, Outputs: []Port{{Name: "result", Schema: "legacy-result-bundle-v1"}}})
 		s.Nodes = append(s.Nodes, Node{ID: id, Operator: id, Instructions: text, ScopePaths: scopes})

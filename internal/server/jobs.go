@@ -412,6 +412,11 @@ func (s *Server) CancelJob(ctx context.Context, id string, in CancelJobRequest) 
 				return e
 			}
 		}
+		if j.graph != nil && terminal(j.State) {
+			if _, e = q.ExecContext(ctx, `UPDATE goals SET state='CANCELED',updated=?,version=version+1 WHERE id=? AND active_graph_generation=? AND state NOT IN ('SUCCEEDED','FAILED','CANCELED')`, store.Now(), j.graph.GoalID, j.graph.Generation); e != nil {
+				return e
+			}
+		}
 		return appendJobEvent(ctx, q, id, "job.cancel_requested", map[string]string{"reason": in.Reason}, in.ControlID, digest)
 	})
 	if e != nil {
@@ -547,8 +552,8 @@ func (s *Server) advanceJob(ctx context.Context, id string) error {
 			return nil
 		}
 		if j.graph != nil {
-			return nil
-		} // Native graph controller advances these Jobs.
+			return s.advanceGraphTx(ctx, q, j)
+		}
 		children, e := jobChildren(ctx, q, id)
 		if e != nil {
 			return e
@@ -816,6 +821,10 @@ func (s *Server) assignmentJob(ctx context.Context, q store.Query, id string) (*
 	j, e := readJob(ctx, q, jid.String)
 	if e != nil {
 		return nil, nil, e
+	}
+	if j.graph != nil {
+		jc, err := assignmentGraph(ctx, q, j, id, key)
+		return jc, j, err
 	}
 	jc := &pb.JobExecution{JobId: j.ID, Stage: stage, PartitionKey: key, InputLimitBytes: s.cfg.Jobs.MaxReduceInputBytes}
 	var ex job.Execution

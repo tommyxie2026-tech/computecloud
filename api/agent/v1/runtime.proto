@@ -102,6 +102,7 @@ message JobExecution {
   repeated string scope_paths = 4; string strategy = 5; string template_digest = 6;
   bytes input_manifest_json = 7; string input_manifest_sha256 = 8;
   int64 input_limit_bytes = 9;
+  bytes graph_execution_json = 10;
 }
 message GatewayAccess { string base_url = 1; string token = 2; string route = 3; }
 message InputArtifactRequest { AttemptRef attempt = 1; string artifact_id = 2; }

@@ -12,7 +12,7 @@ import (
 func graphSpec(h *jobHarness) graph.Spec {
 	legacy := h.spec("single")
 	ex := *legacy.Execution
-	return graph.Spec{Version: graph.Version, ProjectID: "project", Workspace: legacy.Workspace, Sources: []graph.Source{}, Operators: []graph.Operator{{ID: "extract", Version: "1", Kind: "agent", Execution: &ex, Outputs: []graph.Port{{Name: "result", Schema: "report-v1"}}}}, Nodes: []graph.Node{{ID: "extract", Operator: "extract", Instructions: "read source"}}, Edges: []graph.Edge{}, Outputs: []graph.Output{{Node: "extract", Port: "result"}}, Limits: graph.Limits{Parallelism: 2, TimeoutSeconds: 60, MaxAttemptsPerTask: 1}}
+	return graph.Spec{Evaluator: graph.Evaluator{Profile: "external", Version: "1"}, Version: graph.Version, ProjectID: "project", Workspace: legacy.Workspace, Sources: []graph.Source{}, Operators: []graph.Operator{{ID: "extract", Version: "1", Kind: "agent", Execution: &ex, Outputs: []graph.Port{{Name: "result", Schema: "report-v1"}}}}, Nodes: []graph.Node{{ID: "extract", Operator: "extract", Instructions: "read source"}}, Edges: []graph.Edge{}, Outputs: []graph.Output{{Node: "extract", Port: "result"}}, Limits: graph.Limits{Parallelism: 2, TimeoutSeconds: 60, MaxAttemptsPerTask: 1}}
 }
 
 func TestGraphSubmitIsDefaultOff(t *testing.T) {

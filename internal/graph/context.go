@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"unicode/utf8"
@@ -14,6 +15,7 @@ type InputValue struct {
 	Value      string `json:"value"`
 }
 type ContextRequest struct {
+	Parameters   json.RawMessage
 	Sources      []Source
 	Rules        []Span
 	Spans        []Span
@@ -76,13 +78,14 @@ func CompileContext(r ContextRequest) (ContextManifest, error) {
 		}
 	}
 	body := struct {
-		Version      string        `json:"version"`
-		Instructions string        `json:"instructions"`
-		Rules        []contextSpan `json:"rules"`
-		Local        []contextSpan `json:"local"`
-		Memory       MemoryView    `json:"memory"`
-		Inputs       []InputValue  `json:"inputs"`
-	}{"iu-context-v1", r.Instructions, rules, local, r.View, r.Inputs}
+		Version      string          `json:"version"`
+		Instructions string          `json:"instructions"`
+		Rules        []contextSpan   `json:"rules"`
+		Local        []contextSpan   `json:"local"`
+		Memory       MemoryView      `json:"memory"`
+		Inputs       []InputValue    `json:"inputs"`
+		Parameters   json.RawMessage `json:"parameters,omitempty"`
+	}{"iu-context-v1", r.Instructions, rules, local, r.View, r.Inputs, r.Parameters}
 	for _, in := range r.Inputs {
 		if !utf8.ValidString(in.Value) || in.SHA256 != Hash([]byte(in.Value)) {
 			return m, invalid("context input hash")

@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
-	"sort"
 	"sync"
 	"time"
 
@@ -35,24 +35,24 @@ type session struct {
 }
 type Server struct {
 	pb.UnimplementedRuntimeServiceServer
-	cfg                config.Server
-	db                 *store.DB
-	auth               *rpcutil.Auth
+	cfg                 config.Server
+	db                  *store.DB
+	auth                *rpcutil.Auth
 	requestLimiter      *requestLimiter
 	apiKeyLookupLimiter *requestLimiter
-	mu                 sync.Mutex
-	peers              map[string]*session
-	workerReservations map[string]bool
-	notify             chan struct{}
-	grpc               *grpc.Server
-	jobCursor          string
-	workerCursor       string
-	projectCursor      map[int32]string
-	groupCursor        map[string]string
-	modelHandler       http.Handler
-	artifactSweepAt    int64
-	eventSweepAt       int64
-	controlEpoch       string
+	mu                  sync.Mutex
+	peers               map[string]*session
+	workerReservations  map[string]bool
+	notify              chan struct{}
+	grpc                *grpc.Server
+	jobCursor           string
+	workerCursor        string
+	projectCursor       map[int32]string
+	groupCursor         map[string]string
+	modelHandler        http.Handler
+	artifactSweepAt     int64
+	eventSweepAt        int64
+	controlEpoch        string
 }
 
 func New(c config.Server) (*Server, error) {
@@ -580,6 +580,12 @@ func (s *Server) loop(ctx context.Context) {
 }
 func (s *Server) tick(ctx context.Context) error {
 	if e := s.reconcile(ctx); e != nil {
+		return e
+	}
+	if e := s.reconcileGraphMemory(ctx); e != nil {
+		return e
+	}
+	if e := s.reconcileGraphEvaluations(ctx); e != nil {
 		return e
 	}
 	if e := s.advanceJobs(ctx); e != nil {

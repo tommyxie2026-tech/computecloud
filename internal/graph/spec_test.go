@@ -10,7 +10,7 @@ import (
 
 func fixture() Spec {
 	ex := job.Execution{RuntimeProfile: "claude_http", Model: "small", CredentialRef: "key", PolicyRef: "safe", AcceptanceProfile: "report", ReplaySafe: true}
-	return Spec{Version: "iu-graph-v1", ProjectID: "project", Workspace: job.Workspace{RepositoryRef: "repo", BaseCommit: strings.Repeat("a", 40)},
+	return Spec{Evaluator: Evaluator{Profile: "external", Version: "1"}, Version: "iu-graph-v1", ProjectID: "project", Workspace: job.Workspace{RepositoryRef: "repo", BaseCommit: strings.Repeat("a", 40)},
 		Sources:   []Source{{ID: "orders", Text: "订单甲：6000；订单乙：6000"}},
 		Operators: []Operator{{ID: "extract", Version: "1", Kind: "agent", Outputs: []Port{{Name: "result", Schema: "order-v1"}}, Execution: &ex}, {ID: "merge", Version: "1", Kind: "join", Inputs: []Port{{Name: "a", Schema: "order-v1"}, {Name: "b", Schema: "order-v1"}}, Outputs: []Port{{Name: "result", Schema: "order-v1"}}}},
 		Nodes:     []Node{{ID: "b", Operator: "extract", Instructions: "提取乙"}, {ID: "merge", Operator: "merge", JoinPolicy: "all_success"}, {ID: "a", Operator: "extract", Instructions: "提取甲"}},
@@ -115,6 +115,25 @@ func TestGraphCostBudgetIsExplicitlySerial(t *testing.T) {
 	s.Operators[0].Execution.RuntimeProfile = "codex_exec"
 	if _, e = Compile(s); e == nil {
 		t.Fatal("unsupported cost runtime")
+	}
+}
+
+func TestConditionsRequireTrustedVerifierAndCompleteThreeWayHandling(t *testing.T) {
+	s := fixture()
+	s.Edges[0].When = "PASS"
+	if _, e := Compile(s); e == nil {
+		t.Fatal("agent self-authorized conditional path")
+	}
+	s = fixture()
+	s.Operators[0].Kind = "command"
+	s.Operators[0].CommandProfile = "check"
+	s.Operators[0].Execution = nil
+	s.Operators[0].Outputs[0].Schema = "verdict-v1"
+	s.Operators[1].Inputs[0].Schema = "verdict-v1"
+	s.Operators[1].Inputs[1].Schema = "verdict-v1"
+	s.Edges[0].When = "PASS"
+	if _, e := Compile(s); e == nil {
+		t.Fatal("incomplete UNKNOWN handling accepted")
 	}
 }
 

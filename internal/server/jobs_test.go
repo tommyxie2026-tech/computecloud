@@ -43,6 +43,9 @@ func newJobHarness(t *testing.T, workers bool, options ...func(*config.Server)) 
 	return newJobHarnessWithTransport(t, workers, nil, options...)
 }
 func newJobHarnessWithTransport(t *testing.T, workers bool, transport *jobTestTransport, options ...func(*config.Server)) *jobHarness {
+	return newJobHarnessWithWorkerConfig(t, workers, transport, nil, options...)
+}
+func newJobHarnessWithWorkerConfig(t *testing.T, workers bool, transport *jobTestTransport, workerConfig func(*config.Worker), options ...func(*config.Server)) *jobHarness {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
 	t.Cleanup(cancel)
@@ -50,6 +53,9 @@ func newJobHarnessWithTransport(t *testing.T, workers bool, transport *jobTestTr
 	user, other := testutil.Token(t, "job-user"), testutil.Token(t, "other")
 	wtokens := []string{testutil.Token(t, "w1"), testutil.Token(t, "w2")}
 	wc := config.Worker{DataDir: t.TempDir(), ID: "w1", Address: "placeholder", TokenFile: wtokens[0], TLS: config.TLS{InsecureLoopback: true}, Slots: 1, StopGraceMS: 100, Repositories: map[string]string{"repo": repo}, Policies: map[string]config.Policy{"review": {CodexSandbox: "read-only", ClaudePermissionMode: "dontAsk", ClaudeAllowedTools: []string{"Read"}}, "write": {CodexSandbox: "workspace-write", ClaudePermissionMode: "dontAsk", ClaudeAllowedTools: []string{"Read", "Edit"}}}, Verifiers: map[string][][]string{"check": {{"test", "-f", "README.md"}}}, Runtimes: map[string]config.Runtime{"codex_exec": {Executable: testutil.JobCLI(t), Version: "fixture-1", Models: []string{"model-c"}, Credentials: []string{"account"}}, "claude_print": {Executable: testutil.JobCLI(t), Version: "fixture-1", Models: []string{"model-a"}, Credentials: []string{"account"}}}}
+	if workerConfig != nil {
+		workerConfig(&wc)
+	}
 	cfg := config.Server{DataDir: t.TempDir(), TLS: wc.TLS, LeaseSeconds: 6, TickMS: 25, MaxArtifactBytes: 32 << 20, MaxProjectTasks: 8, Credentials: map[string]int{"account": 2}, Users: []config.Identity{{TokenFile: user, Owner: "owner", Projects: []string{"project"}, Credentials: []string{"account"}, Scopes: []string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:extend"}}, {TokenFile: other, Owner: "other", Projects: []string{"project"}, Credentials: []string{"account"}, Scopes: []string{"jobs:read"}}}, Jobs: config.Jobs{Enabled: true, Templates: config.Templates(wc)}, MCP: config.MCP{Enabled: true}}
 	for i, tok := range wtokens {
 		cfg.Workers = append(cfg.Workers, config.Identity{TokenFile: tok, WorkerID: []string{"w1", "w2"}[i], Projects: []string{"project"}, Credentials: []string{"account"}})

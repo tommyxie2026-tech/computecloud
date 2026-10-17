@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"github.com/google/jsonschema-go/jsonschema"
 	"net/http"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
@@ -16,10 +18,11 @@ import (
 )
 
 type frozenGraph struct {
-	GoalID     string            `json:"goal_id"`
-	Generation int64             `json:"generation"`
-	Plan       graph.Plan        `json:"plan"`
-	Digests    map[string]string `json:"template_digests"`
+	GoalID     string                                `json:"goal_id"`
+	Generation int64                                 `json:"generation"`
+	Plan       graph.Plan                            `json:"plan"`
+	Digests    map[string]string                     `json:"template_digests"`
+	Commands   map[string]config.GraphCommandProfile `json:"command_bindings,omitempty"`
 }
 type GraphNodeStatus struct {
 	ID     string  `json:"node_id"`
@@ -37,6 +40,8 @@ type GraphStatus struct {
 	Nodes             []GraphNodeStatus `json:"nodes"`
 	EvaluationVersion int64             `json:"evaluation_version"`
 	EvaluationID      string            `json:"evaluation_id"`
+	OutputHash        string            `json:"output_sha256"`
+	Evaluation        json.RawMessage   `json:"evaluation,omitempty"`
 }
 
 // graphLegacyMetadata supplies shared quota/workspace metadata; graph dispatch
@@ -68,48 +73,12 @@ func (s *Server) SubmitGraph(ctx context.Context, key string, raw []byte) (*Job,
 	if !job.ValidKey(key) || len(raw) > int(s.cfg.Jobs.MaxRequestBytes) {
 		return nil, status.Error(codes.InvalidArgument, "invalid key or request size")
 	}
-	spec, e := graph.Decode(raw)
-	if e != nil {
-		return nil, status.Error(codes.InvalidArgument, e.Error())
-	}
-	plan, e := graph.Compile(spec)
+	f, e := s.freezeGraph(raw, p)
 	if e != nil {
 		return nil, e
 	}
-	if !config.Contains(p.Identity.Projects, spec.ProjectID) {
-		return nil, status.Error(codes.PermissionDenied, "project not authorized")
-	}
-	if plan.RequestedParallelism > s.cfg.Jobs.MaxParallelism {
-		return nil, status.Error(codes.InvalidArgument, "graph parallelism exceeds configured limit")
-	}
-	f := frozenGraph{GoalID: "goal_" + store.ID(), Generation: 1, Plan: plan, Digests: map[string]string{}}
-	for _, op := range spec.Operators {
-		if op.Kind == "command" {
-			return nil, status.Error(codes.FailedPrecondition, "GRAPH_COMMAND_PROFILE_UNAVAILABLE")
-		}
-		if op.Execution == nil {
-			continue
-		}
-		ex := op.Execution
-		if !config.Contains(p.Identity.Credentials, ex.CredentialRef) || s.cfg.Credentials[ex.CredentialRef] < 1 {
-			return nil, status.Error(codes.PermissionDenied, "credential not authorized")
-		}
-		// Graph execution requires a directly configured Worker runtime. Gateway
-		// routing remains the legacy contract until a frozen graph route is supported.
-		if s.cfg.ModelGateway.CredentialRoutes[ex.CredentialRef] != "" {
-			return nil, status.Error(codes.FailedPrecondition, "GRAPH_GATEWAY_ROUTE_UNSUPPORTED")
-		}
-		key := job.TemplateKey(*ex)
-		for _, tpl := range s.cfg.Jobs.Templates {
-			if tpl.Key() == key {
-				f.Digests[key] = tpl.Digest
-				break
-			}
-		}
-		if f.Digests[key] == "" {
-			return nil, status.Error(codes.FailedPrecondition, "TEMPLATE_NOT_CONFIGURED")
-		}
-	}
+	spec := f.Plan.Spec
+	plan := f.Plan
 	id := store.ID()
 	existing := false
 	traceID := "trc_" + store.ID()
@@ -197,6 +166,41 @@ func (s *Server) SubmitGraph(ctx context.Context, key string, raw []byte) (*Job,
 	return j, e
 }
 
+func validateGraphCommandParameters(profile config.GraphCommandProfile, raw json.RawMessage) error {
+	if len(raw) == 0 {
+		raw = json.RawMessage(`{}`)
+	}
+	schema := profile.ParametersSchema
+	if schema == "" {
+		schema = `{"type":"object","additionalProperties":false}`
+	}
+	var definition jsonschema.Schema
+	var value any
+	if e := json.Unmarshal([]byte(schema), &definition); e != nil {
+		return e
+	}
+	resolved, e := definition.Resolve(nil)
+	if e != nil {
+		return e
+	}
+	if e = json.Unmarshal(raw, &value); e != nil {
+		return e
+	}
+	return resolved.Validate(value)
+}
+
+func graphExecutionFor(f *frozenGraph, op graph.Operator) *job.Execution {
+	if op.Kind == "command" {
+		profile, ok := f.Commands[op.ID]
+		if !ok {
+			return nil
+		}
+		ex := profile.Execution
+		return &ex
+	}
+	return op.Execution
+}
+
 func (s *Server) GraphStatus(ctx context.Context, id string) (*GraphStatus, error) {
 	j, e := s.jobAuthorized(ctx, id, "jobs:read")
 	if e != nil {
@@ -207,8 +211,15 @@ func (s *Server) GraphStatus(ctx context.Context, id string) (*GraphStatus, erro
 	}
 	f := j.graph
 	out := &GraphStatus{GoalID: f.GoalID, Generation: f.Generation, JobID: id, State: j.State, Plan: f.Plan, Nodes: []GraphNodeStatus{}}
-	if e = s.db.SQL.QueryRowContext(ctx, `SELECT g.state,x.evaluation_version,x.evaluation_id FROM goals g JOIN iu_graphs x ON x.goal_id=g.id WHERE x.job_id=?`, id).Scan(&out.GoalState, &out.EvaluationVersion, &out.EvaluationID); e != nil {
+	if e = s.db.SQL.QueryRowContext(ctx, `SELECT g.state,x.evaluation_version,x.evaluation_id,x.output_hash FROM goals g JOIN iu_graphs x ON x.goal_id=g.id WHERE x.job_id=?`, id).Scan(&out.GoalState, &out.EvaluationVersion, &out.EvaluationID, &out.OutputHash); e != nil {
 		return nil, e
+	}
+	if out.EvaluationID != "" {
+		var body []byte
+		if e = s.db.SQL.QueryRowContext(ctx, `SELECT body FROM iu_evaluations WHERE id=? AND goal_id=? AND generation=?`, out.EvaluationID, f.GoalID, f.Generation).Scan(&body); e != nil {
+			return nil, e
+		}
+		out.Evaluation = body
 	}
 	rows, e := s.db.SQL.QueryContext(ctx, `SELECT node_id,state,task_id,error_code FROM iu_nodes WHERE goal_id=? AND generation=? ORDER BY node_id`, f.GoalID, f.Generation)
 	if e != nil {
@@ -245,4 +256,62 @@ func (s *Server) httpGraphStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, 200, v)
+}
+
+func (s *Server) freezeGraph(raw []byte, p rpcutil.Principal) (frozenGraph, error) {
+	spec, e := graph.Decode(raw)
+	if e != nil {
+		return frozenGraph{}, status.Error(codes.InvalidArgument, e.Error())
+	}
+	plan, e := graph.Compile(spec)
+	if e != nil {
+		return frozenGraph{}, e
+	}
+	if !config.Contains(p.Identity.Projects, spec.ProjectID) {
+		return frozenGraph{}, status.Error(codes.PermissionDenied, "project not authorized")
+	}
+	if plan.RequestedParallelism > s.cfg.Jobs.MaxParallelism {
+		return frozenGraph{}, status.Error(codes.InvalidArgument, "graph parallelism exceeds configured limit")
+	}
+	f := frozenGraph{GoalID: "goal_" + store.ID(), Generation: 1, Plan: plan, Digests: map[string]string{}, Commands: map[string]config.GraphCommandProfile{}}
+	for _, op := range spec.Operators {
+		ex := op.Execution
+		if op.Kind == "command" {
+			profile, ok := s.cfg.Jobs.GraphCommands[op.CommandProfile]
+			if !ok || profile.Execution.RuntimeProfile != "command_exec" || profile.Execution.Model != op.CommandProfile || profile.Execution.Validate() != nil {
+				return frozenGraph{}, status.Error(codes.FailedPrecondition, "GRAPH_COMMAND_PROFILE_UNAVAILABLE")
+			}
+			f.Commands[op.ID] = profile
+			ex = &profile.Execution
+			for _, n := range spec.Nodes {
+				if n.Operator == op.ID {
+					if e = validateGraphCommandParameters(profile, n.Parameters); e != nil {
+						return frozenGraph{}, status.Error(codes.InvalidArgument, e.Error())
+					}
+				}
+			}
+		}
+		if ex == nil {
+			continue
+		}
+		if !config.Contains(p.Identity.Credentials, ex.CredentialRef) || s.cfg.Credentials[ex.CredentialRef] < 1 {
+			return frozenGraph{}, status.Error(codes.PermissionDenied, "credential not authorized")
+		}
+		// Graph execution requires a directly configured Worker runtime. Gateway
+		// routing remains the legacy contract until a frozen graph route is supported.
+		if s.cfg.ModelGateway.CredentialRoutes[ex.CredentialRef] != "" {
+			return frozenGraph{}, status.Error(codes.FailedPrecondition, "GRAPH_GATEWAY_ROUTE_UNSUPPORTED")
+		}
+		key := job.TemplateKey(*ex)
+		for _, tpl := range s.cfg.Jobs.Templates {
+			if tpl.Key() == key {
+				f.Digests[key] = tpl.Digest
+				break
+			}
+		}
+		if f.Digests[key] == "" {
+			return frozenGraph{}, status.Error(codes.FailedPrecondition, "TEMPLATE_NOT_CONFIGURED")
+		}
+	}
+	return f, nil
 }

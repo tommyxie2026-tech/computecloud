@@ -108,7 +108,7 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 	switch o.op {
 	case "list":
 		return print("GET", "/v1/jobs?limit="+strconv.Itoa(o.limit)+"&before="+url.QueryEscape(o.cursor), nil)
-	case "submit":
+	case "submit", "submit-graph":
 		if o.key == "" || o.file == "" {
 			return fmt.Errorf("job submit requires --key and --file; reuse the key after transport failure")
 		}
@@ -116,7 +116,11 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		if e != nil {
 			return e
 		}
-		return print("POST", "/v1/jobs", b)
+		endpoint := "/v1/jobs"
+		if o.op == "submit-graph" {
+			endpoint = "/v1/graphs"
+		}
+		return print("POST", endpoint, b)
 	case "capabilities":
 		return print("GET", "/v1/capabilities", nil)
 	}
@@ -124,6 +128,14 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		return fmt.Errorf("--id required")
 	}
 	switch o.op {
+	case "graph":
+		return print("GET", path+"/graph", nil)
+	case "evaluate-graph":
+		b, e := os.ReadFile(o.file)
+		if e != nil {
+			return e
+		}
+		return print("POST", path+"/graph/evaluations", b)
 	case "trace":
 		return print("GET", path+"/trace?limit="+strconv.Itoa(o.limit)+"&before="+url.QueryEscape(o.cursor), nil)
 	case "get":

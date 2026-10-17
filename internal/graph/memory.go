@@ -190,6 +190,9 @@ func ApplyDelta(view MemoryView, d Delta) (MemoryView, error) {
 	}
 	records := append(append([]MemoryRecord{}, view.Records...), checked.Records...)
 	next := NewView(records)
+	if e = json.Unmarshal(canonical(view.Conflicts), &next.Conflicts); e != nil {
+		return MemoryView{}, e
+	}
 	for _, r := range checked.Records {
 		if len(r.Supersedes) > 0 {
 			next, e = Invalidate(next, r.Supersedes)
@@ -198,7 +201,27 @@ func ApplyDelta(view MemoryView, d Delta) (MemoryView, error) {
 			}
 		}
 	}
-	return next, nil
+	projectValidity(&next)
+	return sealView(next), nil
+}
+
+func projectValidity(v *MemoryView) {
+	rank := map[string]int{"VALID": 0, "NEEDS_REVALIDATION": 1, "INVALID": 2}
+	changed := true
+	for changed {
+		changed = false
+		for i := range v.Records {
+			r := &v.Records[i]
+			for _, dep := range r.Dependencies {
+				for _, parent := range v.Records {
+					if parent.ID == dep && rank[parent.Validity] > rank[r.Validity] {
+						r.Validity = parent.Validity
+						changed = true
+					}
+				}
+			}
+		}
+	}
 }
 
 // MergeViews retains all conflicting candidates and uses stable ordering, never arrival order.
@@ -247,21 +270,7 @@ func MergeViews(views []MemoryView) (MemoryView, error) {
 	sort.Slice(conflicts, func(i, j int) bool { return conflicts[i].RecordID < conflicts[j].RecordID })
 	v.Conflicts = conflicts
 	// Propagate uncertainty to all derived conclusions, without validating them.
-	changed := true
-	for changed {
-		changed = false
-		for i := range v.Records {
-			r := &v.Records[i]
-			for _, dep := range r.Dependencies {
-				for _, parent := range v.Records {
-					if parent.ID == dep && parent.Validity != "VALID" && r.Validity == "VALID" {
-						r.Validity = parent.Validity
-						changed = true
-					}
-				}
-			}
-		}
-	}
+	projectValidity(&v)
 	v = sealView(v)
 	if e := validateView(v); e != nil {
 		return MemoryView{}, e

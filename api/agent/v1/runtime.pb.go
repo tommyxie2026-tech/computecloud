@@ -1890,6 +1890,7 @@ type JobExecution struct {
 	InputManifestJson   []byte                 `protobuf:"bytes,7,opt,name=input_manifest_json,json=inputManifestJson,proto3" json:"input_manifest_json,omitempty"`
 	InputManifestSha256 string                 `protobuf:"bytes,8,opt,name=input_manifest_sha256,json=inputManifestSha256,proto3" json:"input_manifest_sha256,omitempty"`
 	InputLimitBytes     int64                  `protobuf:"varint,9,opt,name=input_limit_bytes,json=inputLimitBytes,proto3" json:"input_limit_bytes,omitempty"`
+	GraphExecutionJson  []byte                 `protobuf:"bytes,10,opt,name=graph_execution_json,json=graphExecutionJson,proto3" json:"graph_execution_json,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1985,6 +1986,13 @@ func (x *JobExecution) GetInputLimitBytes() int64 {
 		return x.InputLimitBytes
 	}
 	return 0
+}
+
+func (x *JobExecution) GetGraphExecutionJson() []byte {
+	if x != nil {
+		return x.GraphExecutionJson
+	}
+	return nil
 }
 
 type GatewayAccess struct {
@@ -2950,7 +2958,7 @@ const file_api_agent_v1_runtime_proto_rawDesc = "" +
 	"\x03job\x18\b \x01(\v2#.computecloud.agent.v1.JobExecutionR\x03job\x12>\n" +
 	"\agateway\x18\t \x01(\v2$.computecloud.agent.v1.GatewayAccessR\agateway\x12K\n" +
 	"\x0eruntime_budget\x18\n" +
-	" \x01(\v2$.computecloud.agent.v1.RuntimeBudgetR\rruntimeBudget\"\xd6\x02\n" +
+	" \x01(\v2$.computecloud.agent.v1.RuntimeBudgetR\rruntimeBudget\"\x88\x03\n" +
 	"\fJobExecution\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x14\n" +
 	"\x05stage\x18\x02 \x01(\tR\x05stage\x12#\n" +
@@ -2961,7 +2969,9 @@ const file_api_agent_v1_runtime_proto_rawDesc = "" +
 	"\x0ftemplate_digest\x18\x06 \x01(\tR\x0etemplateDigest\x12.\n" +
 	"\x13input_manifest_json\x18\a \x01(\fR\x11inputManifestJson\x122\n" +
 	"\x15input_manifest_sha256\x18\b \x01(\tR\x13inputManifestSha256\x12*\n" +
-	"\x11input_limit_bytes\x18\t \x01(\x03R\x0finputLimitBytes\"V\n" +
+	"\x11input_limit_bytes\x18\t \x01(\x03R\x0finputLimitBytes\x120\n" +
+	"\x14graph_execution_json\x18\n" +
+	" \x01(\fR\x12graphExecutionJson\"V\n" +
 	"\rGatewayAccess\x12\x19\n" +
 	"\bbase_url\x18\x01 \x01(\tR\abaseUrl\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x14\n" +

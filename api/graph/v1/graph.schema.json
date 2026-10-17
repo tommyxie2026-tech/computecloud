@@ -58,6 +58,24 @@
     },
     "limits": {
       "$ref": "#/$defs/limits"
+    },
+    "evaluator": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "profile",
+        "version"
+      ]
     }
   },
   "required": [
@@ -69,7 +87,8 @@
     "nodes",
     "edges",
     "outputs",
-    "limits"
+    "limits",
+    "evaluator"
   ],
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:computecloud:iu-graph-v1",

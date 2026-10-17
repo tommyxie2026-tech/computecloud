@@ -94,3 +94,41 @@ func TestMemoryInvalidationPropagatesWithoutChangingHistory(t *testing.T) {
 		t.Fatal("dependency cycle accepted")
 	}
 }
+
+func TestApplyDeltaPreservesConflictsAndInheritedInvalidity(t *testing.T) {
+	a := NewView([]MemoryRecord{record("amount")})
+	b := NewView([]MemoryRecord{record("amount")})
+	b.Records[0].Payload = json.RawMessage(`12000`)
+	b = NewView(b.Records)
+	v, e := MergeViews([]MemoryView{a, b})
+	if e != nil {
+		t.Fatal(e)
+	}
+	d := Delta{Version: "iu-memory-delta-v1", ReadViewHash: v.SHA256, ContextHash: strings.Repeat("a", 64), Records: []MemoryRecord{record("summary")}}
+	next, e := ApplyDelta(v, d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(next.Conflicts) != 1 || len(next.Conflicts[0].Candidates) != 2 {
+		t.Fatalf("lost conflict candidates %+v", next)
+	}
+	for _, r := range next.Records {
+		if r.Validity != "NEEDS_REVALIDATION" {
+			t.Fatalf("uncertain input became valid %+v", r)
+		}
+	}
+	v, e = Invalidate(NewView([]MemoryRecord{record("rule")}), []string{"rule"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	d.ReadViewHash = v.SHA256
+	next, e = ApplyDelta(v, d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, r := range next.Records {
+		if r.Validity != "INVALID" {
+			t.Fatalf("invalid input became valid %+v", r)
+		}
+	}
+}
