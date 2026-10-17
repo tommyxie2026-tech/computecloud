@@ -1,5 +1,7 @@
 # IU Computation Model Implementation Plan
 
+此文为首轮历史实施计划；当前交付以[实现范围](../../implementation/iu-computation-model.md)为准。跨代记忆、增量重算等后续工作转入 [2026-10-18 后续迭代计划](2026-10-18-iu-follow-up-iterations.md)，不由本文未勾选任务推断当前状态。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在现有 Task/Attempt 上实现可恢复的有限 IU 执行图及上下文、记忆和评估闭环。
