@@ -11,6 +11,7 @@ repeatable **single-runner simulation**, not a Production Baseline certificate.
 | Offline backup | SQLite plus Artifact fixture restore | No stopped production Worker data directory |
 | Two Worker Job/lifecycle | Two Worker processes and Job/MCP fixture on one runner | Not two independent Linux hosts or real Codex/Claude accounts |
 | Relay restart | TLS Relay and Job recovery on loopback | No NAT, ISP outage or long task |
+| Cache digest memory | 64-file digest retains a fixed golden hash and stays within 512 KiB scratch/metadata allocation | No skipped integrity checks; buffer reused within each traversal |
 | Prepared Workspace | Ten cold, nine cached, ten simultaneous provider materializations; cached/cold P50 must be at most 40% | Provider fixture, not full Job or representative Worker repository |
 
 ## Fixed comparison and unchanged threshold
@@ -55,3 +56,11 @@ upgrade/restore/rollback rehearsal on a deployment clone. The release manager
 must attach those records separately before marking the Production Baseline
 complete. Goal automatic Re-plan and production Relay each retain their own
 implementation and acceptance gates.
+
+The main run on `3615040` failed at ratio 0.445 and its unchanged-code rerun
+failed at 0.479. In addition to closing the PR coverage gap, the cache digest
+now reuses a per-traversal buffer. A 64-file regression first measured 2,158,464
+allocated bytes in the original implementation and requires at most 512 KiB,
+with the exact digest format preserved. Linux ratios remain subject to the
+unchanged three-round <=0.40 gate; no performance gain is inferred from memory
+allocation alone.

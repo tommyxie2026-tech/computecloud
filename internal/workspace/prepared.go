@@ -310,6 +310,9 @@ func (p *LocalPreparedProvider) ReleaseTemplate(ctx context.Context, ref Prepare
 
 func treeDigest(ctx context.Context, root string) (string, error) {
 	h := sha256.New()
+	// Reuse scratch space across files in this traversal. Hide File.WriteTo so
+	// io.CopyBuffer actually uses our buffer instead of allocating per file.
+	buffer := make([]byte, 32*1024)
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -351,7 +354,7 @@ func treeDigest(ctx context.Context, root string) (string, error) {
 		if err != nil {
 			return err
 		}
-		_, copyErr := io.Copy(h, f)
+		_, copyErr := io.CopyBuffer(h, struct{ io.Reader }{f}, buffer)
 		closeErr := f.Close()
 		if copyErr != nil {
 			return copyErr
