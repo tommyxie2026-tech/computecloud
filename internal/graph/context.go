@@ -15,6 +15,7 @@ type InputValue struct {
 	Value      string `json:"value"`
 }
 type ContextRequest struct {
+	OutputSchema json.RawMessage
 	Parameters   json.RawMessage
 	Sources      []Source
 	Rules        []Span
@@ -36,8 +37,10 @@ type ContextManifest struct {
 	TokenCoverage    string `json:"token_coverage"`
 }
 type contextSpan struct {
-	Span Span   `json:"source"`
-	Text string `json:"text"`
+	Role         string `json:"role,omitempty"`
+	MessageIndex int    `json:"message_index"`
+	Span         Span   `json:"source"`
+	Text         string `json:"text"`
 }
 
 // CompileContext preserves every required segment or returns an explicit error.
@@ -69,7 +72,7 @@ func CompileContext(r ContextRequest) (ContextManifest, error) {
 			if e != nil {
 				return m, fmt.Errorf("CONTEXT_INSUFFICIENT: %w", e)
 			}
-			segment := contextSpan{Span: span, Text: text}
+			segment := contextSpan{Span: span, Text: text, Role: sources[span.Source].Role, MessageIndex: sources[span.Source].MessageIndex}
 			if kind == 0 {
 				rules = append(rules, segment)
 			} else {
@@ -85,7 +88,8 @@ func CompileContext(r ContextRequest) (ContextManifest, error) {
 		Memory       MemoryView      `json:"memory"`
 		Inputs       []InputValue    `json:"inputs"`
 		Parameters   json.RawMessage `json:"parameters,omitempty"`
-	}{"iu-context-v1", r.Instructions, rules, local, r.View, r.Inputs, r.Parameters}
+		OutputSchema json.RawMessage `json:"output_schema,omitempty"`
+	}{"iu-context-v1", r.Instructions, rules, local, r.View, r.Inputs, r.Parameters, r.OutputSchema}
 	for _, in := range r.Inputs {
 		if !utf8.ValidString(in.Value) || in.SHA256 != Hash([]byte(in.Value)) {
 			return m, invalid("context input hash")

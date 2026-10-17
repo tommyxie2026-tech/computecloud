@@ -8,15 +8,16 @@ import (
 )
 
 type Invocation struct {
-	Version        string          `json:"version"`
-	GoalID         string          `json:"goal_id"`
-	Generation     int64           `json:"graph_generation"`
-	NodeID         string          `json:"node_id"`
-	Context        ContextManifest `json:"context"`
-	View           MemoryView      `json:"view"`
-	Outputs        []Port          `json:"outputs"`
-	Kind           string          `json:"kind"`
-	CommandProfile string          `json:"command_profile,omitempty"`
+	Schemas        map[string]json.RawMessage `json:"schemas"`
+	Version        string                     `json:"version"`
+	GoalID         string                     `json:"goal_id"`
+	Generation     int64                      `json:"graph_generation"`
+	NodeID         string                     `json:"node_id"`
+	Context        ContextManifest            `json:"context"`
+	View           MemoryView                 `json:"view"`
+	Outputs        []Port                     `json:"outputs"`
+	Kind           string                     `json:"kind"`
+	CommandProfile string                     `json:"command_profile,omitempty"`
 }
 type NodeOutput struct {
 	Version string                     `json:"version"`
@@ -50,6 +51,9 @@ func BuildOutput(raw []byte, inv Invocation) (ExecutionOutput, error) {
 		if !ok || !json.Valid(v) {
 			return out, invalid("missing node output")
 		}
+	}
+	if e := ValidateValues(model.Values, inv.Outputs, inv.Schemas); e != nil {
+		return out, e
 	}
 	d := Delta{Version: "iu-memory-delta-v1", ReadViewHash: inv.View.SHA256, ContextHash: inv.Context.SHA256, Records: model.Records}
 	checked, e := ValidateDelta(canonical(d), inv.View)

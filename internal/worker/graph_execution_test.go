@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -31,7 +32,7 @@ func TestGraphOutputPreservesBusinessFailAndRejectsSelfVerification(t *testing.T
 	if e != nil {
 		t.Fatal(e)
 	}
-	inv := graph.Invocation{Version: "computecloud-job-io-v2", GoalID: "g", Generation: 1, NodeID: "n", Context: m, View: view, Outputs: []graph.Port{{Name: "result", Schema: "verdict-v1"}}}
+	inv := graph.Invocation{Schemas: map[string]json.RawMessage{"verdict-v1": json.RawMessage(`{"enum":["PASS","FAIL","UNKNOWN"]}`)}, Version: "computecloud-job-io-v2", GoalID: "g", Generation: 1, NodeID: "n", Context: m, View: view, Outputs: []graph.Port{{Name: "result", Schema: "verdict-v1"}}}
 	run := &jobRun{graph: &inv}
 	files, e := finishGraphOutput(`{"version":"iu-node-output-v1","values":{"result":"FAIL"},"records":[]}`, nil, run)
 	if e != nil || !strings.Contains(string(files["iu-output.json"]), "FAIL") {
@@ -45,5 +46,20 @@ func TestGraphOutputPreservesBusinessFailAndRejectsSelfVerification(t *testing.T
 	}
 	if _, e = finishGraphOutput(`{"version":"iu-node-output-v1","values":{"result":"PASS"},"records":[]}`, []byte("unhandled change"), run); e == nil {
 		t.Fatal("workspace mutation accepted")
+	}
+}
+
+func TestGraphOutputValidatesFrozenPortSchema(t *testing.T) {
+	v := graph.EmptyView()
+	m, e := graph.CompileContext(graph.ContextRequest{Instructions: "amount", Model: "small", View: v})
+	if e != nil {
+		t.Fatal(e)
+	}
+	inv := graph.Invocation{Version: "computecloud-job-io-v2", GoalID: "g", Generation: 1, NodeID: "n", Context: m, View: v, Outputs: []graph.Port{{Name: "result", Schema: "amount-v1"}}, Schemas: map[string]json.RawMessage{"amount-v1": json.RawMessage(`{"type":"integer"}`)}}
+	if _, e = finishGraphOutput(`{"version":"iu-node-output-v1","values":{"result":"6000"},"records":[]}`, nil, &jobRun{graph: &inv}); e == nil {
+		t.Fatal("string accepted as integer")
+	}
+	if _, e = finishGraphOutput(`{"version":"iu-node-output-v1","values":{"result":6000},"records":[]}`, nil, &jobRun{graph: &inv}); e != nil {
+		t.Fatal(e)
 	}
 }

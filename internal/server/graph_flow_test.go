@@ -34,6 +34,7 @@ print(json.dumps({'version':'iu-node-output-v1','values':{'result':verdict},'rec
 		c.Jobs.GraphCommands = map[string]config.GraphCommandProfile{"verify": {Execution: binding, ParametersSchema: `{"type":"object","properties":{"expected":{"type":"integer"}},"required":["expected"],"additionalProperties":false}`}}
 	})
 	s := graphSpec(h)
+	s.Schemas = map[string]json.RawMessage{"amount-v1": json.RawMessage(`{"type":"integer"}`), "amounts-v1": json.RawMessage(`{"type":"object","additionalProperties":{"type":"integer"}}`), "verdict-v1": json.RawMessage(`{"enum":["PASS","FAIL","UNKNOWN"]}`)}
 	ex := *s.Operators[0].Execution
 	a := graph.Source{ID: "order_a", Text: "6000"}
 	a.SHA256 = graph.Hash([]byte(a.Text))

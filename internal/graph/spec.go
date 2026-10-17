@@ -22,9 +22,11 @@ const Version = "iu-graph-v1"
 const MaxRequestBytes = 256 << 10
 
 type Source struct {
-	ID     string `json:"id"`
-	Text   string `json:"text"`
-	SHA256 string `json:"sha256,omitempty"`
+	Role         string `json:"role,omitempty"`
+	MessageIndex int    `json:"message_index,omitempty"`
+	ID           string `json:"id"`
+	Text         string `json:"text"`
+	SHA256       string `json:"sha256,omitempty"`
 }
 
 type Span struct {
@@ -83,17 +85,18 @@ type Limits struct {
 }
 
 type Spec struct {
-	Evaluator Evaluator     `json:"evaluator"`
-	Version   string        `json:"version"`
-	ProjectID string        `json:"project_id"`
-	Workspace job.Workspace `json:"workspace"`
-	Sources   []Source      `json:"sources"`
-	Rules     []Span        `json:"rules,omitempty"`
-	Operators []Operator    `json:"operators"`
-	Nodes     []Node        `json:"nodes"`
-	Edges     []Edge        `json:"edges"`
-	Outputs   []Output      `json:"outputs"`
-	Limits    Limits        `json:"limits"`
+	Schemas   map[string]json.RawMessage `json:"schemas"`
+	Evaluator Evaluator                  `json:"evaluator"`
+	Version   string                     `json:"version"`
+	ProjectID string                     `json:"project_id"`
+	Workspace job.Workspace              `json:"workspace"`
+	Sources   []Source                   `json:"sources"`
+	Rules     []Span                     `json:"rules,omitempty"`
+	Operators []Operator                 `json:"operators"`
+	Nodes     []Node                     `json:"nodes"`
+	Edges     []Edge                     `json:"edges"`
+	Outputs   []Output                   `json:"outputs"`
+	Limits    Limits                     `json:"limits"`
 }
 
 type Evaluator struct {
@@ -193,6 +196,9 @@ func Compile(in Spec) (Plan, error) {
 	sources := map[string]Source{}
 	for i := range s.Sources {
 		src := &s.Sources[i]
+		if src.MessageIndex < 0 || src.Role != "" && src.Role != "system" && src.Role != "developer" && src.Role != "user" && src.Role != "assistant" && src.Role != "tool" {
+			return fail("source message identity")
+		}
 		if !keyPattern.MatchString(src.ID) || !utf8.ValidString(src.Text) {
 			return fail("source")
 		}
@@ -212,6 +218,17 @@ func Compile(in Spec) (Plan, error) {
 		}
 	}
 	ops := map[string]Operator{}
+	if len(s.Schemas) < 1 || len(s.Schemas) > 64 {
+		return fail("frozen schemas required")
+	}
+	for name, definition := range s.Schemas {
+		if !job.Ref(name) || len(definition) > 64<<10 {
+			return fail("port schema bounds")
+		}
+		if _, e := resolvePortSchema(definition); e != nil {
+			return fail("port schema: " + e.Error())
+		}
+	}
 	for _, op := range s.Operators {
 		if !keyPattern.MatchString(op.ID) || !job.Ref(op.Version) {
 			return fail("operator identity")
@@ -225,6 +242,9 @@ func Compile(in Spec) (Plan, error) {
 		for _, ports := range [][]Port{op.Inputs, op.Outputs} {
 			seen := map[string]bool{}
 			for _, port := range ports {
+				if _, ok := s.Schemas[port.Schema]; !ok {
+					return fail("port schema undefined")
+				}
 				if !keyPattern.MatchString(port.Name) || !job.Ref(port.Schema) || seen[port.Name] {
 					return fail("invalid or duplicate port")
 				}
@@ -439,7 +459,7 @@ func Lower(in job.Spec) (Spec, error) {
 	if e := in.Validate(32, 8); e != nil {
 		return Spec{}, e
 	}
-	s := Spec{Version: Version, ProjectID: in.ProjectID, Workspace: in.Workspace, Evaluator: Evaluator{Profile: "job-artifact-v1", Version: "1"}, Limits: Limits{Parallelism: 1, TimeoutSeconds: in.Limits.TimeoutSeconds, MaxAttemptsPerTask: in.Limits.MaxAttemptsPerTask}}
+	s := Spec{Version: Version, ProjectID: in.ProjectID, Workspace: in.Workspace, Schemas: map[string]json.RawMessage{"legacy-result-bundle-v1": json.RawMessage(`{}`)}, Evaluator: Evaluator{Profile: "job-artifact-v1", Version: "1"}, Limits: Limits{Parallelism: 1, TimeoutSeconds: in.Limits.TimeoutSeconds, MaxAttemptsPerTask: in.Limits.MaxAttemptsPerTask}}
 	add := func(id, text string, ex job.Execution, inputs []Port, scopes []string) {
 		s.Operators = append(s.Operators, Operator{ID: id, Version: "legacy-v02", Kind: "agent", Execution: &ex, Inputs: inputs, Outputs: []Port{{Name: "result", Schema: "legacy-result-bundle-v1"}}})
 		s.Nodes = append(s.Nodes, Node{ID: id, Operator: id, Instructions: text, ScopePaths: scopes})

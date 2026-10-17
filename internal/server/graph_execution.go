@@ -198,6 +198,11 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 			for _, port := range op.Outputs {
 				values[port.Name] = job.JSON(joined)
 			}
+			if e = graph.ValidateValues(values, op.Outputs, f.Plan.Spec.Schemas); e != nil {
+				j.StopReason = "GRAPH_JOIN_SCHEMA_INVALID"
+				j.ErrorCode = j.StopReason
+				return s.stopGraphTx(ctx, q, j, nodes)
+			}
 			r.State = "SUCCEEDED"
 			r.Output = job.JSON(values)
 			r.View = job.JSON(view)
@@ -211,7 +216,7 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 			return fmt.Errorf("GRAPH_COMMAND_PROFILE_UNAVAILABLE")
 		}
 		instruction := n.Instructions + "\nReturn only JSON with version=iu-node-output-v1, values matching the declared ports, and records=[] or unchecked memory records. Declared output ports: " + string(job.JSON(op.Outputs))
-		manifest, e := graph.CompileContext(graph.ContextRequest{Sources: f.Plan.Spec.Sources, Rules: f.Plan.Spec.Rules, Spans: n.Spans, Instructions: instruction, View: view, Inputs: inputs, Model: ex.Model, Parameters: n.Parameters})
+		manifest, e := graph.CompileContext(graph.ContextRequest{Sources: f.Plan.Spec.Sources, Rules: f.Plan.Spec.Rules, Spans: n.Spans, Instructions: instruction, View: view, Inputs: inputs, Model: ex.Model, Parameters: n.Parameters, OutputSchema: graph.OutputSchema(op.Outputs, f.Plan.Spec.Schemas)})
 		if e != nil {
 			j.StopReason = "CONTEXT_INSUFFICIENT"
 			j.ErrorCode = j.StopReason
@@ -360,6 +365,10 @@ func assignmentGraph(ctx context.Context, q store.Query, j *Job, taskID, key str
 		return nil, e
 	}
 	inv := graph.Invocation{Version: "computecloud-job-io-v2", GoalID: j.graph.GoalID, Generation: j.graph.Generation, NodeID: key, Outputs: op.Outputs, Kind: op.Kind, CommandProfile: op.CommandProfile}
+	inv.Schemas = map[string]json.RawMessage{}
+	for _, port := range op.Outputs {
+		inv.Schemas[port.Schema] = j.graph.Plan.Spec.Schemas[port.Schema]
+	}
 	if e := json.Unmarshal(contextJSON, &inv.Context); e != nil {
 		return nil, e
 	}

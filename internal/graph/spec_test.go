@@ -10,7 +10,7 @@ import (
 
 func fixture() Spec {
 	ex := job.Execution{RuntimeProfile: "claude_http", Model: "small", CredentialRef: "key", PolicyRef: "safe", AcceptanceProfile: "report", ReplaySafe: true}
-	return Spec{Evaluator: Evaluator{Profile: "external", Version: "1"}, Version: "iu-graph-v1", ProjectID: "project", Workspace: job.Workspace{RepositoryRef: "repo", BaseCommit: strings.Repeat("a", 40)},
+	return Spec{Schemas: map[string]json.RawMessage{"order-v1": json.RawMessage(`{}`), "verdict-v1": json.RawMessage(`{"enum":["PASS","FAIL","UNKNOWN"]}`)}, Evaluator: Evaluator{Profile: "external", Version: "1"}, Version: "iu-graph-v1", ProjectID: "project", Workspace: job.Workspace{RepositoryRef: "repo", BaseCommit: strings.Repeat("a", 40)},
 		Sources:   []Source{{ID: "orders", Text: "订单甲：6000；订单乙：6000"}},
 		Operators: []Operator{{ID: "extract", Version: "1", Kind: "agent", Outputs: []Port{{Name: "result", Schema: "order-v1"}}, Execution: &ex}, {ID: "merge", Version: "1", Kind: "join", Inputs: []Port{{Name: "a", Schema: "order-v1"}, {Name: "b", Schema: "order-v1"}}, Outputs: []Port{{Name: "result", Schema: "order-v1"}}}},
 		Nodes:     []Node{{ID: "b", Operator: "extract", Instructions: "提取乙"}, {ID: "merge", Operator: "merge", JoinPolicy: "all_success"}, {ID: "a", Operator: "extract", Instructions: "提取甲"}},

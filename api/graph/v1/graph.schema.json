@@ -76,6 +76,17 @@
         "profile",
         "version"
       ]
+    },
+    "schemas": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 64,
+      "additionalProperties": {
+        "type": [
+          "object",
+          "boolean"
+        ]
+      }
     }
   },
   "required": [
@@ -88,7 +99,8 @@
     "edges",
     "outputs",
     "limits",
-    "evaluator"
+    "evaluator",
+    "schemas"
   ],
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:computecloud:iu-graph-v1",
@@ -123,6 +135,19 @@
         },
         "sha256": {
           "type": "string"
+        },
+        "role": {
+          "enum": [
+            "system",
+            "developer",
+            "user",
+            "assistant",
+            "tool"
+          ]
+        },
+        "message_index": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "required": [

@@ -48,3 +48,15 @@ func TestReconstructSourceValidatesOverlapsAndCoverage(t *testing.T) {
 		t.Fatal("coverage gap accepted")
 	}
 }
+
+func TestContextPreservesMessageRoleAndOriginalPosition(t *testing.T) {
+	s := Source{ID: "message", Text: "只计算已付款订单", Role: "system", MessageIndex: 2}
+	s.SHA256 = Hash([]byte(s.Text))
+	m, e := CompileContext(ContextRequest{Sources: []Source{s}, Rules: []Span{{Source: s.ID, Start: 0, End: len(s.Text), SHA256: s.SHA256}}, Instructions: "calculate", Model: "small", View: EmptyView()})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(m.Text, `"role":"system"`) || !strings.Contains(m.Text, `"message_index":2`) {
+		t.Fatalf("lost source role/order: %s", m.Text)
+	}
+}

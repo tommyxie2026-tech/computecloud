@@ -106,7 +106,7 @@ func (f fixtureProvider) Capabilities() CapabilitySet {
 func (f fixtureProvider) SupportsGateway() bool { return false }
 
 func TestRuntimeV2BuiltinsAndCapabilityNamespaces(t *testing.T) {
-	wantProfiles := []string{"claude_http", "claude_print", "codex_exec", "codex_http", "gemini_cli"}
+	wantProfiles := []string{"claude_http", "claude_print", "codex_exec", "codex_http", "command_exec", "gemini_cli"}
 	got := Profiles()
 	if !reflect.DeepEqual(got, wantProfiles) {
 		t.Fatalf("profiles=%v want=%v", got, wantProfiles)

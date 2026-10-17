@@ -226,6 +226,9 @@ func (s *Server) admitGraphCandidate(ctx context.Context, c graphCandidate) erro
 					reason = "IU_OUTPUT_PORT_REJECTED"
 				}
 			}
+			if graph.ValidateValues(out.Values, op.Outputs, j.graph.Plan.Spec.Schemas) != nil {
+				reason = "IU_OUTPUT_SCHEMA_REJECTED"
+			}
 			allowedSources := map[string]string{}
 			for _, span := range manifest.Spans {
 				allowedSources[span.Source] = span.SHA256
