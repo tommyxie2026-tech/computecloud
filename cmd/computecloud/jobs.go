@@ -130,12 +130,18 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 	switch o.op {
 	case "graph":
 		return print("GET", path+"/graph", nil)
-	case "evaluate-graph":
+	case "graph-validity":
+		return print("GET", path+"/graph/validity", nil)
+	case "invalidate-graph", "evaluate-graph":
 		b, e := os.ReadFile(o.file)
 		if e != nil {
 			return e
 		}
-		return print("POST", path+"/graph/evaluations", b)
+		endpoint := path + "/graph/evaluations"
+		if o.op == "invalidate-graph" {
+			endpoint = path + "/graph/invalidations"
+		}
+		return print("POST", endpoint, b)
 	case "trace":
 		return print("GET", path+"/trace?limit="+strconv.Itoa(o.limit)+"&before="+url.QueryEscape(o.cursor), nil)
 	case "get":

@@ -185,6 +185,13 @@ func (s *Server) admitGraphCandidate(ctx context.Context, c graphCandidate) erro
 			return e
 		}
 		reason := ""
+		invalidated, validityErr := graphInvalidatedTx(ctx, q, &frozenGraph{GoalID: c.GoalID, Generation: c.Generation})
+		if validityErr != nil {
+			return validityErr
+		}
+		if invalidated {
+			reason = "IU_INPUT_INVALIDATED"
+		}
 		if activeGeneration != c.Generation {
 			reason = "STALE_GENERATION"
 		} else if goalState == "CANCELED" || jobStop != "" {

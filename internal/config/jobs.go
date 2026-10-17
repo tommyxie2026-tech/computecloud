@@ -422,7 +422,7 @@ func (c Server) ValidateV02() error {
 			}
 		}
 		for _, scope := range id.Scopes {
-			if !Contains([]string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:extend", "jobs:control", "jobs:retry", "api_keys:manage", "models:invoke", "tasks:submit", "tasks:read", "tasks:cancel", "goals:approve", "goals:budget", "goals:constraints", "goals:propose", "goals:evaluate", "conversations:submit", "conversations:read", "conversations:cancel"}, scope) {
+			if !Contains([]string{"jobs:submit", "jobs:read", "jobs:cancel", "jobs:extend", "jobs:control", "jobs:retry", "api_keys:manage", "models:invoke", "tasks:submit", "tasks:read", "tasks:cancel", "goals:approve", "goals:budget", "goals:constraints", "goals:propose", "goals:evaluate", "goals:invalidate", "conversations:submit", "conversations:read", "conversations:cancel"}, scope) {
 				return fmt.Errorf("unknown identity scope")
 			}
 		}

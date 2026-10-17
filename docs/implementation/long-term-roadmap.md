@@ -1511,6 +1511,8 @@ evaluation history / runtime capability / cost / latency
 
 ### IU 计算模型迭代台账
 
+逐阶段实施、拟议接口、代码落点及验收待办见 [IU 后续迭代实施计划](../superpowers/plans/2026-10-18-iu-follow-up-iterations.md)。下一迭代优先 IU-2；IU-5 细分为上下文/token、record 验证、真实模型/aicloud 三条工作线。所有待办尚未实现，不预设版本号或发布日期。
+
 IU 是 Goal-oriented Computing 的受限计算图切片，与 v0.5 Scheduler 主线配合，复用 Task / Attempt、Artifact、Scheduler 和 Guard。computecloud 不新增执行引擎，也不承担 aicloud 的模型 Registry / Evaluation / Router 职责。以下阶段是迭代顺序，不构成版本号或发布日期承诺。
 
 | 阶段 | 状态 | 交付与退出门槛 |

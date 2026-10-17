@@ -18,6 +18,8 @@
 | 费用边界 | 仅受支持 claude_http 估算费用串行模式；明确拒绝 max_tokens、command 混合费用与 Gateway route |
 | 兼容性 | 默认关闭、已接受图继续恢复、旧 single / map_reduce 执行器不切换；Server schema v20，Worker v6 |
 
+后续执行见 [IU 后续迭代实施计划](../superpowers/plans/2026-10-18-iu-follow-up-iterations.md)，包含 IU-2～IU-6 的阶段依赖、验收门槛和代码落点；当前仅完成规划，未开始这些功能实现。
+
 后续迭代以[长期路线图中的 IU 台账](long-term-roadmap.md#iu-计算模型迭代台账)为准：先持久失效事件，再授权跨代 import 和依赖增量重算；真实模型基线单独取证。
 
 ## 设计中尚未交付的部分
@@ -49,3 +51,7 @@
 [CI 模拟与原生执行方案](../validation/iu-ci-simulation.md) 增加 18 个语义/故障场景，以及独立 Server / 双 Worker OS 进程的四图验收、授权评估和 Server 硬重启证据。必测项必须 PASS，报告与 JSONL 日志作为 Actions Artifact 保存；不将模拟通过写成真实模型收益。
 
 代码提交 `32547db` 的 [CI 39035469279](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39035469279) 已完成，35 项运行检查成功（含 Linux/macOS 全量回归）；IU 专项 7 阶段、26 项必测检查及 18 个场景通过。[Artifact](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39035469279/artifacts/12101479992) 保存对应报告和日志。此记录绑定该次代码，后续修改仍须通过最新 CI。
+
+## IU-2 实施进度
+
+持久失效事件、独立权限、有效性 revision、不可变投影、激活/准入/PASS/新代发布事务检查已进入实现分支；Server schema v21。源事件提交后保守停止该代计算，按每轮最多 4 个事件恢复投影；旧 Task/Artifact/Memory 历史不修改。终结 Goal 仅接收 audit_only 反证。CI 验收完成前保持“实施中”，不表示 IU-3 以后已交付。阶段合同见 [持久失效规格](../superpowers/specs/iu-durable-invalidation.md)。

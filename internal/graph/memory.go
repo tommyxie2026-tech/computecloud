@@ -315,5 +315,12 @@ func Invalidate(view MemoryView, ids []string) (MemoryView, error) {
 			next.Records[i].Validity = "INVALID"
 		}
 	}
+	for i := range next.Conflicts {
+		for j := range next.Conflicts[i].Candidates {
+			if invalidIDs[next.Conflicts[i].Candidates[j].ID] {
+				next.Conflicts[i].Candidates[j].Validity = "INVALID"
+			}
+		}
+	}
 	return sealView(next), nil
 }

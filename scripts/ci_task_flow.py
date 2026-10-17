@@ -319,7 +319,7 @@ def main():
                     "parameters_schema": '{"type":"object","additionalProperties":false}'}})
                 eval_token = write("evaluator.token", secrets.token_hex(32))
                 server_data["server"]["users"].append({"token_file":eval_token,"owner":"ci","projects":["ci-flow"],
-                    "credentials":["fixture"],"scopes":["jobs:read","goals:evaluate"]})
+                    "credentials":["fixture"],"scopes":["jobs:read","goals:evaluate","goals:invalidate"]})
                 write("server.json", server_data)
                 eval_config = write("evaluator.json", {"client":{"http_url":"http://"+http_address,"token_file":eval_token,"tls":tls}})
 
@@ -480,7 +480,63 @@ def main():
                             "server_pid_before_restart":old_pid if restarted else None,
                             "server_pid_after_restart":processes["server"].pid if restarted else None,
                             "worker_process_pids":{n:processes[n].pid for n in worker_configs}})
+                    spec = json.loads(json.dumps(template))
+                    spec.update(project_id="ci-flow",workspace={"repository_ref":"repo","base_commit":commit})
+                    spec["limits"]["max_replans"] = 0
+                    for op in spec["operators"]:
+                        if op["kind"] == "agent":
+                            op["execution"] = execution("codex")
+                    request = write("invalidated-graph.json",spec)
+                    job_id = json.loads(cli("job","submit-graph","--key","ci-invalidated","--file",request))["job_id"]
+                    if wait_job(job_id)["state"] != "SUCCEEDED":
+                        raise AssertionError("invalidation graph did not finish execution")
+                    status = json.loads(cli("job","graph","--id",job_id))
+                    attempts_before = attempt_snapshot(job_id)
+                    rule = next(s for s in spec["sources"] if s["id"] == "discount_rule")
+                    event = write("invalidation.json",{"id":"rule-revised","goal_id":status["goal_id"],
+                        "graph_generation":status["graph_generation"],"expected_revision":0,"reason":"RULE_CHANGED",
+                        "evidence_sha256":hashlib.sha256(b"discount=2000").hexdigest(),
+                        "sources":[{"id":rule["id"],"sha256":hashlib.sha256(rule["text"].encode()).hexdigest()}]})
+                    denied = False
+                    try:
+                        cli("job","invalidate-graph","--id",job_id,"--file",event)
+                    except RuntimeError as error:
+                        denied = "403" in str(error)
+                    if not denied:
+                        raise AssertionError("submitter could invalidate without separate permission")
+                    run_command(binary,"job","invalidate-graph","--id",job_id,"--file",event,"--config",eval_config)
+                    old_pid = processes["server"].pid
+                    stop("server",hard=True)
+                    start("server","server",server_config)
+                    def applied():
+                        state = json.loads(cli("job","graph-validity","--id",job_id))
+                        return state if state["revision"] == 1 and len(state["events"]) == 1 and state["events"][0]["state"] == "APPLIED" else None
+                    validity = wait_for(applied)
+                    attempts_after = attempt_snapshot(job_id)
+                    if attempts_before != attempts_after or processes["server"].pid == old_pid:
+                        raise AssertionError("invalidation restart changed attempts or did not restart")
+                    evaluation = {"id":"stale-pass","expected_version":0,"expected_validity_revision":1,
+                        "output_sha256":status["output_sha256"],"verifier_profile":"orders-proof","verifier_version":"1",
+                        "verdict":"PASS","evidence_sha256":hashlib.sha256(b"old proof").hexdigest()}
+                    stale = write("invalidated-evaluation.json",evaluation)
+                    pass_denied = False
+                    try:
+                        run_command(binary,"job","evaluate-graph","--id",job_id,"--file",stale,"--config",eval_config)
+                    except RuntimeError as error:
+                        pass_denied = "IU_INPUT_INVALIDATED" in str(error)
+                    if not pass_denied:
+                        raise AssertionError("invalidated evidence could PASS")
+                    evaluation.update(id="current-fail",verdict="FAIL")
+                    failure = write("invalidated-fail.json",evaluation)
+                    run_command(binary,"job","evaluate-graph","--id",job_id,"--file",failure,"--config",eval_config)
+                    final = json.loads(cli("job","graph","--id",job_id))
+                    if final["goal_state"] != "FAILED":
+                        raise AssertionError("invalidated Goal did not terminate after FAIL")
+                    invalidation = {"revision":validity["revision"],"applied":True,"server_process_restart":True,
+                        "attempts_unchanged":True,"unauthorized_denied":denied,"stale_pass_denied":pass_denied,
+                        "job_id":job_id,"goal_state":final["goal_state"],"attempts_before":attempts_before,"attempts_after":attempts_after}
                     return {"real_model_calls":False,"cases":results,"server_processes":1,"worker_processes":2,
+                            "invalidation":invalidation,
                             "restart_scope":"completed execution waiting for authorized business evaluation"}
                 record("native_iu_graphs", native_graph_flow)
 
@@ -578,14 +634,14 @@ def main():
                     tasks = dict(database.execute("SELECT state,count(*) FROM tasks GROUP BY state"))
                 if integrity != "ok":
                     raise AssertionError("SQLite integrity check failed")
-                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": (12 if args.workspace_benchmark else 2) + (4 if args.iu_graph_check else 0)}
+                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": (12 if args.workspace_benchmark else 2) + (5 if args.iu_graph_check else 0)}
                 if jobs != expected_jobs:
                     raise AssertionError(f"unexpected Job state totals: {jobs}")
                 return {"sqlite_integrity": integrity, "job_states": jobs, "task_states": tasks}
 
             record("shutdown_and_integrity", shutdown_and_integrity)
             report["summary"] = {"status": "PASSED", "steps_passed": len(report["steps"]),
-                                 "successful_jobs": (12 if args.workspace_benchmark else 2) + (4 if args.iu_graph_check else 0), "canceled_jobs": 1, "failed_jobs": 1}
+                                 "successful_jobs": (12 if args.workspace_benchmark else 2) + (5 if args.iu_graph_check else 0), "canceled_jobs": 1, "failed_jobs": 1}
     except BaseException as error:
         failure = error
         report["summary"] = {"status": "FAILED", "error": f"{type(error).__name__}: {error}"}

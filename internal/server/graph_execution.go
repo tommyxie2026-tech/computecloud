@@ -72,6 +72,14 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 		return nil
 	}
 	f := j.graph
+	invalidated, validityErr := graphInvalidatedTx(ctx, q, f)
+	if validityErr != nil {
+		return validityErr
+	}
+	if invalidated {
+		j.StopReason = "IU_INPUT_INVALIDATED"
+		j.ErrorCode = j.StopReason
+	}
 	var generation int64
 	var goalState string
 	if e := q.QueryRowContext(ctx, `SELECT active_graph_generation,state FROM goals WHERE id=?`, f.GoalID).Scan(&generation, &goalState); e != nil {
