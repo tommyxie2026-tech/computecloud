@@ -322,8 +322,12 @@ func (s *Server) GraphMemory(ctx context.Context, id, node string) (graph.Memory
 	if j.graph == nil {
 		return view, status.Error(codes.NotFound, "NOT_GRAPH_JOB")
 	}
-	e = s.db.Tx(ctx, func(q store.Query) error {
-		f := j.graph
+	e = s.db.Tx(ctx, func(q store.Query) error { var err error; view, err = graphMemoryTx(ctx, q, j.graph, node); return err })
+	return view, e
+}
+func graphMemoryTx(ctx context.Context, q store.Query, f *frozenGraph, node string) (graph.MemoryView, error) {
+	var view graph.MemoryView
+	err := func() error {
 		var revision int64
 		if e := q.QueryRowContext(ctx, `SELECT coalesce(max(revision),0) FROM iu_validity_events WHERE goal_id=? AND generation=? AND audit_only=0`, f.GoalID, f.Generation).Scan(&revision); e != nil {
 			return e
@@ -345,9 +349,10 @@ func (s *Server) GraphMemory(ctx context.Context, id, node string) (graph.Memory
 			return status.Error(codes.NotFound, "MEMORY_NOT_AVAILABLE")
 		}
 		return json.Unmarshal(raw, &view)
-	})
-	return view, e
+	}()
+	return view, err
 }
+
 func (s *Server) httpInvalidateGraph(w http.ResponseWriter, r *http.Request) {
 	raw, e := readJSONBody(w, r, 16<<10)
 	if e != nil {

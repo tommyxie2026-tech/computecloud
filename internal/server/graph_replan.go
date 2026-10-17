@@ -124,6 +124,10 @@ func (s *Server) publishGraphReplan(ctx context.Context, prior *Job, in goal.Rep
 				return e
 			}
 		}
+		target := &Job{ID: id, owner: prior.owner, project: prior.project, graph: &f}
+		if e := bindGraphImportsTx(ctx, q, target); e != nil {
+			return e
+		}
 		return appendJobEvent(ctx, q, id, "graph.created", map[string]any{"goal_id": in.GoalID, "graph_generation": d.NextGraphGeneration, "evaluation_id": in.EvaluationID}, "", "")
 	})
 	if e != nil {

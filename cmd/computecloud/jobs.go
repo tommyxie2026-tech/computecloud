@@ -132,6 +132,21 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		return print("GET", path+"/graph", nil)
 	case "graph-validity":
 		return print("GET", path+"/graph/validity", nil)
+	case "issue-import":
+		b, e := os.ReadFile(o.file)
+		if e != nil {
+			return e
+		}
+		return print("POST", path+"/graph/import-grants", b)
+	case "get-import", "revoke-import":
+		if o.key == "" {
+			return fmt.Errorf("--key grant ID required")
+		}
+		endpoint := path + "/graph/import-grants/" + url.PathEscape(o.key)
+		if o.op == "revoke-import" {
+			return print("POST", endpoint+"/revoke", []byte(`{}`))
+		}
+		return print("GET", endpoint, nil)
 	case "invalidate-graph", "evaluate-graph":
 		b, e := os.ReadFile(o.file)
 		if e != nil {

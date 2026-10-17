@@ -16,9 +16,9 @@
 | 查询与 CLI | submit-graph / graph / evaluate-graph；节点 Task、receipt、重试时间、有效并行度及评估版本可查 |
 | 评估与修复 | 独立 goals:evaluate 权限、PASS / FAIL / UNKNOWN、CAS、跨代隔离、deadline / cancel、FAIL 经现有 Guard 发布新代 |
 | 费用边界 | 仅受支持 claude_http 估算费用串行模式；明确拒绝 max_tokens、command 混合费用与 Gateway route |
-| 兼容性 | 默认关闭、已接受图继续恢复、旧 single / map_reduce 执行器不切换；Server schema v20，Worker v6 |
+| 兼容性 | 默认关闭、已接受图继续恢复、旧 single / map_reduce 执行器不切换；初始交付 Server schema v20，Worker v6 |
 
-后续执行见 [IU 后续迭代实施计划](../superpowers/plans/2026-10-18-iu-follow-up-iterations.md)，包含 IU-2～IU-6 的阶段依赖、验收门槛和代码落点；当前仅完成规划，未开始这些功能实现。
+后续执行见 [IU 后续迭代实施计划](../superpowers/plans/2026-10-18-iu-follow-up-iterations.md)，包含 IU-2～IU-6 的阶段依赖、验收门槛和代码落点；IU-2/3 已进入实现分支，后续仍以对应提交的 CI 和阶段验收为准。
 
 后续迭代以[长期路线图中的 IU 台账](long-term-roadmap.md#iu-计算模型迭代台账)为准：先持久失效事件，再授权跨代 import 和依赖增量重算；真实模型基线单独取证。
 
@@ -55,3 +55,7 @@
 ## IU-2 实施进度
 
 持久失效事件、独立权限、有效性 revision、不可变投影、激活/准入/PASS/新代发布事务检查已进入实现分支；Server schema v21。源事件提交后保守停止该代计算，按每轮最多 4 个事件恢复投影；旧 Task/Artifact/Memory 历史不修改。终结 Goal 仅接收 audit_only 反证。CI 验收完成前保持“实施中”，不表示 IU-3 以后已交付。阶段合同见 [持久失效规格](../superpowers/specs/iu-durable-invalidation.md)。
+
+## IU-3 实施进度
+
+[v2 导入合同](../contracts/iu-graph-v2.md) 新增同 Goal 一次性授权、完整闭包、稳定命名空间、Guard 发布事务复查、不可变快照/provenance 与 Artifact pin，Server schema v22。导入记录重置 unchecked，节点继续正常执行；没有实现增量跳过节点。重启重放、撤权/过期、GC pin 与失效竞争定向测试已通过，完整 CI 和最终审查待验收。真实模型、远程 aicloud、独立主机验证依用户决定保持未完成。

@@ -137,7 +137,10 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 		op := graphOperator(f, n)
 		ready, skip := true, false
 		selected := 0
-		var views []graph.MemoryView
+		views, importErr := importViewsTx(ctx, q, f, n.ID)
+		if importErr != nil {
+			return importErr
+		}
 		var inputs []graph.InputValue
 		joined := map[string]json.RawMessage{}
 		for _, edge := range f.Plan.Spec.Edges {
