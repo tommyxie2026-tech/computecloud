@@ -86,7 +86,7 @@
 
 1. 将 `prepared_workspace_score_enabled` 设回 `false`，记录变更人和配置版本。
 2. 按部署流程重启/替换 Server；确认 Server 健康并确认实际加载值为 false。
-3. 等待两个 Worker 重新连接，提交一条预批准的冒烟任务，确认 scheduler observation 显示评分关闭并按 least-active/tie rotation 工作。
+3. 等待两个 Worker 重新连接，提交一条预批准的冒烟任务，确认 scheduler observation 显示评分关闭且任务可正常派发/完成。单条任务只验证关闭状态和基本派发，不据此宣称 tie rotation 已验证。
 4. 若不能确认配置已关闭或硬过滤行为正常，停止新任务派发，按既定 Server 故障处置流程恢复；不通过修改 Worker capability 或放宽安全要求规避问题。
 5. 保存 OFF/ON/回滚证据与失败分析，将功能保持默认关闭，直到问题修复并重新冻结/执行对照。
 
