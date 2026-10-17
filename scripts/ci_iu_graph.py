@@ -60,7 +60,14 @@ REQUIRED_TESTS = tuple(
         "TestReconstructSourceValidatesOverlapsAndCoverage", "TestMemoryDeltaRequiresFrozenViewAndCannotSelfVerify",
         "TestMemoryMergeConflictsAndDeduplicates", "TestMemoryInvalidationPropagatesWithoutChangingHistory",
         "TestApplyDeltaPreservesConflictsAndInheritedInvalidity", "TestOutputSchemaRebasesFrozenLocalDefinitions")]
-    + [PREFIX + "internal/iuexperiment::TestIndependentVerificationContrastRetainsRejectedSamples", PREFIX + "internal/iuexperiment::TestIncrementalEvidenceKeepsUnknownCostAndRequiresProvenance", PREFIX + "internal/worker::TestGraphWorkerRejectsModelOrSerializationDrift", PREFIX + "internal/worker::TestGraphReplayBindingRejectsWorkerDrift", PREFIX + "cmd/iu-experiment::TestCLIProcessTimeoutDrainsWholeGroup",
+    + [PREFIX + "internal/aicloudadapter::TestReadOnlyAICloudBundleFreezesExactVersions",
+       PREFIX + "internal/aicloudadapter::TestAICloudUnavailabilityRateLimitBudgetAndRedirectNeverFallback",
+       PREFIX + "internal/aicloudadapter::TestAICloudPaginationLoopAndMissingDecisionFailClosed",
+       PREFIX + "internal/iuexperiment::TestPilotProtocolFreezesTwentyCasesAndBudgets",
+       PREFIX + "internal/iuexperiment::TestPilotSimulationExecutesAllArmsWithUnknownProviderCosts",
+       PREFIX + "internal/iuexperiment::TestAblationsKeepMemoryAndVerificationEffectsSeparate",
+       PREFIX + "internal/iuexperiment::TestDetailedMetricsUseAllSamplesAndUnknownCosts",
+       PREFIX + "internal/iuexperiment::TestIndependentVerificationContrastRetainsRejectedSamples", PREFIX + "internal/iuexperiment::TestIncrementalEvidenceKeepsUnknownCostAndRequiresProvenance", PREFIX + "internal/worker::TestGraphWorkerRejectsModelOrSerializationDrift", PREFIX + "internal/worker::TestGraphReplayBindingRejectsWorkerDrift", PREFIX + "cmd/iu-experiment::TestCLIProcessTimeoutDrainsWholeGroup",
        PREFIX + "internal/iuexperiment::TestSimulationChecksHealthyAndInjectedFailures",
        PREFIX + "internal/iuexperiment::TestCorrectFinalTotalDoesNotHideCorruptedIntermediateIdentity"]
 )
@@ -72,6 +79,14 @@ def build_report(stages, events, simulation, process_report=None):
     scenarios = simulation.get("scenarios", [])
     healthy = sum(s.get("injected_fault") == "none" for s in scenarios)
     faults = len(scenarios) - healthy
+    pilot=simulation.get("pilot",{})
+    pilot_samples=pilot.get("samples",[])
+    valid_pilot=(pilot.get("checks_passed") is True and pilot.get("provider_calls")==0
+                 and pilot.get("fixture_invocations")==215 and len(pilot_samples)==80
+                 and len(pilot.get("protocol",{}).get("samples",[]))==20
+                 and all(sum(s.get("arm")==arm for s in pilot_samples)==20 for arm in ("monolithic","iu","iu_no_memory","iu_no_verifier"))
+                 and all(s.get("independent_business_pass") is True and not s.get("error_code")
+                         and s.get("input_tokens") is None and s.get("reported_cost_usd") is None for s in pilot_samples))
     valid_sim = (simulation.get("real_model_calls") is False and simulation.get("checks_passed") is True
                  and healthy == 8 and faults == 10
                  and all(s.get("check_passed") is True for s in scenarios))
@@ -89,11 +104,11 @@ def build_report(stages, events, simulation, process_report=None):
                            "applied", "server_process_restart", "attempts_unchanged", "unauthorized_denied", "stale_pass_denied"))
                        and native.get("invalidation", {}).get("revision") == 1
                        and native.get("invalidation", {}).get("goal_state") == "FAILED")
-    passed = stage_ok and valid_sim and valid_processes and all(c["action"] == "pass" for c in critical)
+    passed = stage_ok and valid_sim and valid_pilot and valid_processes and all(c["action"] == "pass" for c in critical)
     return {"schema_version": "iu-ci-validation-v1", "status": "PASSED" if passed else "FAILED",
             "real_model_calls": False, "stages": stages, "required_checks": critical,
             "native_process_flow": native,
-            "simulation": {"healthy_scenarios": healthy, "injected_faults": faults, "passed": valid_sim},
+            "pilot":pilot, "simulation": {"healthy_scenarios": healthy, "injected_faults": faults, "passed": valid_sim},
             "test_totals": {action: sum(v == action for v in events.values()) for action in ("pass", "fail", "skip")},
             "limitations": ["Deterministic fixtures validate contracts and failure handling, not model intelligence or cost savings.",
                             "Separate Server/two Worker OS processes use mock agents; independent command verification and hard Server restart are exercised."]}
@@ -144,7 +159,7 @@ def main():
     commands = [
         ("verifier", [sys.executable, "-m", "unittest", "discover", "-s", "examples/iu-graph", "-p", "test_*.py"], 60),
         ("contracts", [args.go, "test", "-json", "-race", "./internal/graph", "./internal/store", "./internal/config",
-                       "./internal/iuexperiment", "./cmd/iu-experiment", "-count=1", "-timeout=5m"], 330),
+                       "./internal/iuexperiment", "./internal/aicloudadapter", "./cmd/iu-experiment", "-count=1", "-timeout=5m"], 330),
         ("native", [args.go, "test", "-json", "-race", "./internal/server", "./internal/worker", "./internal/adapter",
                     "-run", "TestGraph|TestCommandProvider|TestInvalidation|TestImport|TestReuse|TestIncremental|TestVerification", "-count=1", "-timeout=5m"], 330),
         ("cli", [args.go, "test", "-json", "./cmd/computecloud", "-run", "TestJobGraphCLI", "-count=1", "-timeout=2m"], 150),

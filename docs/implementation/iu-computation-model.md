@@ -71,3 +71,7 @@
 ## IU-5B 实施进度
 
 [独立 record 验证合同](../contracts/iu-record-verification-v1.md) 增加管理员只读 source-field 检查、独立 goals:verify、不可变回执与来源 pin、逐记录/作用域投影及业务评估 proof 引用复查。原始记忆/Worker 输入不改写，旧证明在失效、换代或 profile 变化后不适用。Wilson 区间仅是外部 Evaluation 的经验统计，不是确定性保证。Server schema v25；代码及定向验证通过，CI/最终审查待验收。
+
+## IU-5C 实施进度
+
+[适配与评测规格](../superpowers/specs/iu-aicloud-adapter.md) 增加冻结 20 样本/4 臂试运行协议、memory/verification 消融、全分母与未知费用报告、80 臂 fixture 模拟；aicloud 只读 adapter 按已核实 commit 的 GET/ConfigDigest 合同冻结精确模型/部署/评估/策略，错误不重路由。代码/定向 race 与模拟通过，CI/最终审查待验收。adapter 未开启 Server 生产路由，真实 20 样本/Provider revision、远程服务与独立主机验收保留未完成。
