@@ -6,7 +6,16 @@ class CIReportTest(unittest.TestCase):
         return ([{"name": name, "exit_code": 0} for name in ("verifier", "contracts", "native", "cli", "simulation", "build", "processes")],
                 {key: "pass" for key in REQUIRED_TESTS},
                 {"real_model_calls": False, "checks_passed": True,
+                 "pilot":{"checks_passed":True,"provider_calls":0,"fixture_invocations":215,
+                          "protocol":{"samples":[{} for _ in range(20)]},
+                          "samples":[{"arm":arm,"independent_business_pass":True,"input_tokens":None,"reported_cost_usd":None}
+                                     for arm in ("monolithic","iu","iu_no_memory","iu_no_verifier") for _ in range(20)]},
                  "scenarios": [{"injected_fault": "none" if i < 8 else "fault", "check_passed": True} for i in range(18)]})
+
+    def test_missing_pilot_evidence_cannot_pass(self):
+        stages,events,simulation=self.healthy()
+        simulation.pop("pilot",None)
+        self.assertEqual(build_report(stages,events,simulation,self.process_report())["status"],"FAILED")
 
     def process_report(self):
         return {"summary":{"status":"PASSED"},"steps":[{"name":"native_iu_graphs","status":"PASSED",

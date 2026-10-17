@@ -71,3 +71,9 @@ CLI 在临时空目录运行。Codex 使用 read-only / ephemeral，Claude 关�
 2. 扩充固定数据集与重复次数，加入无记忆消融和等 token/时间预算对照；保留失败样本。
 3. 将相同样本搬到实际 Server/Worker，测调度、Artifact、准入和恢复开销。
 4. 再实现持久规则失效事件与跨代授权 import，用旧规则结论不可直接 PASS 的回归来开放增量复用。
+
+## IU-5C 代码扩展
+
+已增加 `iu_no_memory`（保留相同结构化 artifact inputs）、`iu_no_verifier`（保留 unchecked memory，但不执行 pipeline oracle）消融。所有组仍由同一外部原始证据计算 ground truth；执行/契约失败、字段损坏、最终金额与 pipeline acceptance 分别记录，不能用正确最终金额隐藏身份信息损失。
+
+[冻结试运行协议和 aicloud 适配边界](../superpowers/specs/iu-aicloud-adapter.md) 给出 `--pilot-plan` / `--protocol` 入口。默认原有双臂/8-call 入口保持；四臂需预检更高调用 cap。`--simulate` 同时生成 20 样本×4 组的 fixture 报告，Provider 调用为 0、token/费用仍 unknown。真实调用尚未执行。
