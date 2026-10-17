@@ -67,3 +67,7 @@
 ## IU-5A 实施进度
 
 [v4 上下文合同](../contracts/iu-graph-v4.md) 增加必需语义证据/字节预算、固定模型/tokenizer/template/Adapter 的计数 receipt 合同、Worker 实际输入核对与持久有界来源读取。生产 CLI 未通过完整包装计数合同，精确 token 上限仍拒绝，unknown 不变 0；附件只交付设计，未知类型明确拒绝。Server schema v24，CI/最终审查待验收。
+
+## IU-5B 实施进度
+
+[独立 record 验证合同](../contracts/iu-record-verification-v1.md) 增加管理员只读 source-field 检查、独立 goals:verify、不可变回执与来源 pin、逐记录/作用域投影及业务评估 proof 引用复查。原始记忆/Worker 输入不改写，旧证明在失效、换代或 profile 变化后不适用。Wilson 区间仅是外部 Evaluation 的经验统计，不是确定性保证。Server schema v25；代码及定向验证通过，CI/最终审查待验收。
