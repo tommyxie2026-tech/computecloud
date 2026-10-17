@@ -424,6 +424,114 @@ func TestAssignUsesReadinessScoreOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestAssignReadinessScoringCannotOverrideCapabilityFilter(t *testing.T) {
+	s, uc, _, eligibleWorker := offlineJobServer(t)
+	defer s.Close()
+	s.cfg.Credentials["account"] = 8
+	s.cfg.PreparedWorkspaceScoreEnabled = true
+	eligibleWorker.hello.Slots = 4
+
+	jobSpec := (&jobHarness{commit: strings.Repeat("a", 40)}).spec("single")
+	if len(eligibleWorker.hello.Runtimes) == 0 {
+		t.Fatal("test fixture has no Runtime capability")
+	}
+	workerBHello := proto.Clone(eligibleWorker.hello).(*pb.WorkerHello)
+	workerBHello.WorkerId = "worker-incompatible"
+	workerBHello.Epoch = "epoch-incompatible"
+	workerBHello.Runtimes = nil
+	workerB := &session{hello: workerBHello, identity: eligibleWorker.identity}
+	now := store.Now()
+	workerB.readiness = &pb.ExecutionSignal{
+		ObservedAtMs: now, MeasuredAtMs: now,
+		RuntimeReady:          []string{jobSpec.Execution.RuntimeProfile},
+		EnvironmentReady:      []string{"process"},
+		RepositoryRefs:        []string{jobSpec.Workspace.RepositoryRef},
+		WorkspacePrepareP50Ms: 1,
+	}
+	workerB.readinessReceived = now
+	if _, err := s.db.SQL.Exec("INSERT INTO workers VALUES(?,?,?,?)", workerBHello.WorkerId, workerBHello.Epoch, encode(workerBHello), now); err != nil {
+		t.Fatal(err)
+	}
+
+	j, err := s.SubmitJob(uc, "readiness-hard-filter", job.JSON(jobSpec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var task string
+	if err = s.db.SQL.QueryRow("SELECT id FROM tasks WHERE job_id=?", j.ID).Scan(&task); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.assign(uc, task, []*session{workerB, eligibleWorker}); err != nil {
+		t.Fatal(err)
+	}
+	var assigned string
+	if err = s.db.SQL.QueryRow("SELECT worker FROM tasks WHERE id=?", task).Scan(&assigned); err != nil {
+		t.Fatal(err)
+	}
+	if assigned != eligibleWorker.hello.WorkerId {
+		t.Fatalf("assignment chose %q, want eligible worker %q", assigned, eligibleWorker.hello.WorkerId)
+	}
+
+	rows, err := s.db.SQL.Query("SELECT body FROM events WHERE task=? ORDER BY seq DESC", task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var event *pb.Event
+	for rows.Next() {
+		var raw []byte
+		if err = rows.Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		candidate := &pb.Event{}
+		if err = decode(raw, candidate); err != nil {
+			t.Fatal(err)
+		}
+		if candidate.Type == "scheduler.observation" {
+			event = candidate
+			break
+		}
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if event == nil {
+		t.Fatal("scheduler observation was not persisted")
+	}
+	var evidence struct {
+		SelectedWorker string `json:"selected_worker"`
+		Candidates     []struct {
+			WorkerID string       `json:"worker_id"`
+			Reason   string       `json:"reason"`
+			Score    *workerScore `json:"score"`
+		} `json:"candidates"`
+	}
+	if err = json.Unmarshal(event.PayloadJson, &evidence); err != nil {
+		t.Fatal(err)
+	}
+	if evidence.SelectedWorker != eligibleWorker.hello.WorkerId {
+		t.Fatalf("evidence selected %q, want %q", evidence.SelectedWorker, eligibleWorker.hello.WorkerId)
+	}
+	var rejected, selected bool
+	for _, candidate := range evidence.Candidates {
+		switch candidate.WorkerID {
+		case workerBHello.WorkerId:
+			rejected = candidate.Reason == "TEMPLATE_OR_CAPABILITY_MISMATCH" && candidate.Score == nil
+		case eligibleWorker.hello.WorkerId:
+			selected = candidate.Reason == "ELIGIBLE" && candidate.Score != nil
+		}
+	}
+	if !rejected {
+		t.Fatalf("ineligible Worker was not recorded as rejected before scoring: %s", event.PayloadJson)
+	}
+	if !selected {
+		t.Fatalf("eligible Worker score missing from evidence: %s", event.PayloadJson)
+	}
+	if strings.Contains(string(event.PayloadJson), `"`+jobSpec.Workspace.RepositoryRef+`"`) {
+		t.Fatalf("scheduler evidence leaked repository identity: %s", event.PayloadJson)
+	}
+}
+
 func TestAssignSkipsWorkerAtCapacity(t *testing.T) {
 	s, uc, _, workerA := offlineJobServer(t)
 	defer s.Close()
