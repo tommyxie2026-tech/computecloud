@@ -8,6 +8,7 @@ import (
 )
 
 type InputValue struct {
+	SourcePort string `json:"source_port,omitempty"`
 	Node       string `json:"node"`
 	Port       string `json:"port"`
 	ArtifactID string `json:"artifact_id"`

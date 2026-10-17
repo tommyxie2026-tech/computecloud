@@ -178,7 +178,7 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 				if len(raw) == 0 {
 					return fmt.Errorf("GRAPH_OUTPUT_MISSING")
 				}
-				inputs = append(inputs, graph.InputValue{Node: edge.FromNode, Port: edge.FromPort, SHA256: graph.Hash(raw), Value: string(raw)})
+				inputs = append(inputs, graph.InputValue{Node: edge.FromNode, Port: edge.ToPort, SourcePort: edge.FromPort, SHA256: graph.Hash(raw), Value: string(raw)})
 				joined[edge.ToPort] = raw
 			}
 		}

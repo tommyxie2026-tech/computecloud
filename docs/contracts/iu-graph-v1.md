@@ -8,7 +8,7 @@
 
 IU 不是固定数量 token，也不直接切分模型内部状态。本版以 UTF-8 源快照和字节区间表达拆分：source 保存全文和 SHA-256，span 保存 source ID、全文摘要及半开区间 [start,end)。边界必须落在有效 UTF-8 边界；重叠区间可重建，缺口明确报错。source 的 role、message_index 保留原消息身份；它们在上下文中是数据元信息，不会提升为 Runtime 的 system 指令权限。
 
-Server 为每个节点编译实际发送的 JSON 输入，包含 instructions、全部全局 rules、local spans、固定 MemoryView、上游具名 inputs、参数和 output_schema。输入内容摘要、模型绑定和 read-view 摘要被冻结到节点激活记录；Worker 执行这些实际字节。上游 value 是 JSON 编码的字符串，使用方需再次解析。
+Server 为每个节点编译实际发送的 JSON 输入，包含 instructions、全部全局 rules、local spans、固定 MemoryView、上游具名 inputs、参数和 output_schema。输入内容摘要、模型绑定和 read-view 摘要被冻结到节点激活记录；Worker 执行这些实际字节。上游 value 是 JSON 编码的字符串，使用方需再次解析。inputs.port 为当前算元的输入端口名，node / source_port 保留上游节点和输出端口，不能混用两端名称。
 
 这保证源数据可追溯、指定片段没有被静默截断；不能证明节点所选片段在语义上充分。跨分片规则应放入 rules，强耦合内容应分配给同一节点，最终验证器应读完整业务证据。超出 64 KiB 上下文时返回 CONTEXT_INSUFFICIENT，调用方重新拆分或提交新图。本版无自动检索、自动摘要、附件快照或 tokenizer；token_count=null、token_coverage=unknown，不能作为 token 无损的实验证据。
 

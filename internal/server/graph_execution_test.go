@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
@@ -117,5 +118,49 @@ func TestGraphQueuePressureDefersActivationWithoutBlockingController(t *testing.
 	}
 	if e = s.db.SQL.QueryRow("SELECT count(*) FROM tasks WHERE job_id=?", b.ID).Scan(&n); e != nil || n != 1 {
 		t.Fatalf("second graph never resumed: %d %v", n, e)
+	}
+}
+
+func TestGraphInputBindingUsesConsumerPortAndRetainsProducerIdentity(t *testing.T) {
+	h := newJobHarness(t, false, func(c *config.Server) { c.Jobs.GraphsEnabled = true })
+	spec := graphSpec(h)
+	op := spec.Operators[0]
+	op.ID = "consume"
+	op.Inputs = []graph.Port{{Name: "amount", Schema: "report-v1"}}
+	spec.Operators = append(spec.Operators, op)
+	spec.Nodes = append(spec.Nodes, graph.Node{ID: "consume", Operator: "consume"})
+	spec.Edges = []graph.Edge{{FromNode: "extract", FromPort: "result", ToNode: "consume", ToPort: "amount", Type: "memory"}}
+	spec.Outputs = []graph.Output{{Node: "consume", Port: "result"}}
+	j, e := h.s.SubmitGraph(h.ctx, "port-binding", job.JSON(spec))
+	if e != nil {
+		t.Fatal(e)
+	}
+	seedGraphCandidate(t, h, j, graphCandidateOutput(t, h, j))
+	if e = h.s.reconcileGraphMemory(h.ctx); e != nil {
+		t.Fatal(e)
+	}
+	if e = h.s.advanceGraph(h.ctx, j.ID); e != nil {
+		t.Fatal(e)
+	}
+	var raw []byte
+	if e = h.s.db.SQL.QueryRow("SELECT context_json FROM iu_nodes WHERE goal_id=? AND node_id='consume'", j.graph.GoalID).Scan(&raw); e != nil {
+		t.Fatal(e)
+	}
+	var manifest graph.ContextManifest
+	if e = json.Unmarshal(raw, &manifest); e != nil {
+		t.Fatal(e)
+	}
+	var context struct {
+		Inputs []struct {
+			Node       string
+			Port       string
+			SourcePort string `json:"source_port"`
+		}
+	}
+	if e = json.Unmarshal([]byte(manifest.Text), &context); e != nil {
+		t.Fatal(e)
+	}
+	if len(context.Inputs) != 1 || context.Inputs[0].Node != "extract" || context.Inputs[0].Port != "amount" || context.Inputs[0].SourcePort != "result" {
+		t.Fatalf("wrong input binding: %s", manifest.Text)
 	}
 }
