@@ -2,6 +2,7 @@
 
 当前执行台账：[P0–P2 实施与验收](docs/implementation/p0-p2-execution.md)。
 v0.4.x 收尾：[实施计划](docs/implementation/v0.4-closeout-plan.md) / [v0.4.9 迭代计划](docs/superpowers/plans/v0.4.9-release-iteration.md) / [双机预检](docs/validation/dual-host-preflight.md)。
+v0.5.0 Scheduler 跟踪：[实施计划](docs/superpowers/plans/2026-10-17-v05-agent-aware-scheduler.md) / [缺口矩阵](docs/implementation/v0.5-scheduler-gap-matrix.md) / [受控试运行](docs/validation/agent-aware-scheduler-pilot.md)。
 
 轻量的 **Agent-aware Distributed Job Execution Platform**。使用 Go、gRPC 和本机 SQLite，把 Agent Job 可靠地分配到远程 Worker 执行，并围绕 Runtime、Tool、Environment、Workspace、Artifact、Retry、Control 与 Goal-oriented Computing 建立可恢复、可审计的执行语义。
 
