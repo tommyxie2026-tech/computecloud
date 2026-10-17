@@ -31,4 +31,4 @@
 
 ## v0.5.0 后续主线
 
-聚焦 Agent-aware Scheduler：硬能力/安全/凭据/环境约束保持先行，确定性软评分默认关闭，并记录候选过滤原因、主要评分因素、选中 Worker 和回退原因。Mobile pairing/push、Execution Usage MVP、Private Worker Pool 和跨节点 Artifact 各自切片，不作为 v0.4.9 发版条件。
+聚焦 Agent-aware Scheduler：硬能力/安全/凭据/环境约束保持先行，确定性软评分默认关闭，并记录候选过滤原因、主要评分因素、选中 Worker 和回退原因。代码与 CI 状态及待目标环境验证项见[当前实施计划](../superpowers/plans/2026-10-17-v05-agent-aware-scheduler.md)、[缺口矩阵](v0.5-scheduler-gap-matrix.md)和[受控试运行手册](../validation/agent-aware-scheduler-pilot.md)。Mobile pairing/push、Execution Usage MVP、Private Worker Pool 和跨节点 Artifact 各自切片，不作为 v0.4.9 发版条件。

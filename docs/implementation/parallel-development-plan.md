@@ -1,6 +1,6 @@
 # computecloud 3–5 人并行开发计划
 
-> 2026-10-09 执行更新：P0、缓存及 provider fixture P50、readiness 观测、synthetic Goal 执行、治理审计、Control 产物审阅及 `claude_http` 估算费用强制边界已完成代码与 CI Gate；PR #125 CI 37803798658 含真实 Docker/假 Claude OCI 矩阵并全部通过。真实 Runtime、Worker/Job 与独立主机生产验收、完整 Relay 与 Mobile Beta 尚未完成；当前证据与剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 为准。
+> 历史并行开发计划。当前发布基线为 v0.4.9；Agent-aware Scheduler observer/contract/explainability 与 `readiness-v1` 确定性软评分已由 PR #141 合入并通过自动化 CI，评分保持默认关闭。真实部署效果和性能证据仍待目标环境受控评估；历史状态和剩余事项以 [P0–P2 实施台账](p0-p2-execution.md) 及[当前 Scheduler 计划](../superpowers/plans/2026-10-17-v05-agent-aware-scheduler.md)为准。
 当前执行台账：[P0–P2 实施与验收](p0-p2-execution.md)（2026-10-06）。
 
 - 日期：2026-09-29
@@ -19,7 +19,7 @@ Owner: core implementation complete; follow-up ownership remains WS-A
 Status: DONE for v0.4.5 core scope; prepared-workspace-contract/recovery release CI PASS
 
 WS-B: PARTIAL — cache/warm/GC/benchmark merged; representative performance and independent-host acceptance pending
-WS-C: PARTIAL — readiness contract/observer/explain merged; deterministic scoring is implemented locally behind `prepared_workspace_score_enabled=false`; remote CI/merge and performance evidence pending
+WS-C: AUTOMATION COMPLETE — readiness contract/observer/explain and deterministic scoring merged; `prepared_workspace_score_enabled=false` by default; target-environment performance evidence pending
 WS-D: PARTIAL — synthetic Goal execution/evaluation、atomic Guard → Plan/Job publication、one-use approval consumption 与 `claude_http` estimated-cost enforcement 已实现；真实 Provider/独立主机验收待完成
 WS-E: PARTIAL — Runtime Approval/ACK and Goal Control decision/audit bridge merged; Mobile pairing/push pending
 ~~~

@@ -1,5 +1,7 @@
 # Agent-aware Scheduler 确定性软评分实施计划
 
+状态：计划项已完成并由 PR #141 合入；评分默认仍关闭，真实部署效果未验证。后续缺口核查与试运行准备见[当前 v0.5.0 Scheduler 计划](2026-10-17-v05-agent-aware-scheduler.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 为合格 Worker 增加默认关闭、确定性、可解释的 readiness 软评分，并把 v0.4.7 stable release 门禁调整为精确候选 SHA 的必需 CI 全绿即可放行，同时如实保留未执行的真机验收状态。

@@ -1,6 +1,6 @@
 # computecloud Agent-aware Distributed Job Execution Platform 长期路线图
 
-当前稳定基线为 v0.4.8。主线后续已合入长请求处理、Worker 部署加固与 Claude Attempt Gateway；这些变更尚未包含在 v0.4.8 发布产物中。当前实现、CI、发布和环境验收的唯一执行入口为 [P0–P2 实施台账](p0-p2-execution.md) 与 [v0.4.x 收尾计划](v0.4-closeout-plan.md)。
+当前稳定基线为 [v0.4.9](https://github.com/tommyxie2026-tech/computecloud/releases/tag/v0.4.9)。v0.4.9 已包含长请求处理、Worker 部署加固与 Claude Attempt Gateway；目标环境验收仍按 [P0–P2 实施台账](p0-p2-execution.md) 单独跟踪。v0.5.0 当前工作聚焦 Agent-aware Scheduler 状态核对、硬过滤追溯和受控评估准备，详见[实施计划](../superpowers/plans/2026-10-17-v05-agent-aware-scheduler.md)。
 
 - 产品类别：**Agent Job Executor**。
 - 长期定位：**Agent-aware Distributed Job Execution Platform**。
@@ -10,7 +10,7 @@
 - 计算模型：[ADR-017 Goal-oriented Computing](../adr/0017-goal-oriented-computing-model.md)。
 - Re-plan 防护：[ADR-018 Re-plan Guard](../adr/0018-replan-guard-loop-prevention.md)。
 - 当前稳定版本：Server schema v19 / Worker schema v6；历史版本状态以对应 Release Status 为准。
-- 下一稳定迭代计划：[v0.4.9 稳定收尾](../superpowers/plans/v0.4.9-release-iteration.md)。
+- 当前后续迭代计划：[v0.5.0 Agent-aware Scheduler](../superpowers/plans/2026-10-17-v05-agent-aware-scheduler.md)。
 - 产品调研依据：[Agent-aware 产品与竞品调研](../research/agent-job-execution-product-landscape-2026.md)。
 - 客户端路线依据：[Control 客户端技术方案](../design/client-control-plane.md)、[Agent Control Protocol](../design/agent-control-protocol.md) 与 [ADR-008](../adr/0008-client-control-plane.md)。
 
