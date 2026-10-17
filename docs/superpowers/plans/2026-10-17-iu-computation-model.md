@@ -101,3 +101,7 @@
 - [ ] Step 3: 实现评估与发布分流、操作文档/示例/CLI/CI 入口；保持旧 Job API 行为。
 - [ ] Step 4: `go test ./... -count=1`、`go test -race ./internal/graph ./internal/store ./internal/server ./internal/worker -count=1`、`go vet ./...` 和对应现有 smoke/图端到端验证；分别记录通过、失败及环境限制。
 - [ ] Step 5: 自审完整 diff、修正问题，提交并推送当前特性分支，创建 draft PR 并附到本任务。不得声明真实 Provider/独立主机验收通过。
+
+## 执行记录
+
+实际交付及未完成项见 [实现范围](../../implementation/iu-computation-model.md)。上方 checkbox 是原始计划，不作为完成声明：Task 5 的持久修订/跨代 import、Task 6 的对应动态规则复用验收尚未实现。已完成各任务的原生图闭环切片，并建立独立 CI；剩余能力保持默认关闭下的显式边界。

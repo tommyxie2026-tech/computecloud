@@ -4,7 +4,9 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,7 +26,7 @@ func enqueueGraphCandidates(ctx context.Context, q store.Query, taskID string, a
 	var generation int64
 	e := q.QueryRowContext(ctx, `SELECT goal_id,generation,node_id FROM iu_nodes WHERE task_id=?`, taskID).Scan(&goalID, &generation, &nodeID)
 	if e != nil {
-		if e.Error() == "sql: no rows in result set" {
+		if errors.Is(e, sql.ErrNoRows) {
 			return nil
 		}
 		return e
@@ -42,7 +44,7 @@ func enqueueGraphCandidates(ctx context.Context, q store.Query, taskID string, a
 			}
 			continue
 		}
-		if e.Error() != "sql: no rows in result set" {
+		if !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
 		if _, e = q.ExecContext(ctx, `INSERT INTO iu_admissions(goal_id,generation,node_id,artifact_id,output_port,candidate_hash,state,receipt_id,created) VALUES(?,?,?,?,'memory',?,'PENDING',?,?)`, goalID, generation, nodeID, id, hash, "receipt_"+store.ID(), store.Now()); e != nil {

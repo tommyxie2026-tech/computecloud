@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/graph"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
@@ -223,6 +226,11 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 			return s.stopGraphTx(ctx, q, j, nodes)
 		}
 		if e = s.checkQueueAdmission(ctx, q, j.project, 1); e != nil {
+			// Backpressure delays this activation; committing earlier activations
+			// lets the scheduler drain the queue during the same tick.
+			if status.Code(e) == codes.ResourceExhausted {
+				continue
+			}
 			return e
 		}
 		ordinal := 0

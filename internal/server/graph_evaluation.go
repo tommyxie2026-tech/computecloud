@@ -69,13 +69,13 @@ func applyGraphEvaluationTx(ctx context.Context, q store.Query, jobID string, in
 	if !errors.Is(e, sql.ErrNoRows) {
 		return e
 	}
-	var generation, version int64
+	var generation, version, deadline int64
 	var state, hash, current string
 	var maxReplans, usedReplans int
-	if e = q.QueryRowContext(ctx, `SELECT g.active_graph_generation,g.state,g.max_replans,g.consumed_replans,x.output_hash,x.evaluation_version,x.evaluation_id FROM goals g JOIN iu_graphs x ON x.goal_id=g.id WHERE x.job_id=?`, jobID).Scan(&generation, &state, &maxReplans, &usedReplans, &hash, &version, &current); e != nil {
+	if e = q.QueryRowContext(ctx, `SELECT g.active_graph_generation,g.state,g.max_replans,g.consumed_replans,g.deadline,x.output_hash,x.evaluation_version,x.evaluation_id FROM goals g JOIN iu_graphs x ON x.goal_id=g.id WHERE x.job_id=?`, jobID).Scan(&generation, &state, &maxReplans, &usedReplans, &deadline, &hash, &version, &current); e != nil {
 		return e
 	}
-	if generation != f.Generation || state != "EVALUATING" && state != "REPLAN_GUARDING" || version != in.ExpectedVersion || in.Supersedes != current || in.OutputHash != hash || !terminal(j.State) {
+	if deadline > 0 && deadline <= store.Now() || generation != f.Generation || state != "EVALUATING" && state != "REPLAN_GUARDING" || version != in.ExpectedVersion || in.Supersedes != current || in.OutputHash != hash || !terminal(j.State) {
 		return status.Error(codes.Aborted, "GRAPH_EVALUATION_STALE")
 	}
 	if in.Verdict == "PASS" && j.State != "SUCCEEDED" {
@@ -105,7 +105,7 @@ func applyGraphEvaluationTx(ctx context.Context, q store.Query, jobID string, in
 }
 
 func (s *Server) reconcileGraphEvaluations(ctx context.Context) error {
-	rows, e := s.db.SQL.QueryContext(ctx, `SELECT j.id,x.output_hash,j.error_code FROM iu_graphs x JOIN jobs j ON j.id=x.job_id JOIN goals g ON g.id=x.goal_id WHERE j.state='FAILED' AND x.evaluation_version=0 AND g.active_graph_generation=x.generation AND g.state='EVALUATING' LIMIT 16`)
+	rows, e := s.db.SQL.QueryContext(ctx, `SELECT j.id,x.output_hash,j.error_code FROM iu_graphs x JOIN jobs j ON j.id=x.job_id JOIN goals g ON g.id=x.goal_id WHERE j.state='FAILED' AND x.evaluation_version=0 AND g.active_graph_generation=x.generation AND g.state='EVALUATING' AND (g.deadline=0 OR g.deadline>?) LIMIT 16`, store.Now())
 	if e != nil {
 		return e
 	}

@@ -5,6 +5,7 @@ GOVULNCHECK_VERSION ?= v1.2.0
 
 .PHONY: ci-iu-graph
 ci-iu-graph:
+	python3 -m unittest discover -s examples/iu-graph -p 'test_*.py'
 	$(GO) test -race ./internal/graph ./internal/store ./internal/config -count=1
 	$(GO) test -race ./internal/server ./internal/worker ./internal/adapter -run 'TestGraph|TestCommandProvider' -count=1 -timeout=5m
 	$(GO) test ./cmd/computecloud -run TestJobGraphCLI -count=1

@@ -212,3 +212,31 @@ func TestGraphEvaluationRequiresSeparateAuthority(t *testing.T) {
 		t.Fatal("submitter self-evaluated without scope")
 	}
 }
+
+func TestGraphEvaluationRejectsExpiredGoalBeforeReconciler(t *testing.T) {
+	h := newJobHarness(t, false, func(c *config.Server) {
+		c.Jobs.GraphsEnabled = true
+		c.Users[0].Scopes = append(c.Users[0].Scopes, "goals:evaluate")
+	})
+	j, e := h.s.SubmitGraph(h.ctx, "expired-evaluation", job.JSON(graphSpec(h)))
+	if e != nil {
+		t.Fatal(e)
+	}
+	seedGraphCandidate(t, h, j, graphCandidateOutput(t, h, j))
+	if e = h.s.reconcileGraphMemory(h.ctx); e != nil {
+		t.Fatal(e)
+	}
+	if e = h.s.advanceGraph(h.ctx, j.ID); e != nil {
+		t.Fatal(e)
+	}
+	st, e := h.s.GraphStatus(h.ctx, j.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = h.s.db.SQL.Exec("UPDATE goals SET deadline=? WHERE id=?", store.Now()-1000, st.GoalID); e != nil {
+		t.Fatal(e)
+	}
+	if e = h.s.EvaluateGraph(h.ctx, j.ID, GraphEvaluation{ID: "too-late", OutputHash: st.OutputHash, Verifier: "external", VerifierVersion: "1", Verdict: "PASS", EvidenceHash: st.OutputHash}); e == nil {
+		t.Fatal("expired Goal accepted PASS before deadline reconciler")
+	}
+}

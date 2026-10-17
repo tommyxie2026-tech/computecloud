@@ -113,6 +113,9 @@ func TestGraphMemoryAdmissionRecoversAndDoesNotReplayTask(t *testing.T) {
 		t.Fatalf("job %+v %v", current, e)
 	}
 	projection, e := h.s.GraphStatus(h.ctx, j.ID)
+	if e == nil && (len(projection.Admissions) != 1 || projection.Admissions[0].State != "ADMITTED" || projection.Admissions[0].ReceiptID == "") {
+		t.Fatalf("missing receipt projection %+v", projection)
+	}
 	if e != nil || projection.GoalState != "EVALUATING" {
 		t.Fatalf("premature Goal terminal %+v %v", projection, e)
 	}
@@ -142,5 +145,52 @@ func TestGraphMemoryPermanentRejectionTerminatesGraph(t *testing.T) {
 	var taskState string
 	if e = h.s.db.SQL.QueryRow(`SELECT state FROM tasks WHERE job_id=?`, j.ID).Scan(&taskState); e != nil || taskState != "SUCCEEDED" {
 		t.Fatalf("rewrote execution fact %s %v", taskState, e)
+	}
+}
+
+// Close the durable store after acceptance but before admission, then reopen with
+// submission disabled. Recovery must admit the existing output without a new Task.
+func TestGraphMemoryPendingSurvivesServerRestartWithSubmissionDisabled(t *testing.T) {
+	parent := newJobHarness(t, false, func(c *config.Server) { c.Jobs.GraphsEnabled = true })
+	cfg := parent.s.cfg
+	cfg.DataDir = t.TempDir()
+	s, e := New(cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	h := *parent
+	h.s = s
+	j, e := s.SubmitGraph(h.ctx, "restart", job.JSON(graphSpec(&h)))
+	if e != nil {
+		s.Close()
+		t.Fatal(e)
+	}
+	seedGraphCandidate(t, &h, j, graphCandidateOutput(t, &h, j))
+	if e = s.Close(); e != nil {
+		t.Fatal(e)
+	}
+	cfg.Jobs.GraphsEnabled = false
+	s, e = New(cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	if e = s.reconcileGraphMemory(h.ctx); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.advanceGraph(h.ctx, j.ID); e != nil {
+		t.Fatal(e)
+	}
+	var state string
+	var n int
+	if e = s.db.SQL.QueryRow("SELECT state FROM iu_admissions WHERE goal_id=?", j.graph.GoalID).Scan(&state); e != nil || state != "ADMITTED" {
+		t.Fatalf("%s %v", state, e)
+	}
+	if e = s.db.SQL.QueryRow("SELECT count(*) FROM tasks WHERE job_id=?", j.ID).Scan(&n); e != nil || n != 1 {
+		t.Fatalf("replayed task: %d %v", n, e)
+	}
+	st, e := s.GraphStatus(h.ctx, j.ID)
+	if e != nil || st.State != "SUCCEEDED" || st.GoalState != "EVALUATING" {
+		t.Fatalf("%+v %v", st, e)
 	}
 }

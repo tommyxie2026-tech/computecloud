@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
-	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -469,12 +468,15 @@ func Lower(in job.Spec) (Spec, error) {
 		s.Outputs = []Output{{Node: "single", Port: "result"}}
 		return s, nil
 	}
+	if len(in.Map.Partitions) > 31 {
+		return Spec{}, invalid("legacy lowering requires at most 31 maps plus reduce")
+	}
 	s.Limits.Parallelism = in.Map.Parallelism
 	var inputs []Port
 	for _, part := range in.Map.Partitions {
-		id := "map_" + strings.ReplaceAll(part.Key, "-", "_")
+		id := "map_" + part.Key
 		if len(id) > 64 {
-			return Spec{}, invalid("legacy partition cannot lower")
+			id = "map_" + Hash([]byte(part.Key))[:60]
 		}
 		add(id, in.Input.Text+"\n\n"+part.Input.Text, part.Execution, nil, part.ScopePaths)
 		inputs = append(inputs, Port{Name: part.Key, Schema: "legacy-result-bundle-v1"})

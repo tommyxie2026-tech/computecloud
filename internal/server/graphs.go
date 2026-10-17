@@ -30,18 +30,28 @@ type GraphNodeStatus struct {
 	TaskID *string `json:"task_id"`
 	Error  string  `json:"error_code,omitempty"`
 }
+type GraphAdmissionStatus struct {
+	NodeID      string `json:"node_id"`
+	ArtifactID  string `json:"artifact_id"`
+	ReceiptID   string `json:"receipt_id"`
+	State       string `json:"state"`
+	Error       string `json:"error_code,omitempty"`
+	RetryCount  int    `json:"retry_count"`
+	NextRetryAt int64  `json:"next_retry_at"`
+}
 type GraphStatus struct {
-	GoalID            string            `json:"goal_id"`
-	Generation        int64             `json:"graph_generation"`
-	JobID             string            `json:"job_id"`
-	State             string            `json:"state"`
-	GoalState         string            `json:"goal_state"`
-	Plan              graph.Plan        `json:"plan"`
-	Nodes             []GraphNodeStatus `json:"nodes"`
-	EvaluationVersion int64             `json:"evaluation_version"`
-	EvaluationID      string            `json:"evaluation_id"`
-	OutputHash        string            `json:"output_sha256"`
-	Evaluation        json.RawMessage   `json:"evaluation,omitempty"`
+	Admissions        []GraphAdmissionStatus `json:"admissions"`
+	GoalID            string                 `json:"goal_id"`
+	Generation        int64                  `json:"graph_generation"`
+	JobID             string                 `json:"job_id"`
+	State             string                 `json:"state"`
+	GoalState         string                 `json:"goal_state"`
+	Plan              graph.Plan             `json:"plan"`
+	Nodes             []GraphNodeStatus      `json:"nodes"`
+	EvaluationVersion int64                  `json:"evaluation_version"`
+	EvaluationID      string                 `json:"evaluation_id"`
+	OutputHash        string                 `json:"output_sha256"`
+	Evaluation        json.RawMessage        `json:"evaluation,omitempty"`
 }
 
 // graphLegacyMetadata supplies shared quota/workspace metadata; graph dispatch
@@ -210,7 +220,7 @@ func (s *Server) GraphStatus(ctx context.Context, id string) (*GraphStatus, erro
 		return nil, status.Error(codes.NotFound, "NOT_GRAPH_JOB")
 	}
 	f := j.graph
-	out := &GraphStatus{GoalID: f.GoalID, Generation: f.Generation, JobID: id, State: j.State, Plan: f.Plan, Nodes: []GraphNodeStatus{}}
+	out := &GraphStatus{GoalID: f.GoalID, Generation: f.Generation, JobID: id, State: j.State, Plan: f.Plan, Nodes: []GraphNodeStatus{}, Admissions: []GraphAdmissionStatus{}}
 	if e = s.db.SQL.QueryRowContext(ctx, `SELECT g.state,x.evaluation_version,x.evaluation_id,x.output_hash FROM goals g JOIN iu_graphs x ON x.goal_id=g.id WHERE x.job_id=?`, id).Scan(&out.GoalState, &out.EvaluationVersion, &out.EvaluationID, &out.OutputHash); e != nil {
 		return nil, e
 	}
@@ -233,7 +243,25 @@ func (s *Server) GraphStatus(ctx context.Context, id string) (*GraphStatus, erro
 		}
 		out.Nodes = append(out.Nodes, n)
 	}
-	return out, rows.Err()
+	if e = rows.Err(); e != nil {
+		return nil, e
+	}
+	if e = rows.Close(); e != nil {
+		return nil, e
+	}
+	admissions, e := s.db.SQL.QueryContext(ctx, `SELECT node_id,artifact_id,receipt_id,state,error_code,retry_count,next_retry_at FROM iu_admissions WHERE goal_id=? AND generation=? ORDER BY node_id,artifact_id,output_port`, f.GoalID, f.Generation)
+	if e != nil {
+		return nil, e
+	}
+	defer admissions.Close()
+	for admissions.Next() {
+		var a GraphAdmissionStatus
+		if e = admissions.Scan(&a.NodeID, &a.ArtifactID, &a.ReceiptID, &a.State, &a.Error, &a.RetryCount, &a.NextRetryAt); e != nil {
+			return nil, e
+		}
+		out.Admissions = append(out.Admissions, a)
+	}
+	return out, admissions.Err()
 }
 
 func (s *Server) httpSubmitGraph(w http.ResponseWriter, r *http.Request) {

@@ -117,6 +117,11 @@ func TestApplyDeltaPreservesConflictsAndInheritedInvalidity(t *testing.T) {
 			t.Fatalf("uncertain input became valid %+v", r)
 		}
 	}
+	d.Records[0].Supersedes = []string{"amount"}
+	if _, e = ApplyDelta(v, d); e != nil {
+		t.Fatalf("supersedes on conflicted read view: %v", e)
+	}
+	d.Records[0].Supersedes = nil
 	v, e = Invalidate(NewView([]MemoryRecord{record("rule")}), []string{"rule"})
 	if e != nil {
 		t.Fatal(e)

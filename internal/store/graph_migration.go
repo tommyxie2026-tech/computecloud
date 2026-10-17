@@ -60,7 +60,9 @@ func migrateGraphV20(tx *sql.Tx) error {
 	if e := extendGraphTable(tx, "stages", "kind IN ('single','map','reduce','verify')", "kind IN ('single','map','reduce','verify') OR (kind GLOB 'node:*' AND length(kind)<=69)"); e != nil {
 		return e
 	}
-	if e:=extendGraphTable(tx,"artifact_refs","ref_type IN ('task_result','reduce_input','job_result')","ref_type IN ('task_result','reduce_input','job_result','iu_pending','iu_memory')");e!=nil{return e}
+	if e := extendGraphTable(tx, "artifact_refs", "ref_type IN ('task_result','reduce_input','job_result')", "ref_type IN ('task_result','reduce_input','job_result','iu_pending','iu_memory')"); e != nil {
+		return e
+	}
 	_, e := tx.Exec(serverV20)
 	return e
 }

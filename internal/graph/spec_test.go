@@ -161,4 +161,22 @@ func TestLowerLegacy(t *testing.T) {
 	if e != nil || strings.Join(p.Order, ",") != "map_a,map_b,reduce" {
 		t.Fatalf("map reduce: %v %+v", e, p)
 	}
+
+	legacy.Map.Partitions[0].Key = "a-b"
+	legacy.Map.Partitions[1].Key = "a_b"
+	g, e = Lower(legacy)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = Compile(g); e != nil {
+		t.Fatalf("distinct legacy keys collided: %v", e)
+	}
+	legacy.Map.Partitions[0].Key = strings.Repeat("x", 64)
+	g, e = Lower(legacy)
+	if e != nil {
+		t.Fatalf("long legacy key: %v", e)
+	}
+	if _, e = Compile(g); e != nil {
+		t.Fatal(e)
+	}
 }

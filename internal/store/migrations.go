@@ -59,7 +59,9 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		// Rebuilding artifact_refs temporarily removes a table referenced by
 		// triggers on artifacts. Avoid ALTER validating that intermediate schema;
 		// names are restored and checked before commit, with FK enforcement off.
-		if _,err:=db.Exec("PRAGMA legacy_alter_table=ON");err!=nil{return err}
+		if _, err := db.Exec("PRAGMA legacy_alter_table=ON"); err != nil {
+			return err
+		}
 		restoreFK = true
 		defer func() {
 			_, _ = db.Exec("PRAGMA legacy_alter_table=OFF")

@@ -78,3 +78,44 @@ func TestGraphTerminalNodesReflectFailureAndCancellation(t *testing.T) {
 		})
 	}
 }
+
+func TestGraphQueuePressureDefersActivationWithoutBlockingController(t *testing.T) {
+	h := newJobHarness(t, false, func(c *config.Server) { c.Jobs.GraphsEnabled = true })
+	cfg := h.s.cfg
+	cfg.DataDir = t.TempDir()
+	cfg.Jobs.MaxQueuedTasks = 1
+	cfg.Jobs.MaxQueuedTasksPerProject = 1
+	s, e := New(cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	a, e := s.SubmitGraph(h.ctx, "queue-a", job.JSON(graphSpec(h)))
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := s.SubmitGraph(h.ctx, "queue-b", job.JSON(graphSpec(h)))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = s.advanceGraph(h.ctx, a.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.advanceGraph(h.ctx, b.ID); e != nil {
+		t.Fatalf("backpressure blocked controller: %v", e)
+	}
+	var n int
+	if e = s.db.SQL.QueryRow("SELECT count(*) FROM tasks WHERE state='QUEUED'").Scan(&n); e != nil || n != 1 {
+		t.Fatalf("queued=%d %v", n, e)
+	}
+	// Model the scheduler removing the first task from its queue.
+	if _, e = s.db.SQL.Exec("UPDATE tasks SET state='CANCELED' WHERE job_id=?", a.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.advanceGraph(h.ctx, b.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.db.SQL.QueryRow("SELECT count(*) FROM tasks WHERE job_id=?", b.ID).Scan(&n); e != nil || n != 1 {
+		t.Fatalf("second graph never resumed: %d %v", n, e)
+	}
+}

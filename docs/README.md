@@ -10,6 +10,8 @@
 
 | 文档 | 内容 | 状态 |
 | --- | --- | --- |
+| [IU 计算图契约](contracts/iu-graph-v1.md) | 原生 DAG、冻结上下文、记忆准入、独立评估与 Guard | 实验性，默认关闭 |
+| [IU 实现范围](implementation/iu-computation-model.md) | 当前交付、验收证据与后续边界 | 分支实现 |
 | [自托管 Agent HTTP Runtime](implementation/agent-http-runtime.md) | Codex/Claude 固定版本、Unix HTTP 契约、OCI 服务镜像与尚待完成的每 Attempt 隔离 | ECO-02 代码切片；真实验收未完成 |
 | [多架构容器镜像部署与发布](deployment/container-images.md) | Server scratch、Worker Debian slim、amd64/arm64、size gate、GHCR/SBOM/provenance | 当前容器部署依据 |
 | [ADR-020：多架构最小容器镜像交付](adr/0020-multiarch-container-packaging.md) | 双 target image、体积预算、Runtime 不入基础 Worker、发布边界 | Accepted |

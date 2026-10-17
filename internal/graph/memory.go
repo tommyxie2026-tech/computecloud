@@ -193,6 +193,7 @@ func ApplyDelta(view MemoryView, d Delta) (MemoryView, error) {
 	if e = json.Unmarshal(canonical(view.Conflicts), &next.Conflicts); e != nil {
 		return MemoryView{}, e
 	}
+	next = sealView(next)
 	for _, r := range checked.Records {
 		if len(r.Supersedes) > 0 {
 			next, e = Invalidate(next, r.Supersedes)
