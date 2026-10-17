@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const ServerVersion = 21
+const ServerVersion = 22
 
 type DB struct {
 	SQL  *sql.DB

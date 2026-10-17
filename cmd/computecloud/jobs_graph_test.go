@@ -47,3 +47,33 @@ func TestJobGraphCLIUsesVersionedSubmissionAndStatus(t *testing.T) {
 		t.Fatalf("calls=%d", calls)
 	}
 }
+
+func TestJobGraphCLIImportEndpoints(t *testing.T) {
+	dir := t.TempDir()
+	token := filepath.Join(dir, "token")
+	input := filepath.Join(dir, "grant.json")
+	os.WriteFile(token, []byte("test-token-01234567890123456789"), 0600)
+	os.WriteFile(input, []byte(`{"id":"grant_a"}`), 0600)
+	expectedMethod, expectedPath := "POST", "/v1/jobs/source/graph/import-grants"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != expectedMethod || r.URL.Path != expectedPath {
+			t.Errorf("request %s %s", r.Method, r.URL.Path)
+		}
+		w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+	cfg := config.Client{HTTPURL: server.URL, TokenFile: token, TLS: config.TLS{InsecureLoopback: true}}
+	if e := runJob(context.Background(), cfg, jobOptions{op: "issue-import", id: "source", file: input}); e != nil {
+		t.Fatal(e)
+	}
+	expectedMethod = "GET"
+	expectedPath += "/grant_a"
+	if e := runJob(context.Background(), cfg, jobOptions{op: "get-import", id: "source", key: "grant_a"}); e != nil {
+		t.Fatal(e)
+	}
+	expectedMethod = "POST"
+	expectedPath += "/revoke"
+	if e := runJob(context.Background(), cfg, jobOptions{op: "revoke-import", id: "source", key: "grant_a"}); e != nil {
+		t.Fatal(e)
+	}
+}

@@ -13,6 +13,11 @@ import uuid
 
 PREFIX = "github.com/tommyxie2026-tech/computecloud/"
 SERVER_TESTS = [
+    "TestImportRechecksRevokedGrantAtCommit",
+    "TestImportFreezesSnapshotAndPinsOrigin",
+    "TestImportRejectsStaleRevisionAndChangedContext",
+    "TestImportIdempotencyExpiryAndGCFencing",
+    "TestImportRequiresExplicitAuthorityAndGuard",
     "TestGraphInvalidationSurvivesRestart",
     "TestInvalidationBlocksLateAdmissionAndPass",
     "TestInvalidationRejectsUnauthorizedOrStaleRevision",
@@ -37,7 +42,8 @@ SERVER_TESTS = [
 REQUIRED_TESTS = tuple(
     [PREFIX + "internal/server::" + name for name in SERVER_TESTS]
     + [PREFIX + "internal/graph::" + name for name in (
-        "TestCompileContextPreservesSourceAndRequiredRules", "TestContextNeverSilentlyTruncates",
+        "TestImportRejectsInvalidOrIncompleteClosure", "TestImportPreservesOriginAndNamespace",
+        "TestImportGraphVersionAndCanonicalBindings", "TestCompileContextPreservesSourceAndRequiredRules", "TestContextNeverSilentlyTruncates",
         "TestReconstructSourceValidatesOverlapsAndCoverage", "TestMemoryDeltaRequiresFrozenViewAndCannotSelfVerify",
         "TestMemoryMergeConflictsAndDeduplicates", "TestMemoryInvalidationPropagatesWithoutChangingHistory",
         "TestApplyDeltaPreservesConflictsAndInheritedInvalidity", "TestOutputSchemaRebasesFrozenLocalDefinitions")]
@@ -127,7 +133,7 @@ def main():
         ("contracts", [args.go, "test", "-json", "-race", "./internal/graph", "./internal/store", "./internal/config",
                        "./internal/iuexperiment", "./cmd/iu-experiment", "-count=1", "-timeout=5m"], 330),
         ("native", [args.go, "test", "-json", "-race", "./internal/server", "./internal/worker", "./internal/adapter",
-                    "-run", "TestGraph|TestCommandProvider|TestInvalidation", "-count=1", "-timeout=5m"], 330),
+                    "-run", "TestGraph|TestCommandProvider|TestInvalidation|TestImport", "-count=1", "-timeout=5m"], 330),
         ("cli", [args.go, "test", "-json", "./cmd/computecloud", "-run", "TestJobGraphCLI", "-count=1", "-timeout=2m"], 150),
         ("simulation", [args.go, "run", "./cmd/iu-experiment", "--simulate", "--output", str(simulation_path)], 120),
         ("build", [args.go, "build", "-o", str(binary), "./cmd/computecloud"], 120),

@@ -13,11 +13,19 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	graphv1 "github.com/tommyxie2026-tech/computecloud/api/graph/v1"
+	graphv2 "github.com/tommyxie2026-tech/computecloud/api/graph/v2"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/jsonutil"
 )
 
 const Version = "iu-graph-v1"
+const ImportVersion = "iu-graph-v2"
+
+type ImportBinding struct {
+	GrantID string   `json:"grant_id"`
+	NodeIDs []string `json:"node_ids"`
+}
+
 const MaxRequestBytes = 256 << 10
 
 type Source struct {
@@ -84,6 +92,7 @@ type Limits struct {
 }
 
 type Spec struct {
+	Imports   []ImportBinding            `json:"imports,omitempty"`
 	Schemas   map[string]json.RawMessage `json:"schemas"`
 	Evaluator Evaluator                  `json:"evaluator"`
 	Version   string                     `json:"version"`
@@ -138,7 +147,11 @@ func Decode(raw []byte) (Spec, error) {
 	if e := json.Unmarshal(raw, &instance); e != nil {
 		return s, e
 	}
-	if e := requestSchema().Validate(instance); e != nil {
+	schema := requestSchema()
+	if s.Version == ImportVersion {
+		schema = requestSchemaV2()
+	}
+	if e := schema.Validate(instance); e != nil {
 		return s, invalid("schema: " + e.Error())
 	}
 	p, e := Compile(s)
@@ -151,6 +164,18 @@ func Decode(raw []byte) (Spec, error) {
 var requestSchema = sync.OnceValue(func() *jsonschema.Resolved {
 	var s jsonschema.Schema
 	if e := json.Unmarshal(graphv1.Schema, &s); e != nil {
+		panic(e)
+	}
+	r, e := s.Resolve(nil)
+	if e != nil {
+		panic(e)
+	}
+	return r
+})
+
+var requestSchemaV2 = sync.OnceValue(func() *jsonschema.Resolved {
+	var s jsonschema.Schema
+	if e := json.Unmarshal(graphv2.Schema, &s); e != nil {
 		panic(e)
 	}
 	r, e := s.Resolve(nil)
@@ -176,7 +201,7 @@ func Compile(in Spec) (Plan, error) {
 		return p, e
 	}
 	fail := func(reason string) (Plan, error) { return Plan{}, invalid(reason) }
-	if s.Version != Version || !job.Ref(s.ProjectID) || !job.Ref(s.Workspace.RepositoryRef) || !commitPattern.MatchString(s.Workspace.BaseCommit) {
+	if (s.Version != Version && s.Version != ImportVersion) || !job.Ref(s.ProjectID) || !job.Ref(s.Workspace.RepositoryRef) || !commitPattern.MatchString(s.Workspace.BaseCommit) {
 		return fail("version, project or workspace")
 	}
 	if !job.Ref(s.Evaluator.Profile) || !job.Ref(s.Evaluator.Version) {
@@ -317,6 +342,26 @@ func Compile(in Spec) (Plan, error) {
 		nodes[n.ID] = n
 		indegree[n.ID] = 0
 	}
+	if len(s.Imports) > 8 || s.Version == Version && len(s.Imports) > 0 {
+		return fail("import version or bounds")
+	}
+	seenGrants := map[string]bool{}
+	for i := range s.Imports {
+		b := &s.Imports[i]
+		if !keyPattern.MatchString(b.GrantID) || seenGrants[b.GrantID] || len(b.NodeIDs) < 1 || len(b.NodeIDs) > 32 {
+			return fail("import binding")
+		}
+		seenGrants[b.GrantID] = true
+		seen := map[string]bool{}
+		for _, id := range b.NodeIDs {
+			if _, ok := nodes[id]; !ok || seen[id] {
+				return fail("import target")
+			}
+			seen[id] = true
+		}
+		sort.Strings(b.NodeIDs)
+	}
+	sort.Slice(s.Imports, func(i, j int) bool { return s.Imports[i].GrantID < s.Imports[j].GrantID })
 	bound := map[string]bool{}
 	seenEdges := map[string]bool{}
 	conditions := map[string]map[string]bool{}

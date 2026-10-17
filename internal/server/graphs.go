@@ -89,6 +89,9 @@ func (s *Server) SubmitGraph(ctx context.Context, key string, raw []byte) (*Job,
 		return nil, e
 	}
 	spec := f.Plan.Spec
+	if len(spec.Imports) > 0 {
+		return nil, status.Error(codes.InvalidArgument, "IMPORT_REQUIRES_GUARDED_REPLAN")
+	}
 	plan := f.Plan
 	id := store.ID()
 	existing := false

@@ -332,3 +332,5 @@ Worker / Runtime / Tool / Environment
 更具体地说：
 
 > **可靠、可恢复、可治理地把 Agent Job 分配到合适的远程 Worker，并让 Runtime、Tool、Environment、Workspace、Artifact、Evaluator 和 Control 都服从同一个执行事实源。**
+
+IU 后续迭代：实验性 [v2 授权跨代记忆导入](docs/contracts/iu-graph-v2.md) 已进入实现分支，等待 CI/独立审查。默认关闭；真实模型/aicloud/独立主机验收仍未完成。
