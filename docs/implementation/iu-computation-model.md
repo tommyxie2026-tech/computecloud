@@ -18,6 +18,8 @@
 | 费用边界 | 仅受支持 claude_http 估算费用串行模式；明确拒绝 max_tokens、command 混合费用与 Gateway route |
 | 兼容性 | 默认关闭、已接受图继续恢复、旧 single / map_reduce 执行器不切换；Server schema v20，Worker v6 |
 
+后续执行见 [IU 后续迭代实施计划](../superpowers/plans/2026-10-18-iu-follow-up-iterations.md)，包含 IU-2～IU-6 的阶段依赖、验收门槛和代码落点；当前仅完成规划，未开始这些功能实现。
+
 后续迭代以[长期路线图中的 IU 台账](long-term-roadmap.md#iu-计算模型迭代台账)为准：先持久失效事件，再授权跨代 import 和依赖增量重算；真实模型基线单独取证。
 
 ## 设计中尚未交付的部分
