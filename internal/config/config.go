@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/tommyxie2026-tech/computecloud/internal/graph"
 	"net"
 	"net/url"
 	"os"
@@ -101,24 +102,25 @@ type Policy struct {
 	AllowedEnvironments  []string `yaml:"allowed_environments" json:"AllowedEnvironments,omitempty"`
 }
 type Worker struct {
-	ID                        string                `yaml:"id"`
-	PublicExecutionMode       string                `yaml:"public_execution_mode"`
-	Address                   string                `yaml:"server_address"`
-	DataDir                   string                `yaml:"data_dir"`
-	TokenFile                 string                `yaml:"token_file"`
-	TLS                       TLS                   `yaml:"tls"`
-	Slots                     int                   `yaml:"slots"`
-	Runtimes                  map[string]Runtime    `yaml:"runtimes"`
-	Repositories              map[string]string     `yaml:"repositories"`
-	Policies                  map[string]Policy     `yaml:"policies"`
-	Verifiers                 map[string][][]string `yaml:"verifiers"`
-	StopGraceMS               int                   `yaml:"stop_grace_ms"`
-	WorkspaceRetentionMS      int                   `yaml:"workspace_retention_ms"`
-	WorkspaceMaxBytes         int64                 `yaml:"workspace_max_bytes"`
-	WorkspaceWarmSlots        int                   `yaml:"workspace_warm_slots"`
-	WorkspaceCacheMaxBytes    int64                 `yaml:"workspace_cache_max_bytes"`
-	WorkspaceCacheRetentionMS int64                 `yaml:"workspace_cache_retention_ms"`
-	Transport                 RelayTransport        `yaml:"transport"`
+	GraphReplayBindings       map[string]graph.ReplayBinding `yaml:"graph_replay_bindings"`
+	ID                        string                         `yaml:"id"`
+	PublicExecutionMode       string                         `yaml:"public_execution_mode"`
+	Address                   string                         `yaml:"server_address"`
+	DataDir                   string                         `yaml:"data_dir"`
+	TokenFile                 string                         `yaml:"token_file"`
+	TLS                       TLS                            `yaml:"tls"`
+	Slots                     int                            `yaml:"slots"`
+	Runtimes                  map[string]Runtime             `yaml:"runtimes"`
+	Repositories              map[string]string              `yaml:"repositories"`
+	Policies                  map[string]Policy              `yaml:"policies"`
+	Verifiers                 map[string][][]string          `yaml:"verifiers"`
+	StopGraceMS               int                            `yaml:"stop_grace_ms"`
+	WorkspaceRetentionMS      int                            `yaml:"workspace_retention_ms"`
+	WorkspaceMaxBytes         int64                          `yaml:"workspace_max_bytes"`
+	WorkspaceWarmSlots        int                            `yaml:"workspace_warm_slots"`
+	WorkspaceCacheMaxBytes    int64                          `yaml:"workspace_cache_max_bytes"`
+	WorkspaceCacheRetentionMS int64                          `yaml:"workspace_cache_retention_ms"`
+	Transport                 RelayTransport                 `yaml:"transport"`
 }
 type Client struct {
 	Address   string `yaml:"address"`

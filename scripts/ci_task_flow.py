@@ -296,7 +296,16 @@ def main():
                     config["worker"]["runtimes"]["command_exec"] = {"executable": str(verifier),
                         "version": "iu-orders-verifier-1", "models": ["orders-proof"], "credentials": ["fixture"]}
                 worker_configs[name] = write(f"{name}.json", config)
-            templates = json.loads(run_command(binary, "templates", "--config", worker_configs["worker-a"]))["templates"]
+            template_metadata=json.loads(run_command(binary,"templates","--config",worker_configs["worker-a"]))
+            templates=template_metadata["templates"]
+            if args.iu_graph_check:
+                replay_binding={"version":"1","runtime_profile":"codex_exec","runtime_version":"ci-flow-fixture-1",
+                    "model":"fixture-codex","environment_sha256":hashlib.sha256(b"CI immutable fixture environment v1").hexdigest(),
+                    "runtime_config_sha256":template_metadata["runtime_config_hashes"]["codex_exec"],
+                    "policy_sha256":template_metadata["policy_hashes"]["review"],"read_only":True}
+                for path in worker_configs.values():
+                    data=json.loads(Path(path).read_text());data["worker"]["graph_replay_bindings"]={"fixture":replay_binding}
+                    Path(path).write_text(json.dumps(data))
             server_config = write("server.json", {"server": {"listen": address,
                 # This fixture validates job lifecycle, not the separately tested
                 # public HTTP limiter. Keep fast polling deterministic on CI hosts.
@@ -317,9 +326,13 @@ def main():
                     "execution": {"runtime_profile":"command_exec","model":"orders-proof","credential_ref":"fixture",
                                   "policy_ref":"review","acceptance_profile":"check"},
                     "parameters_schema": '{"type":"object","additionalProperties":false}'}})
+                server_data["server"]["jobs"]["graph_replay_bindings"]={"fixture":replay_binding}
+                server_data["server"]["jobs"]["graph_record_verifiers"]={"order-source":{
+                    "version":"1","kind":"source_json_equal","scope":"source-paid","source_pointer":"/paid_cents",
+                    "claim_pointer":"/value","record_kinds":["observation"],"timeout_ms":100}}
                 eval_token = write("evaluator.token", secrets.token_hex(32))
                 server_data["server"]["users"].append({"token_file":eval_token,"owner":"ci","projects":["ci-flow"],
-                    "credentials":["fixture"],"scopes":["jobs:read","goals:evaluate"]})
+                    "credentials":["fixture"],"scopes":["jobs:read","jobs:submit","goals:evaluate","goals:invalidate","goals:import","goals:verify","goals:propose"]})
                 write("server.json", server_data)
                 eval_config = write("evaluator.json", {"client":{"http_url":"http://"+http_address,"token_file":eval_token,"tls":tls}})
 
@@ -480,7 +493,178 @@ def main():
                             "server_pid_before_restart":old_pid if restarted else None,
                             "server_pid_after_restart":processes["server"].pid if restarted else None,
                             "worker_process_pids":{n:processes[n].pid for n in worker_configs}})
+                    spec = json.loads(json.dumps(template))
+                    spec.update(project_id="ci-flow",workspace={"repository_ref":"repo","base_commit":commit})
+                    spec["limits"]["max_replans"] = 0
+                    for op in spec["operators"]:
+                        if op["kind"] == "agent":
+                            op["execution"] = execution("codex")
+                    request = write("invalidated-graph.json",spec)
+                    job_id = json.loads(cli("job","submit-graph","--key","ci-invalidated","--file",request))["job_id"]
+                    if wait_job(job_id)["state"] != "SUCCEEDED":
+                        raise AssertionError("invalidation graph did not finish execution")
+                    status = json.loads(cli("job","graph","--id",job_id))
+                    attempts_before = attempt_snapshot(job_id)
+                    rule = next(s for s in spec["sources"] if s["id"] == "discount_rule")
+                    event = write("invalidation.json",{"id":"rule-revised","goal_id":status["goal_id"],
+                        "graph_generation":status["graph_generation"],"expected_revision":0,"reason":"RULE_CHANGED",
+                        "evidence_sha256":hashlib.sha256(b"discount=2000").hexdigest(),
+                        "sources":[{"id":rule["id"],"sha256":hashlib.sha256(rule["text"].encode()).hexdigest()}]})
+                    denied = False
+                    try:
+                        cli("job","invalidate-graph","--id",job_id,"--file",event)
+                    except RuntimeError as error:
+                        denied = "403" in str(error)
+                    if not denied:
+                        raise AssertionError("submitter could invalidate without separate permission")
+                    run_command(binary,"job","invalidate-graph","--id",job_id,"--file",event,"--config",eval_config)
+                    old_pid = processes["server"].pid
+                    stop("server",hard=True)
+                    start("server","server",server_config)
+                    def applied():
+                        state = json.loads(cli("job","graph-validity","--id",job_id))
+                        return state if state["revision"] == 1 and len(state["events"]) == 1 and state["events"][0]["state"] == "APPLIED" else None
+                    validity = wait_for(applied)
+                    attempts_after = attempt_snapshot(job_id)
+                    if attempts_before != attempts_after or processes["server"].pid == old_pid:
+                        raise AssertionError("invalidation restart changed attempts or did not restart")
+                    evaluation = {"id":"stale-pass","expected_version":0,"expected_validity_revision":1,
+                        "output_sha256":status["output_sha256"],"verifier_profile":"orders-proof","verifier_version":"1",
+                        "verdict":"PASS","evidence_sha256":hashlib.sha256(b"old proof").hexdigest()}
+                    stale = write("invalidated-evaluation.json",evaluation)
+                    pass_denied = False
+                    try:
+                        run_command(binary,"job","evaluate-graph","--id",job_id,"--file",stale,"--config",eval_config)
+                    except RuntimeError as error:
+                        pass_denied = "IU_INPUT_INVALIDATED" in str(error)
+                    if not pass_denied:
+                        raise AssertionError("invalidated evidence could PASS")
+                    evaluation.update(id="current-fail",verdict="FAIL")
+                    failure = write("invalidated-fail.json",evaluation)
+                    run_command(binary,"job","evaluate-graph","--id",job_id,"--file",failure,"--config",eval_config)
+                    final = json.loads(cli("job","graph","--id",job_id))
+                    if final["goal_state"] != "FAILED":
+                        raise AssertionError("invalidated Goal did not terminate after FAIL")
+                    invalidation = {"revision":validity["revision"],"applied":True,"server_process_restart":True,
+                        "attempts_unchanged":True,"unauthorized_denied":denied,"stale_pass_denied":pass_denied,
+                        "job_id":job_id,"goal_state":final["goal_state"],"attempts_before":attempts_before,"attempts_after":attempts_after}
+                    import_recovery=[]
+                    for mode in ("memory","node_result"):
+                        # Re-enable new publications for the next isolated source Goal.
+                        server_data["server"]["jobs"]["graphs_enabled"]=True
+                        Path(server_config).write_text(json.dumps(server_data))
+                        stop("server",hard=True);start("server","server",server_config)
+                        wait_for(lambda: json.loads(cli("workers")))
+                        source_spec=json.loads(json.dumps(template))
+                        source_spec.update(version="iu-graph-v3",project_id="ci-flow",workspace={"repository_ref":"repo","base_commit":commit})
+                        source_spec["evaluator"]={"profile":"source-proof","version":"1"}
+                        source_spec["limits"].update(max_replans=1,timeout_seconds=300)
+                        source_spec["nodes"]=[dict(next(n for n in source_spec["nodes"] if n["id"]=="a"),replay_profile="fixture")]
+                        source_spec["operators"]=[dict(next(o for o in source_spec["operators"] if o["id"]=="extract"),execution=dict(execution("codex"),replay_safe=True))]
+                        source_spec["edges"]=[];source_spec["outputs"]=[{"node":"a","port":"result"}]
+                        source_request=write("source-"+mode+".json",source_spec)
+                        source_id=json.loads(cli("job","submit-graph","--key","source-"+mode,"--file",source_request))["job_id"]
+                        if wait_job(source_id)["state"]!="SUCCEEDED":raise AssertionError("import source execution failed")
+                        source_status=json.loads(cli("job","graph","--id",source_id))
+                        record_id=next(s["id"] for s in source_spec["sources"] if s["id"]=="order_a")
+                        snapshot=json.loads(cli("job","graph-record","--id",source_id,"--node","a","--record",record_id))
+                        verify_request=write("verify-"+mode+".json",{"id":"source-proof","node_id":"a","record_id":record_id,
+                            "record_sha256":snapshot["record_sha256"],"view_sha256":snapshot["view_sha256"],"expected_revision":0,
+                            "profile":"order-source","profile_version":"1","source_id":record_id})
+                        verify_denied=False
+                        try:cli("job","verify-record","--id",source_id,"--file",verify_request)
+                        except RuntimeError as error:verify_denied="403" in str(error)
+                        if not verify_denied:raise AssertionError("submitter could self-verify memory")
+                        proof=json.loads(run_command(binary,"job","verify-record","--id",source_id,"--file",verify_request,"--config",eval_config))
+                        if proof["verdict"]!="PASS":raise AssertionError("independent source proof failed")
+                        span=next(n for n in source_spec["nodes"] if n["id"]=="a")["spans"][0]
+                        read_body={"id":"bounded-read","node_id":"a","plan_sha256":source_status["plan"]["sha256"],"expected_reads":0,"span":span}
+                        read_file=write("read-"+mode+".json",read_body)
+                        read_before=json.loads(cli("job","read-source","--id",source_id,"--file",read_file))
+                        evidence=hashlib.sha256(b"fixture requires second-generation review").hexdigest()
+                        failure_body={"id":"new-review","expected_version":0,"output_sha256":source_status["output_sha256"],
+                            "verifier_profile":"source-proof","verifier_version":"1","verdict":"FAIL","evidence_sha256":evidence}
+                        failure_file=write("source-eval-"+mode+".json",failure_body)
+                        run_command(binary,"job","evaluate-graph","--id",source_id,"--file",failure_file,"--config",eval_config)
+                        source_status=json.loads(cli("job","graph","--id",source_id))
+                        target_spec=json.loads(json.dumps(source_spec))
+                        grant_id="approved_"+mode
+                        if mode=="memory":target_spec["imports"]=[{"grant_id":grant_id,"node_ids":["a"]}]
+                        else:target_spec["reuse"]=[{"grant_id":grant_id,"node_id":"a"}]
+                        def prepare_publication(spec,grant_id,proposal_id):
+                            target_file=write("target-"+proposal_id+".json",spec)
+                            plan=json.loads(cli("job","compile-graph","--file",target_file))
+                            grant={"id":grant_id,"node_id":"a","view_sha256":snapshot["view_sha256"],"record_ids":[record_id],
+                                "expected_revision":0,"target_generation":2,"target_plan_sha256":plan["sha256"],"expires_at":int(time.time()*1000)+60000}
+                            if mode=="node_result":grant["purpose"]="node_result"
+                            grant_file=write("grant-"+proposal_id+".json",grant)
+                            run_command(binary,"job","issue-import","--id",source_id,"--file",grant_file,"--config",eval_config)
+                            proposal={"proposal":{"id":proposal_id,"goal_id":source_status["goal_id"],"evaluation_id":source_status["evaluation_id"],
+                                "expected_plan_revision":1,"expected_graph_generation":1,"reason_code":"NEW_EVIDENCE",
+                                "evidence":{"failure_class":"TEST_FAILURE","evidence":[{"type":"iu_graph_evaluation","fact":"output="+source_status["output_sha256"]+";evidence="+evidence+";verdict=FAIL"}]},
+                                "proposed_plan":{"strategy":"review-frozen-evidence","strategy_class":"bounded-retry","dependency_signature":"single",
+                                    "required_capabilities":["runtime:codex_exec"],"key_assumptions":["fixture source unchanged"],"evaluation_strategy":"source-proof",
+                                    "side_effect_class":"workspace","job_spec_hash":plan["sha256"]},
+                                "strategy_delta":{"changed_dimensions":["strategy"],"summary":"explicit authorized next generation"},
+                                "progress":{"accepted_checks":1,"failed_checks":1,"unknown_checks":1,"resolved_assumptions":1,"unresolved_blockers":1}},"job_spec":spec}
+                            return write("proposal-"+proposal_id+".json",proposal)
+                        revoked_denied=True
+                        if mode=="memory":
+                            revoked_spec=json.loads(json.dumps(target_spec));revoked_spec["imports"][0]["grant_id"]="revoked_memory"
+                            revoked_proposal=prepare_publication(revoked_spec,"revoked_memory","rejected-memory")
+                            run_command(binary,"job","revoke-import","--id",source_id,"--key","revoked_memory","--config",eval_config)
+                            revoked_denied=False
+                            try:run_command(binary,"job","propose-graph","--id",source_id,"--file",revoked_proposal,"--config",eval_config)
+                            except RuntimeError as error:revoked_denied="IMPORT_GRANT_NOT_USABLE" in str(error)
+                            if not revoked_denied:raise AssertionError("revoked grant published")
+                            with sqlite3.connect(f"file:{root/'server'/'state.db'}?mode=ro",uri=True) as db:
+                                if db.execute("SELECT active_graph_generation FROM goals WHERE id=?",(source_status["goal_id"],)).fetchone()[0]!=1:raise AssertionError("rejected import partially published")
+                        proposal_file=prepare_publication(target_spec,grant_id,"accepted-"+mode)
+                        publication=json.loads(run_command(binary,"job","propose-graph","--id",source_id,"--file",proposal_file,"--config",eval_config))
+                        target_id=publication["job"]["job_id"]
+                        replay=json.loads(run_command(binary,"job","propose-graph","--id",source_id,"--file",proposal_file,"--config",eval_config))
+                        if replay["job"]["job_id"]!=target_id or replay["decision"]["existing"] is not True:raise AssertionError("publication replay duplicated a job")
+                        # Disable new graph submissions, then hard-restart the Server.
+                        # The already accepted graph must still finish without new duplicate attempts.
+                        server_data["server"]["jobs"]["graphs_enabled"]=False
+                        Path(server_config).write_text(json.dumps(server_data));old_pid=processes["server"].pid
+                        stop("server",hard=True);start("server","server",server_config)
+                        if wait_job(target_id)["state"]!="SUCCEEDED":raise AssertionError("accepted graph did not recover with submissions disabled")
+                        target_status=json.loads(cli("job","graph","--id",target_id));attempts=attempt_snapshot(target_id)
+                        expected_attempts=1 if mode=="memory" else 0
+                        if len(attempts)!=expected_attempts or len(job_tasks(target_id))!=expected_attempts:raise AssertionError("recovery invented or duplicated execution")
+                        grant=json.loads(run_command(binary,"job","get-import","--id",source_id,"--key",grant_id,"--config",eval_config))
+                        if grant["state"]!="CONSUMED" or grant["target_job"]!=target_id:raise AssertionError("grant consumption was not durable")
+                        read_after=json.loads(cli("job","read-source","--id",source_id,"--file",read_file))
+                        if read_after!=read_before:raise AssertionError("read receipt changed across restart")
+                        with sqlite3.connect(f"file:{root/'server'/'state.db'}?mode=ro",uri=True) as db:
+                            prefix="import/%" if mode=="memory" else "reuse/%"
+                            pins=db.execute("SELECT count(*) FROM artifact_refs WHERE ref_type='iu_memory' AND ref_id LIKE ?",(prefix,)).fetchone()[0]
+                        if pins<1:raise AssertionError("origin evidence lost its pin")
+                        with sqlite3.connect(f"file:{root/'server'/'state.db'}?mode=ro",uri=True) as db:
+                            node_row=db.execute("SELECT input_view,output_view,task_id FROM iu_nodes WHERE goal_id=? AND generation=2 AND node_id='a'",(source_status["goal_id"],)).fetchone()
+                            carried=json.loads(node_row[0] if mode=="memory" else node_row[1])
+                            origin=carried["records"][0].get("origin",{})
+                            if carried["version"]!="iu-memory-view-v2" or origin.get("source",{}).get("job_id")!=source_id or origin.get("record_id")!=record_id or origin.get("record_sha256")!=snapshot["record_sha256"]:
+                                raise AssertionError("inline original record identity did not survive transmission/recovery")
+                            if mode=="memory":
+                                task_spec=json.loads(db.execute("SELECT spec FROM tasks WHERE id=?",(node_row[2],)).fetchone()[0])
+                                if "iu_memory_origin_v1" not in task_spec.get("requiredCapabilities",[]):raise AssertionError("new memory wire was not capability fenced")
+
+                        if mode=="node_result" and target_status["nodes"][0]["execution_kind"]!="REUSED":raise AssertionError("reuse not exposed as separate execution fact")
+                        output=json.loads(cli("job","result","--id",target_id))
+                        if output["outputs"]["a/result"]!=6000:raise AssertionError("import/reuse changed source result")
+                        evaluation=write("target-eval-"+mode+".json",{"id":"current-pass","expected_version":0,
+                            "output_sha256":target_status["output_sha256"],"verifier_profile":"source-proof","verifier_version":"1",
+                            "verdict":"PASS","evidence_sha256":hashlib.sha256(b"fixture current source independently checked").hexdigest()})
+                        run_command(binary,"job","evaluate-graph","--id",target_id,"--file",evaluation,"--config",eval_config)
+                        import_recovery.append({"mode":mode,"source_job":source_id,"target_job":target_id,"generation":2,"grant_consumed":True,
+                            "server_process_restart":processes["server"].pid!=old_pid,"submissions_disabled_recovery":True,"publication_idempotent":True,
+                            "origin_pins":pins,"attempts":len(attempts),"tasks":len(job_tasks(target_id)),"revoked_denied":revoked_denied,
+                            "verification_authorized":True,"submitter_verification_denied":verify_denied,"source_read_receipt_preserved":True,
+                            "origin_forwarded":True,"source_output":6000,"recovered_output":output["outputs"]["a/result"]})
                     return {"real_model_calls":False,"cases":results,"server_processes":1,"worker_processes":2,
+                            "invalidation":invalidation,"import_recovery":import_recovery,
                             "restart_scope":"completed execution waiting for authorized business evaluation"}
                 record("native_iu_graphs", native_graph_flow)
 
@@ -578,14 +762,14 @@ def main():
                     tasks = dict(database.execute("SELECT state,count(*) FROM tasks GROUP BY state"))
                 if integrity != "ok":
                     raise AssertionError("SQLite integrity check failed")
-                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": (12 if args.workspace_benchmark else 2) + (4 if args.iu_graph_check else 0)}
+                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": (12 if args.workspace_benchmark else 2) + (9 if args.iu_graph_check else 0)}
                 if jobs != expected_jobs:
                     raise AssertionError(f"unexpected Job state totals: {jobs}")
                 return {"sqlite_integrity": integrity, "job_states": jobs, "task_states": tasks}
 
             record("shutdown_and_integrity", shutdown_and_integrity)
             report["summary"] = {"status": "PASSED", "steps_passed": len(report["steps"]),
-                                 "successful_jobs": (12 if args.workspace_benchmark else 2) + (4 if args.iu_graph_check else 0), "canceled_jobs": 1, "failed_jobs": 1}
+                                 "successful_jobs": (12 if args.workspace_benchmark else 2) + (9 if args.iu_graph_check else 0), "canceled_jobs": 1, "failed_jobs": 1}
     except BaseException as error:
         failure = error
         report["summary"] = {"status": "FAILED", "error": f"{type(error).__name__}: {error}"}

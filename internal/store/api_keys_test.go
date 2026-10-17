@@ -113,7 +113,7 @@ func TestServerV19APIMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version, tables int
-	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 20 {
+	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != ServerVersion {
 		t.Fatalf("version=%d err=%v", version, err)
 	}
 	if err = db.SQL.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='api_keys'").Scan(&tables); err != nil || tables != 1 {
@@ -155,7 +155,7 @@ func TestServerV18UpgradePreservesJobs(t *testing.T) {
 	}
 	defer db.Close()
 	var count, version int
-	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 20 {
+	if err = db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != ServerVersion {
 		t.Fatalf("upgraded version=%d err=%v", version, err)
 	}
 	if err = db.SQL.QueryRow("SELECT count(*) FROM jobs WHERE id='keep'").Scan(&count); err != nil || count != 1 {

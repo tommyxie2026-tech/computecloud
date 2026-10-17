@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,12 +28,22 @@ type Case struct {
 	Rule   Rule    `json:"rule"`
 }
 type Reply struct {
+	UsageOrigin               string
+	CostOrigin                string
 	Raw                       json.RawMessage
 	InputTokens, OutputTokens *int64
 	CostUSD                   *float64
 }
 type Call func(context.Context, graph.ContextManifest) (Reply, error)
 type Sample struct {
+	UsageOrigin       string                     `json:"usage_origin"`
+	CostOrigin        string                     `json:"cost_origin"`
+	BusinessPass      *bool                      `json:"independent_business_pass"`
+	PipelineAccepted  *bool                      `json:"pipeline_accepted"`
+	FalseAcceptance   bool                       `json:"false_acceptance"`
+	VerifierCalls     int                        `json:"verifier_calls"`
+	VerifierMicros    int64                      `json:"verifier_us"`
+	FailureClass      string                     `json:"failure_class,omitempty"`
 	ExtractedOrders   map[string]json.RawMessage `json:"extracted_orders,omitempty"`
 	ExtractionCorrect *bool                      `json:"extraction_preserves_original_fields"`
 	Repetition        int                        `json:"repetition"`
@@ -115,7 +126,7 @@ var schemas = map[string]json.RawMessage{
 // Run compares fixed semantic pipelines; it does not measure Scheduler or Worker overhead.
 func Run(ctx context.Context, c Case, arm, model string, call Call) (s Sample) {
 	start := time.Now()
-	s = Sample{CaseID: c.ID, Arm: arm, SourceHash: graph.Hash(encode(c)), ContextHashes: map[string]string{}}
+	s = Sample{UsageOrigin: "unknown", CostOrigin: "unknown", CaseID: c.ID, Arm: arm, SourceHash: graph.Hash(encode(c)), ContextHashes: map[string]string{}}
 	defer func() { s.WallMS = time.Since(start).Milliseconds() }()
 	expected, e := Expected(c)
 	if e != nil || len(c.Orders) == 0 || len(c.Orders) > 8 {
@@ -123,7 +134,7 @@ func Run(ctx context.Context, c Case, arm, model string, call Call) (s Sample) {
 		return
 	}
 	s.Expected = expected
-	if arm != "monolithic" && arm != "iu" {
+	if arm != "monolithic" && arm != "iu" && arm != "iu_no_memory" && arm != "iu_no_verifier" {
 		s.Error = "INVALID_ARM"
 		return
 	}
@@ -143,6 +154,7 @@ func Run(ctx context.Context, c Case, arm, model string, call Call) (s Sample) {
 	var inTokens, outTokens int64
 	var cost float64
 	allIn, allOut, allCost := true, true, true
+	usageOrigin, costOrigin := "", ""
 	invoke := func(id, instruction, schema string, local []graph.Span, view graph.MemoryView, inputs []graph.InputValue) (graph.ExecutionOutput, error) {
 		ports := []graph.Port{{Name: "result", Schema: schema}}
 		m, e := graph.CompileContext(graph.ContextRequest{Sources: sources, Rules: rules, Spans: local, Instructions: instruction, View: view, Inputs: inputs, Model: model, OutputSchema: graph.OutputSchema(ports, schemas)})
@@ -156,6 +168,23 @@ func Run(ctx context.Context, c Case, arm, model string, call Call) (s Sample) {
 		mu.Unlock()
 		reply, e := call(ctx, m)
 		mu.Lock()
+		u, costSource := reply.UsageOrigin, reply.CostOrigin
+		if u == "" {
+			u = "unknown"
+		}
+		if costSource == "" {
+			costSource = "unknown"
+		}
+		if usageOrigin == "" {
+			usageOrigin = u
+		} else if usageOrigin != u {
+			usageOrigin = "mixed_or_unknown"
+		}
+		if costOrigin == "" {
+			costOrigin = costSource
+		} else if costOrigin != costSource {
+			costOrigin = "mixed_or_unknown"
+		}
 		if reply.InputTokens == nil {
 			allIn = false
 		} else {
@@ -173,7 +202,7 @@ func Run(ctx context.Context, c Case, arm, model string, call Call) (s Sample) {
 		}
 		mu.Unlock()
 		if e != nil {
-			return graph.ExecutionOutput{}, e
+			return graph.ExecutionOutput{}, fmt.Errorf("MODEL_CALL_FAILED: %w", e)
 		}
 		out, e := graph.BuildOutput(reply.Raw, graph.Invocation{GoalID: "experiment", Generation: 1, NodeID: id, Context: m, View: view, Outputs: ports, Schemas: schemas})
 		if e == nil && len(out.Delta.Records) != 0 {
@@ -240,11 +269,22 @@ func Run(ctx context.Context, c Case, arm, model string, call Call) (s Sample) {
 			var view graph.MemoryView
 			view, e = graph.MergeViews(views)
 			if e == nil {
+				if arm == "iu_no_memory" {
+					view = graph.EmptyView()
+				}
 				s.MemoryRecords = len(view.Records)
 				value := string(encode(grouped))
 				answer, e = invoke("reduce", totalInstruction, "amount-v1", nil, view, []graph.InputValue{{Node: "join", Port: "orders", SourcePort: "result", Value: value, SHA256: graph.Hash([]byte(value))}})
 			}
 		}
+	}
+	s.UsageOrigin = "unknown"
+	s.CostOrigin = "unknown"
+	if allIn && allOut && s.ModelCalls > 0 {
+		s.UsageOrigin = usageOrigin
+	}
+	if allCost && s.ModelCalls > 0 {
+		s.CostOrigin = costOrigin
 	}
 	if allIn && s.ModelCalls > 0 {
 		s.InputTokens = &inTokens
@@ -257,6 +297,10 @@ func Run(ctx context.Context, c Case, arm, model string, call Call) (s Sample) {
 	}
 	if e != nil {
 		s.Error = "MODEL_OR_CONTRACT_FAILED"
+		s.FailureClass = "contract"
+		if strings.HasPrefix(e.Error(), "MODEL_CALL_FAILED:") {
+			s.FailureClass = "provider_or_cli"
+		}
 		return
 	}
 	var actual int64
@@ -266,6 +310,18 @@ func Run(ctx context.Context, c Case, arm, model string, call Call) (s Sample) {
 	}
 	s.Actual = &actual
 	s.Correct = actual == expected
+	business := s.Correct && (s.ExtractionCorrect == nil || *s.ExtractionCorrect)
+	s.BusinessPass = &business
+	accepted := true
+	if arm != "iu_no_verifier" {
+		verifyStart := time.Now()
+		s.VerifierCalls++
+		verifiedExpected, err := Expected(c)
+		accepted = err == nil && actual == verifiedExpected && (s.ExtractionCorrect == nil || *s.ExtractionCorrect)
+		s.VerifierMicros = time.Since(verifyStart).Microseconds()
+	}
+	s.PipelineAccepted = &accepted
+	s.FalseAcceptance = accepted && !business
 	return
 }
 

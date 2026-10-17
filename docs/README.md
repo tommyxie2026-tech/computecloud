@@ -10,6 +10,7 @@
 
 | 文档 | 内容 | 状态 |
 | --- | --- | --- |
+| [IU 后续迭代实施计划](superpowers/plans/2026-10-18-iu-follow-up-iterations.md) | IU-2～IU-6 的依赖、代码落点、测试、退出门槛和待办 | 规划，后续功能未实现 |
 | [IU CI 模拟验收](validation/iu-ci-simulation.md) | 18 场景、双 Worker 进程、故障检测、重启证据与报告 | CI 验收入口 |
 | [IU 计算图契约](contracts/iu-graph-v1.md) | 原生 DAG、冻结上下文、记忆准入、独立评估与 Guard | 实验性，默认关闭 |
 | [IU 实现范围](implementation/iu-computation-model.md) | 当前交付、验收证据与后续边界 | 实验切片已实现，后续见路线台账 |

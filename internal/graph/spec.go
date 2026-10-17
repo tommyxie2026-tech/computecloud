@@ -13,11 +13,28 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	graphv1 "github.com/tommyxie2026-tech/computecloud/api/graph/v1"
+	graphv2 "github.com/tommyxie2026-tech/computecloud/api/graph/v2"
+	graphv3 "github.com/tommyxie2026-tech/computecloud/api/graph/v3"
+	graphv4 "github.com/tommyxie2026-tech/computecloud/api/graph/v4"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/jsonutil"
 )
 
 const Version = "iu-graph-v1"
+const ImportVersion = "iu-graph-v2"
+const ReuseVersion = "iu-graph-v3"
+const ContextVersion = "iu-graph-v4"
+
+type ReuseBinding struct {
+	GrantID string `json:"grant_id"`
+	NodeID  string `json:"node_id"`
+}
+
+type ImportBinding struct {
+	GrantID string   `json:"grant_id"`
+	NodeIDs []string `json:"node_ids"`
+}
+
 const MaxRequestBytes = 256 << 10
 
 type Source struct {
@@ -51,13 +68,16 @@ type Operator struct {
 }
 
 type Node struct {
-	ID           string          `json:"id"`
-	Operator     string          `json:"operator"`
-	Instructions string          `json:"instructions,omitempty"`
-	Spans        []Span          `json:"spans,omitempty"`
-	ScopePaths   []string        `json:"scope_paths,omitempty"`
-	JoinPolicy   string          `json:"join_policy,omitempty"`
-	Parameters   json.RawMessage `json:"parameters,omitempty"`
+	ContextPolicy *ContextPolicy  `json:"context_policy,omitempty"`
+	Rules         []Span          `json:"rules,omitempty"`
+	ReplayProfile string          `json:"replay_profile,omitempty"`
+	ID            string          `json:"id"`
+	Operator      string          `json:"operator"`
+	Instructions  string          `json:"instructions,omitempty"`
+	Spans         []Span          `json:"spans,omitempty"`
+	ScopePaths    []string        `json:"scope_paths,omitempty"`
+	JoinPolicy    string          `json:"join_policy,omitempty"`
+	Parameters    json.RawMessage `json:"parameters,omitempty"`
 }
 
 type Edge struct {
@@ -84,6 +104,8 @@ type Limits struct {
 }
 
 type Spec struct {
+	Reuse     []ReuseBinding             `json:"reuse,omitempty"`
+	Imports   []ImportBinding            `json:"imports,omitempty"`
 	Schemas   map[string]json.RawMessage `json:"schemas"`
 	Evaluator Evaluator                  `json:"evaluator"`
 	Version   string                     `json:"version"`
@@ -138,7 +160,17 @@ func Decode(raw []byte) (Spec, error) {
 	if e := json.Unmarshal(raw, &instance); e != nil {
 		return s, e
 	}
-	if e := requestSchema().Validate(instance); e != nil {
+	schema := requestSchema()
+	if s.Version == ImportVersion {
+		schema = requestSchemaV2()
+	}
+	if s.Version == ReuseVersion {
+		schema = requestSchemaV3()
+	}
+	if s.Version == ContextVersion {
+		schema = requestSchemaV4()
+	}
+	if e := schema.Validate(instance); e != nil {
 		return s, invalid("schema: " + e.Error())
 	}
 	p, e := Compile(s)
@@ -151,6 +183,42 @@ func Decode(raw []byte) (Spec, error) {
 var requestSchema = sync.OnceValue(func() *jsonschema.Resolved {
 	var s jsonschema.Schema
 	if e := json.Unmarshal(graphv1.Schema, &s); e != nil {
+		panic(e)
+	}
+	r, e := s.Resolve(nil)
+	if e != nil {
+		panic(e)
+	}
+	return r
+})
+
+var requestSchemaV2 = sync.OnceValue(func() *jsonschema.Resolved {
+	var s jsonschema.Schema
+	if e := json.Unmarshal(graphv2.Schema, &s); e != nil {
+		panic(e)
+	}
+	r, e := s.Resolve(nil)
+	if e != nil {
+		panic(e)
+	}
+	return r
+})
+
+var requestSchemaV3 = sync.OnceValue(func() *jsonschema.Resolved {
+	var s jsonschema.Schema
+	if e := json.Unmarshal(graphv3.Schema, &s); e != nil {
+		panic(e)
+	}
+	r, e := s.Resolve(nil)
+	if e != nil {
+		panic(e)
+	}
+	return r
+})
+
+var requestSchemaV4 = sync.OnceValue(func() *jsonschema.Resolved {
+	var s jsonschema.Schema
+	if e := json.Unmarshal(graphv4.Schema, &s); e != nil {
 		panic(e)
 	}
 	r, e := s.Resolve(nil)
@@ -176,7 +244,7 @@ func Compile(in Spec) (Plan, error) {
 		return p, e
 	}
 	fail := func(reason string) (Plan, error) { return Plan{}, invalid(reason) }
-	if s.Version != Version || !job.Ref(s.ProjectID) || !job.Ref(s.Workspace.RepositoryRef) || !commitPattern.MatchString(s.Workspace.BaseCommit) {
+	if (s.Version != Version && s.Version != ImportVersion && s.Version != ReuseVersion && s.Version != ContextVersion) || !job.Ref(s.ProjectID) || !job.Ref(s.Workspace.RepositoryRef) || !commitPattern.MatchString(s.Workspace.BaseCommit) {
 		return fail("version, project or workspace")
 	}
 	if !job.Ref(s.Evaluator.Profile) || !job.Ref(s.Evaluator.Version) {
@@ -287,11 +355,30 @@ func Compile(in Spec) (Plan, error) {
 	indegree := map[string]int{}
 	next := map[string][]string{}
 	for _, n := range s.Nodes {
-		if !keyPattern.MatchString(n.ID) || !utf8.ValidString(n.Instructions) || len(n.Instructions) > 64<<10 || len(n.Spans) > 128 || len(n.ScopePaths) > 64 {
+		if n.ContextPolicy != nil {
+			if s.Version != ContextVersion {
+				return fail("context policy version")
+			}
+			if e := n.ContextPolicy.Validate(); e != nil {
+				return p, e
+			}
+			for _, span := range n.ContextPolicy.RequiredEvidence {
+				if _, e := readSpan(sources, span); e != nil {
+					return p, e
+				}
+			}
+		}
+		if !keyPattern.MatchString(n.ID) || !utf8.ValidString(n.Instructions) || len(n.Instructions) > 64<<10 || len(n.Spans) > 128 || len(n.Rules) > 128 || len(n.ScopePaths) > 64 {
 			return fail("node")
 		}
 		if _, ok := nodes[n.ID]; ok {
 			return fail("duplicate node")
+		}
+		if len(n.Rules) > 0 && s.Version != ReuseVersion && s.Version != ContextVersion {
+			return fail("node rules version")
+		}
+		if n.ReplayProfile != "" && (s.Version != ReuseVersion && s.Version != ContextVersion || !keyPattern.MatchString(n.ReplayProfile)) {
+			return fail("replay profile version")
 		}
 		op, ok := ops[n.Operator]
 		if !ok {
@@ -304,7 +391,7 @@ func Compile(in Spec) (Plan, error) {
 		} else if n.JoinPolicy != "" {
 			return fail("non-join policy")
 		}
-		for _, span := range n.Spans {
+		for _, span := range append(append([]Span{}, n.Spans...), n.Rules...) {
 			if _, e := readSpan(sources, span); e != nil {
 				return p, e
 			}
@@ -317,6 +404,39 @@ func Compile(in Spec) (Plan, error) {
 		nodes[n.ID] = n
 		indegree[n.ID] = 0
 	}
+	if len(s.Imports) > 8 || s.Version == Version && len(s.Imports) > 0 {
+		return fail("import version or bounds")
+	}
+	if len(s.Reuse) > 32 || len(s.Reuse) > 0 && s.Version != ReuseVersion && s.Version != ContextVersion {
+		return fail("reuse version or bounds")
+	}
+	reusedNodes := map[string]bool{}
+	seenGrants := map[string]bool{}
+	for _, b := range s.Reuse {
+		n, ok := nodes[b.NodeID]
+		if !ok || n.ReplayProfile == "" || !keyPattern.MatchString(b.GrantID) || seenGrants[b.GrantID] || reusedNodes[b.NodeID] {
+			return fail("reuse binding")
+		}
+		seenGrants[b.GrantID] = true
+		reusedNodes[b.NodeID] = true
+	}
+	sort.Slice(s.Reuse, func(i, j int) bool { return s.Reuse[i].NodeID < s.Reuse[j].NodeID })
+	for i := range s.Imports {
+		b := &s.Imports[i]
+		if !keyPattern.MatchString(b.GrantID) || seenGrants[b.GrantID] || len(b.NodeIDs) < 1 || len(b.NodeIDs) > 32 {
+			return fail("import binding")
+		}
+		seenGrants[b.GrantID] = true
+		seen := map[string]bool{}
+		for _, id := range b.NodeIDs {
+			if _, ok := nodes[id]; !ok || seen[id] {
+				return fail("import target")
+			}
+			seen[id] = true
+		}
+		sort.Strings(b.NodeIDs)
+	}
+	sort.Slice(s.Imports, func(i, j int) bool { return s.Imports[i].GrantID < s.Imports[j].GrantID })
 	bound := map[string]bool{}
 	seenEdges := map[string]bool{}
 	conditions := map[string]map[string]bool{}

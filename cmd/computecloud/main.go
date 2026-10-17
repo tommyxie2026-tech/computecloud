@@ -16,6 +16,7 @@ import (
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/maintenance"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/server"
@@ -79,6 +80,8 @@ func run(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet(group, flag.ContinueOnError)
 	cfgFile := fs.String("config", "computecloud.yaml", "configuration file")
 	file := fs.String("file", "", "task JSON file")
+	node := fs.String("node", "", "graph node ID")
+	record := fs.String("record", "", "memory record ID")
 	id := fs.String("id", "", "task ID")
 	after := fs.Int64("after", 0, "event cursor")
 	control := fs.String("control-id", "", "cancel idempotency key")
@@ -122,10 +125,17 @@ func run(ctx context.Context, args []string) error {
 		if e = c.Worker.Validate(); e != nil {
 			return e
 		}
-		return json.NewEncoder(os.Stdout).Encode(map[string]any{"templates": config.Templates(c.Worker)})
+		runtimeHashes, policyHashes := map[string]string{}, map[string]string{}
+		for name, r := range c.Worker.Runtimes {
+			runtimeHashes[name] = job.Hash(job.JSON(r))
+		}
+		for name, p := range c.Worker.Policies {
+			policyHashes[name] = job.Hash(job.JSON(p))
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{"templates": config.Templates(c.Worker), "runtime_config_hashes": runtimeHashes, "policy_hashes": policyHashes})
 	}
 	if group == "job" {
-		return runJob(ctx, c.Client, jobOptions{op: op, file: *file, id: *id, key: *key, control: *control, artifact: *artifact, out: *out, cursor: *cursor, after: *after, limit: *limit})
+		return runJob(ctx, c.Client, jobOptions{node: *node, record: *record, op: op, file: *file, id: *id, key: *key, control: *control, artifact: *artifact, out: *out, cursor: *cursor, after: *after, limit: *limit})
 	}
 	switch group {
 	case "server":

@@ -339,7 +339,7 @@ def main():
             with sqlite3.connect(root / "server" / "state.db") as database:
                 integrity = database.execute("PRAGMA integrity_check").fetchone()[0]
                 schema = database.execute("PRAGMA user_version").fetchone()[0]
-            if integrity != "ok" or schema != 20:
+            if integrity != "ok" or schema != 25:
                 raise AssertionError(f"storage gate failed: integrity={integrity} schema={schema}")
 
             report["summary"] = {
