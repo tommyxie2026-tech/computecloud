@@ -71,6 +71,11 @@ def parse_events(raw):
     return results, cache
 
 
+def baseline_ref(value):
+    # New tag creation sends an all-zero before SHA rather than a Git object.
+    return "HEAD^" if not value or value == "0" * 40 else value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-ref", default=os.environ.get("BASELINE_REF", "HEAD^"))
@@ -79,7 +84,7 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     root = pathlib.Path.cwd()
     candidate_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-    baseline_sha = subprocess.check_output(["git", "rev-parse", "--verify", args.baseline_ref + "^{commit}"], text=True).strip()
+    baseline_sha = subprocess.check_output(["git", "rev-parse", "--verify", baseline_ref(args.baseline_ref) + "^{commit}"], text=True).strip()
     correctness_command = [
         "go", "test", "-json", "-race", "-count=1",
         "./internal/store", "./internal/maintenance", "./internal/server", "./internal/workspace",

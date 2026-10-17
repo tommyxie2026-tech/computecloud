@@ -19,7 +19,8 @@ The job archives the exact baseline commit into a temporary directory on the sam
 runner, then runs three fixed baseline/candidate rounds in AB/BA/AB order. Both
 trees use the candidate `cache_benchmark_test.go` measurement harness; baseline
 production code is unchanged. PRs use the target branch SHA, main pushes use the
-previous main SHA, and diagnostic dispatch can supply `certification_baseline`.
+previous main SHA (new tags with an all-zero `before` use the candidate parent),
+and diagnostic dispatch can supply `certification_baseline`.
 Every report records resolved SHAs and this harness overlay.
 
 Each round retains all ten cold, nine warm-hit and ten concurrent durations in

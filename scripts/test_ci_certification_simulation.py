@@ -13,6 +13,11 @@ def cache(warm=4.0):
 
 
 class CertificationTests(unittest.TestCase):
+    def test_new_tag_zero_before_sha_uses_parent_but_other_refs_are_preserved(self):
+        self.assertEqual(gate.baseline_ref("0" * 40), "HEAD^")
+        self.assertEqual(gate.baseline_ref(""), "HEAD^")
+        self.assertEqual(gate.baseline_ref("abc123"), "abc123")
+
     def test_threshold_is_inclusive_and_observed_failure_stays_red(self):
         self.assertTrue(gate.cache_gate(cache()))
         self.assertFalse(gate.cache_gate(cache(4.45473)))
