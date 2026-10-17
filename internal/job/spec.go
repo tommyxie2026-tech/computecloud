@@ -31,15 +31,15 @@ type Workspace struct {
 	BaseCommit    string `json:"base_commit"`
 }
 type Execution struct {
-	Engine            string   `json:"engine,omitempty"`
-	RuntimeProfile    string   `json:"runtime_profile"`
-	Model             string   `json:"model"`
-	CredentialRef     string   `json:"credential_ref"`
-	PolicyRef         string   `json:"policy_ref"`
-	AcceptanceProfile string   `json:"acceptance_profile"`
-	ReplaySafe        bool     `json:"replay_safe,omitempty"`
-	Tools             []string `json:"tools,omitempty"`
-	Environment       string   `json:"environment,omitempty"`
+	Engine            string   `json:"engine,omitempty" yaml:"engine"`
+	RuntimeProfile    string   `json:"runtime_profile" yaml:"runtime_profile"`
+	Model             string   `json:"model" yaml:"model"`
+	CredentialRef     string   `json:"credential_ref" yaml:"credential_ref"`
+	PolicyRef         string   `json:"policy_ref" yaml:"policy_ref"`
+	AcceptanceProfile string   `json:"acceptance_profile" yaml:"acceptance_profile"`
+	ReplaySafe        bool     `json:"replay_safe,omitempty" yaml:"replay_safe"`
+	Tools             []string `json:"tools,omitempty" yaml:"tools"`
+	Environment       string   `json:"environment,omitempty" yaml:"environment"`
 }
 type Partition struct {
 	Key        string    `json:"key"`

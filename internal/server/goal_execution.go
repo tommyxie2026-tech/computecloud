@@ -119,6 +119,13 @@ type goalArtifactEvidence struct {
 }
 
 func evaluateBoundJob(ctx context.Context, q store.Query, j *Job) error {
+	if j.graph != nil {
+		if !terminal(j.State) {
+			return nil
+		}
+		_, err := q.ExecContext(ctx, `UPDATE goals SET state=CASE WHEN ?='CANCELED' THEN 'CANCELED' ELSE 'EVALUATING' END,updated=?,version=version+1 WHERE id=? AND active_graph_generation=? AND state IN ('RUNNING','GRAPH_READY','REPLANNING')`, j.State, store.Now(), j.graph.GoalID, j.graph.Generation)
+		return err
+	}
 	if !terminal(j.State) {
 		return nil
 	}

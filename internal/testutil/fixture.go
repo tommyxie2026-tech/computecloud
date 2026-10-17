@@ -75,7 +75,7 @@ func JobCLI(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "job-fixture")
 	body := `#!/usr/bin/env python3
-import json, pathlib, sys, time, os, urllib.request
+import json, pathlib, sys, time, os, urllib.request, re
 if sys.argv[1:] == ['--version']:
     print('fixture-1'); sys.exit(0)
 codex = sys.argv[1] == 'exec'
@@ -95,6 +95,23 @@ if 'conversation-over-10-seconds' in prompt: time.sleep(11)
 if 'fail-job' in prompt: sys.exit(2)
 result = 'single fixture completed'
 if 'long-output' in prompt: result = 'x' * 6000
+if prompt.startswith('{'):
+    context = json.loads(prompt)
+    if context.get('version') == 'iu-context-v1':
+        instruction = context['instructions']
+        ports = json.loads(instruction.split('Declared output ports: ')[-1])
+        marker = re.search(r'fixture-amount:(\d+)', instruction)
+        amount = int(marker.group(1)) if marker else 0
+        if 'fixture-discount:' in instruction:
+            discount = int(re.search(r'fixture-discount:(\d+)', instruction).group(1))
+            amounts = json.loads(context['inputs'][0]['value'])
+            amount = sum(amounts.values()) - discount
+        records = []
+        record_id = re.search(r'fixture-record:([a-z_]+)', instruction)
+        if record_id:
+            sources = [{'id':s['source']['source'],'sha256':s['source']['sha256']} for s in context.get('local',[]) or []]
+            records = [{'id':record_id.group(1),'kind':'observation','payload':{'amount':amount},'sources':sources,'validation':'unchecked','validity':'VALID'}]
+        result = json.dumps({'version':'iu-node-output-v1','values':{p['name']:amount for p in ports},'records':records})
 if 'COMPUTECLOUD JOB CONTRACT:' in prompt:
     meta = json.loads(prompt.splitlines()[-1])
     if 'report' in prompt.split('COMPUTECLOUD JOB CONTRACT:')[1].lower() or 'findings' in prompt.split('COMPUTECLOUD JOB CONTRACT:')[1]:

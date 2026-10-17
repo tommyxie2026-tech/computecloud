@@ -30,6 +30,32 @@ if 'slow fixture' in prompt:
     pathlib.Path('fixture.pid').write_text(str(os.getpid()))
     time.sleep(90)
 result = 'ci fixture single completed'
+try:
+    context = json.loads(prompt)
+except ValueError:
+    context = {}
+if isinstance(context, dict) and context.get('version') == 'iu-context-v1':
+    import re
+    ports = json.loads(context['instructions'].split('Declared output ports: ')[-1])
+    if context['inputs']:
+        amounts = json.loads(context['inputs'][0]['value'])
+        rule = json.loads(context['rules'][0]['text'])
+        applied = rule['discount_cents']
+        marker = re.search(r'fixture-applied-discount:(\d+)', context['instructions'])
+        if marker:
+            applied = int(marker.group(1))
+        amount = sum(amounts.values())
+        if amount >= rule['threshold_cents']:
+            amount = max(0, amount - applied)
+        source = context['rules'][0]['source']
+    else:
+        amount = json.loads(context['local'][0]['text'])['paid_cents']
+        source = context['local'][0]['source']
+    records = [{'id':source['source'], 'kind':'observation', 'payload':{'value':amount},
+                'sources':[{'id':source['source'],'sha256':source['sha256']}],
+                'validation':'unchecked','validity':'VALID'}]
+    result = json.dumps({'version':'iu-node-output-v1', 'values':{p['name']:amount for p in ports}, 'records':records})
+
 if 'COMPUTECLOUD JOB CONTRACT:' in prompt:
     meta = json.loads(prompt.splitlines()[-1])
     if meta['stage'] == 'map':
@@ -71,6 +97,7 @@ def main():
     parser.add_argument("--timeout", type=int, default=45)
     parser.add_argument("--workspace-benchmark", action="store_true")
     parser.add_argument("--readiness-check", action="store_true")
+    parser.add_argument("--iu-graph-check", action="store_true", help="real Server/two Worker processes with mock graph agents")
     args = parser.parse_args()
     if args.timeout < 20 or args.timeout > 300:
         parser.error("timeout must be 20..300 seconds")
@@ -262,6 +289,12 @@ def main():
                                                "claude_permission_mode": "dontAsk",
                                                "claude_allowed_tools": ["Read", "Glob", "Grep"]}},
                     "verifiers": {"check": [["test", "-f", "README.md"]]}}}
+                if args.iu_graph_check:
+                    verifier = root / "verify-orders"
+                    verifier.write_text((Path(__file__).resolve().parents[1] / "examples/iu-graph/verify_orders.py").read_text())
+                    verifier.chmod(0o700)
+                    config["worker"]["runtimes"]["command_exec"] = {"executable": str(verifier),
+                        "version": "iu-orders-verifier-1", "models": ["orders-proof"], "credentials": ["fixture"]}
                 worker_configs[name] = write(f"{name}.json", config)
             templates = json.loads(run_command(binary, "templates", "--config", worker_configs["worker-a"]))["templates"]
             server_config = write("server.json", {"server": {"listen": address,
@@ -278,6 +311,18 @@ def main():
                 "workers": worker_identities}})
             write("client.json", {"client": {"address": address, "http_url": "http://" + http_address,
                                                "token_file": user_token, "tls": tls}})
+            if args.iu_graph_check:
+                server_data = json.loads(Path(server_config).read_text())
+                server_data["server"]["jobs"].update(graphs_enabled=True, graph_commands={"orders-proof": {
+                    "execution": {"runtime_profile":"command_exec","model":"orders-proof","credential_ref":"fixture",
+                                  "policy_ref":"review","acceptance_profile":"check"},
+                    "parameters_schema": '{"type":"object","additionalProperties":false}'}})
+                eval_token = write("evaluator.token", secrets.token_hex(32))
+                server_data["server"]["users"].append({"token_file":eval_token,"owner":"ci","projects":["ci-flow"],
+                    "credentials":["fixture"],"scopes":["jobs:read","goals:evaluate"]})
+                write("server.json", server_data)
+                eval_config = write("evaluator.json", {"client":{"http_url":"http://"+http_address,"token_file":eval_token,"tls":tls}})
+
 
             def cluster_ready():
                 start("server", "server", server_config)
@@ -340,6 +385,105 @@ def main():
                         "artifact": final_artifact(job_id, "map-reduce-result.tar")}
 
             record("map_reduce_job", map_reduce_flow)
+            if args.iu_graph_check:
+                def native_graph_flow():
+                    template = json.loads((Path(__file__).resolve().parents[1] / "examples/iu-graph/orders.json").read_text())
+                    def attempt_snapshot(job_id):
+                        with sqlite3.connect(f"file:{root / 'server' / 'state.db'}?mode=ro", uri=True) as db:
+                            rows = db.execute(
+                                "SELECT t.id,t.attempt,t.current_generation,a.id,a.generation,a.released,a.worker "
+                                "FROM tasks t JOIN attempts a ON a.task=t.id WHERE t.job_id=? ORDER BY t.id,a.generation,a.id",
+                                (job_id,)).fetchall()
+                        fields = ("task_id", "current_attempt_id", "current_generation", "attempt_id", "generation", "released", "worker_id")
+                        return [dict(zip(fields, row)) for row in rows]
+                    results = []
+                    for index, (name, discount, applied, expected, verdict) in enumerate([
+                        ("discount_1000",1000,1000,11000,"PASS"), ("revised_discount_2000",2000,2000,10000,"PASS"),
+                        ("stale_rule_rejected",2000,1000,11000,"FAIL"), ("missing_rule_rejected",1000,0,12000,"FAIL")]):
+                        spec = json.loads(json.dumps(template))
+                        spec.update(project_id="ci-flow",workspace={"repository_ref":"repo","base_commit":commit})
+                        spec["limits"]["max_replans"] = 0
+                        for op in spec["operators"]:
+                            if op["kind"] == "agent":
+                                op["execution"] = execution("codex")
+                        rule = next(s for s in spec["sources"] if s["id"]=="discount_rule")
+                        rule["text"] = json.dumps({"threshold_cents":10000,"discount_cents":discount},separators=(",",":"))
+                        rule["sha256"] = hashlib.sha256(rule["text"].encode()).hexdigest()
+                        for span in spec["rules"] + [span for n in spec["nodes"] for span in n.get("spans",[])]:
+                            if span["source"] == rule["id"]:
+                                span.update(start=0,end=len(rule["text"].encode()),sha256=rule["sha256"])
+                        next(n for n in spec["nodes"] if n["id"]=="discount")["instructions"] += f" fixture-applied-discount:{applied}"
+                        key = "ci-graph-" + name
+                        request = write(key+".json",spec)
+                        job_id = json.loads(cli("job","submit-graph","--key",key,"--file",request))["job_id"]
+                        current = wait_job(job_id)
+                        if current["state"] != "SUCCEEDED":
+                            raise AssertionError(f"graph execution failed: {current}")
+                        result = json.loads(cli("job","result","--id",job_id))
+                        if result["outputs"]["discount/result"] != expected or result["outputs"]["verify/result"] != verdict:
+                            raise AssertionError(f"independent verifier mismatch: {result}")
+                        status = json.loads(cli("job","graph","--id",job_id))
+                        tasks_before = job_tasks(job_id)
+                        if status["goal_state"]!="EVALUATING" or len(tasks_before)!=4:
+                            raise AssertionError("execution fact prematurely completed Goal or Task count is wrong")
+                        roots = [t for t in tasks_before if t["partition_key"] in ("a","b")]
+                        if len({t["worker_id"] for t in roots})!=2:
+                            raise AssertionError("graph roots did not span two Worker processes")
+                        if len(status["admissions"])!=4 or any(a["state"]!="ADMITTED" for a in status["admissions"]):
+                            raise AssertionError("output admission is incomplete")
+                        attempts_before = attempt_snapshot(job_id)
+                        if len(attempts_before) != 4 or any(a["released"] != 1 for a in attempts_before):
+                            raise AssertionError("expected exactly four released graph attempts")
+                        attempts_after = attempts_before
+                        restarted = False
+                        if index==0:
+                            old_pid = processes["server"].pid
+                            stop("server",hard=True)
+                            start("server","server",server_config)
+                            restored = wait_for(lambda: json.loads(cli("job","graph","--id",job_id)))
+                            if restored["output_sha256"]!=status["output_sha256"] or restored["admissions"]!=status["admissions"]:
+                                raise AssertionError("Server restart changed accepted output or receipts")
+                            if {t["task_id"] for t in job_tasks(job_id)}!={t["task_id"] for t in tasks_before}:
+                                raise AssertionError("Server restart created new tasks")
+                            wait_for(lambda: len([w for w in json.loads(cli("workers")).get("workers", []) if w.get("online")]) == 2)
+                            stable_until = time.monotonic() + 0.3
+                            while time.monotonic() < stable_until:
+                                attempts_after = attempt_snapshot(job_id)
+                                if attempts_after != attempts_before:
+                                    raise AssertionError("Server restart created or rebound an attempt")
+                                time.sleep(0.05)
+                            if processes["server"].pid==old_pid:
+                                raise AssertionError("Server was not actually restarted")
+                            if json.loads(cli("job","submit-graph","--key",key,"--file",request))["job_id"]!=job_id:
+                                raise AssertionError("idempotency did not survive restart")
+                            restarted = True
+                        evaluation = write(key+"-evaluation.json",{"id":key,"expected_version":0,
+                            "output_sha256":status["output_sha256"],"verifier_profile":"orders-proof","verifier_version":"1",
+                            "verdict":verdict,"evidence_sha256":hashlib.sha256(json.dumps(result,sort_keys=True).encode()).hexdigest()})
+                        denied = False
+                        try:
+                            cli("job","evaluate-graph","--id",job_id,"--file",evaluation)
+                        except RuntimeError as error:
+                            denied = "403" in str(error)
+                        if not denied:
+                            raise AssertionError("submitter could self-evaluate without goals:evaluate")
+                        run_command(binary,"job","evaluate-graph","--id",job_id,"--file",evaluation,"--config",eval_config)
+                        final = json.loads(cli("job","graph","--id",job_id))
+                        want_goal = "SUCCEEDED" if verdict=="PASS" else "FAILED"
+                        if final["goal_state"]!=want_goal:
+                            raise AssertionError(f"business evaluation did not produce {want_goal}: {final}")
+                        results.append({"case":name,"job_id":job_id,"amount":expected,"verdict":verdict,
+                            "goal_state":want_goal,"workers":sorted({t["worker_id"] for t in roots}),
+                            "task_count":len(tasks_before),"admitted_receipts":len(status["admissions"]),
+                            "server_process_restart":restarted,"submitter_evaluation_denied":denied,
+                            "attempts_before_restart":attempts_before,"attempts_after_restart":attempts_after,
+                            "server_pid_before_restart":old_pid if restarted else None,
+                            "server_pid_after_restart":processes["server"].pid if restarted else None,
+                            "worker_process_pids":{n:processes[n].pid for n in worker_configs}})
+                    return {"real_model_calls":False,"cases":results,"server_processes":1,"worker_processes":2,
+                            "restart_scope":"completed execution waiting for authorized business evaluation"}
+                record("native_iu_graphs", native_graph_flow)
+
 
             if args.workspace_benchmark:
                 def workspace_benchmark():
@@ -434,14 +578,14 @@ def main():
                     tasks = dict(database.execute("SELECT state,count(*) FROM tasks GROUP BY state"))
                 if integrity != "ok":
                     raise AssertionError("SQLite integrity check failed")
-                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": 12 if args.workspace_benchmark else 2}
+                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": (12 if args.workspace_benchmark else 2) + (4 if args.iu_graph_check else 0)}
                 if jobs != expected_jobs:
                     raise AssertionError(f"unexpected Job state totals: {jobs}")
                 return {"sqlite_integrity": integrity, "job_states": jobs, "task_states": tasks}
 
             record("shutdown_and_integrity", shutdown_and_integrity)
             report["summary"] = {"status": "PASSED", "steps_passed": len(report["steps"]),
-                                 "successful_jobs": 12 if args.workspace_benchmark else 2, "canceled_jobs": 1, "failed_jobs": 1}
+                                 "successful_jobs": (12 if args.workspace_benchmark else 2) + (4 if args.iu_graph_check else 0), "canceled_jobs": 1, "failed_jobs": 1}
     except BaseException as error:
         failure = error
         report["summary"] = {"status": "FAILED", "error": f"{type(error).__name__}: {error}"}

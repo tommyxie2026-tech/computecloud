@@ -34,6 +34,9 @@ func (s *Server) PublishGoalReplan(ctx context.Context, priorJobID string, in go
 	if err != nil {
 		return nil, empty, err
 	}
+	if prior.graph != nil {
+		return s.publishGraphReplan(ctx, prior, in, approvalOperationID, rawSpec, p)
+	}
 	if !s.cfg.Jobs.Enabled || s.cfg.Maintenance {
 		return nil, empty, status.Error(codes.FailedPrecondition, "GOAL_PUBLICATION_UNAVAILABLE")
 	}

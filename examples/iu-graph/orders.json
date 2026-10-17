@@ -1,0 +1,279 @@
+{
+  "version": "iu-graph-v1",
+  "project_id": "demo",
+  "workspace": {
+    "repository_ref": "demo-repo",
+    "base_commit": "006792b0994f7fcc67588684053b8f8e6a965785"
+  },
+  "schemas": {
+    "amount-v1": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "amounts-v1": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "verdict-v1": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ]
+    },
+    "optional-amount-v1": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "evaluator": {
+    "profile": "orders-proof",
+    "version": "1"
+  },
+  "sources": [
+    {
+      "id": "order_a",
+      "text": "{\"order_id\":\"a\",\"customer_id\":\"c\",\"paid_cents\":6000}",
+      "role": "user",
+      "message_index": 0,
+      "sha256": "b4f1b8c8df287d1718b8278651dc262c10f4b6c6e0df9e2f6556cf569762c7a8"
+    },
+    {
+      "id": "order_b",
+      "text": "{\"order_id\":\"b\",\"customer_id\":\"c\",\"paid_cents\":6000}",
+      "role": "user",
+      "message_index": 1,
+      "sha256": "55299926b12479e784df6a08b37368d7870ae41b418b748d0bb7554d78cc04e5"
+    },
+    {
+      "id": "discount_rule",
+      "text": "{\"threshold_cents\":10000,\"discount_cents\":1000}",
+      "role": "user",
+      "message_index": 2,
+      "sha256": "89e2b5dafabddf121c290a429e66a4922fcffe7d84156f3c070a51abfab6b488"
+    }
+  ],
+  "rules": [
+    {
+      "source": "discount_rule",
+      "start": 0,
+      "end": 47,
+      "sha256": "89e2b5dafabddf121c290a429e66a4922fcffe7d84156f3c070a51abfab6b488"
+    }
+  ],
+  "operators": [
+    {
+      "id": "extract",
+      "version": "1",
+      "kind": "agent",
+      "execution": {
+        "runtime_profile": "codex_exec",
+        "model": "REPLACE_WITH_MODEL",
+        "credential_ref": "codex-account",
+        "policy_ref": "inspect",
+        "acceptance_profile": "basic",
+        "replay_safe": true
+      },
+      "outputs": [
+        {
+          "name": "result",
+          "schema": "amount-v1"
+        }
+      ]
+    },
+    {
+      "id": "join",
+      "version": "1",
+      "kind": "join",
+      "inputs": [
+        {
+          "name": "a",
+          "schema": "amount-v1"
+        },
+        {
+          "name": "b",
+          "schema": "amount-v1"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "schema": "amounts-v1"
+        }
+      ]
+    },
+    {
+      "id": "discount",
+      "version": "1",
+      "kind": "agent",
+      "execution": {
+        "runtime_profile": "codex_exec",
+        "model": "REPLACE_WITH_MODEL",
+        "credential_ref": "codex-account",
+        "policy_ref": "inspect",
+        "acceptance_profile": "basic",
+        "replay_safe": true
+      },
+      "inputs": [
+        {
+          "name": "amounts",
+          "schema": "amounts-v1"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "schema": "amount-v1"
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "version": "1",
+      "kind": "command",
+      "command_profile": "orders-proof",
+      "inputs": [
+        {
+          "name": "amount",
+          "schema": "amount-v1"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "schema": "verdict-v1"
+        },
+        {
+          "name": "expected_total",
+          "schema": "optional-amount-v1"
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "a",
+      "operator": "extract",
+      "instructions": "从 local 中的原始订单提取 paid_cents。按照 output_schema 输出完整 JSON；result 为整数。可以记录带来源引用的 observation，但不能自称 verified。",
+      "spans": [
+        {
+          "source": "order_a",
+          "start": 0,
+          "end": 52,
+          "sha256": "b4f1b8c8df287d1718b8278651dc262c10f4b6c6e0df9e2f6556cf569762c7a8"
+        }
+      ]
+    },
+    {
+      "id": "b",
+      "operator": "extract",
+      "instructions": "从 local 中的原始订单提取 paid_cents。按照 output_schema 输出完整 JSON；result 为整数。可以记录带来源引用的 observation，但不能自称 verified。",
+      "spans": [
+        {
+          "source": "order_b",
+          "start": 0,
+          "end": 52,
+          "sha256": "55299926b12479e784df6a08b37368d7870ae41b418b748d0bb7554d78cc04e5"
+        }
+      ]
+    },
+    {
+      "id": "join",
+      "operator": "join",
+      "join_policy": "all_success"
+    },
+    {
+      "id": "discount",
+      "operator": "discount",
+      "instructions": "inputs.value 是 JSON 字符串。核对原始订单，按客户汇总，并应用 rules 中的门槛优惠：每个客户达门槛只减一次，下限为零。result 为全部客户应付分数之和。按照 output_schema 输出完整 JSON。",
+      "spans": [
+        {
+          "source": "order_a",
+          "start": 0,
+          "end": 52,
+          "sha256": "b4f1b8c8df287d1718b8278651dc262c10f4b6c6e0df9e2f6556cf569762c7a8"
+        },
+        {
+          "source": "order_b",
+          "start": 0,
+          "end": 52,
+          "sha256": "55299926b12479e784df6a08b37368d7870ae41b418b748d0bb7554d78cc04e5"
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "operator": "verify",
+      "parameters": {},
+      "spans": [
+        {
+          "source": "order_a",
+          "start": 0,
+          "end": 52,
+          "sha256": "b4f1b8c8df287d1718b8278651dc262c10f4b6c6e0df9e2f6556cf569762c7a8"
+        },
+        {
+          "source": "order_b",
+          "start": 0,
+          "end": 52,
+          "sha256": "55299926b12479e784df6a08b37368d7870ae41b418b748d0bb7554d78cc04e5"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_node": "a",
+      "from_port": "result",
+      "to_node": "join",
+      "to_port": "a",
+      "type": "memory"
+    },
+    {
+      "from_node": "b",
+      "from_port": "result",
+      "to_node": "join",
+      "to_port": "b",
+      "type": "memory"
+    },
+    {
+      "from_node": "join",
+      "from_port": "result",
+      "to_node": "discount",
+      "to_port": "amounts",
+      "type": "memory"
+    },
+    {
+      "from_node": "discount",
+      "from_port": "result",
+      "to_node": "verify",
+      "to_port": "amount",
+      "type": "memory"
+    }
+  ],
+  "outputs": [
+    {
+      "node": "discount",
+      "port": "result"
+    },
+    {
+      "node": "verify",
+      "port": "result"
+    },
+    {
+      "node": "verify",
+      "port": "expected_total"
+    }
+  ],
+  "limits": {
+    "parallelism": 2,
+    "timeout_seconds": 300,
+    "max_attempts_per_task": 1,
+    "max_replans": 1
+  }
+}

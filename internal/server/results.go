@@ -200,6 +200,9 @@ func (s *Server) CompleteAttempt(ctx context.Context, r *pb.CompleteRequest) (*p
 					return status.Error(codes.FailedPrecondition, e.Error())
 				}
 			}
+			if e = enqueueGraphCandidates(ctx, q, t.TaskId, r.ArtifactIds); e != nil {
+				return e
+			}
 			if e = orphanStagedArtifacts(ctx, q, r.Attempt.AttemptId, a.generation); e != nil {
 				return e
 			}

@@ -15,12 +15,14 @@ import (
 
 	pb "github.com/tommyxie2026-tech/computecloud/api/agent/v1"
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/graph"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/jsonutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/workspace"
 )
 
 type jobRun struct {
+	graph          *graph.Invocation
 	prompt         string
 	dir            string
 	manifest       job.Manifest
@@ -37,6 +39,9 @@ func (w *Worker) prepareJob(ctx context.Context, a *pb.Assignment, cwd string) (
 	runtime := w.cfg.Runtimes[a.Spec.RuntimeProfile]
 	if jc.TemplateDigest != config.TemplateDigest(runtime.Version, w.cfg.Policies[a.Spec.PolicyRef], w.cfg.Verifiers[a.Spec.AcceptanceProfile]) {
 		return nil, fmt.Errorf("TEMPLATE_MISMATCH")
+	}
+	if len(jc.GraphExecutionJson) > 0 {
+		return prepareGraph(a)
 	}
 	if jc.Stage != "single" && jc.Stage != "map" && jc.Stage != "reduce" {
 		return nil, fmt.Errorf("invalid job stage")
@@ -343,6 +348,9 @@ func validateFindings(ctx context.Context, cwd, base string, findings []job.Find
 	return nil
 }
 func finishJobOutput(ctx context.Context, a *pb.Assignment, cwd, result string, diff []byte, run *jobRun, verification []map[string]any) (map[string][]byte, error) {
+	if run.graph != nil {
+		return finishGraphOutput(result, diff, run)
+	}
 	out := map[string][]byte{}
 	jc := a.Job
 	if jc == nil || jc.Stage == "single" {

@@ -52,12 +52,19 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 	// gateway_requests may already reference attempts. Integrity is checked
 	// explicitly before commit and enforcement is always restored afterwards.
 	restoreFK := false
-	if schema == ServerSchema && version < 4 {
+	if schema == ServerSchema && version < 20 {
 		if _, err := db.Exec("PRAGMA foreign_keys=OFF"); err != nil {
+			return err
+		}
+		// Rebuilding artifact_refs temporarily removes a table referenced by
+		// triggers on artifacts. Avoid ALTER validating that intermediate schema;
+		// names are restored and checked before commit, with FK enforcement off.
+		if _, err := db.Exec("PRAGMA legacy_alter_table=ON"); err != nil {
 			return err
 		}
 		restoreFK = true
 		defer func() {
+			_, _ = db.Exec("PRAGMA legacy_alter_table=OFF")
 			_, _ = db.Exec("PRAGMA foreign_keys=ON")
 		}()
 	}
@@ -253,6 +260,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 			return err
 		}
 		version = 19
+	}
+	if schema == ServerSchema && version < 20 {
+		if err = migrateGraphV20(tx); err != nil {
+			return err
+		}
+		version = 20
 	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2

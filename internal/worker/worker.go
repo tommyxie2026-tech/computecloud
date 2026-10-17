@@ -141,6 +141,7 @@ func advertisedCapabilitySet(provider adapter.Provider, caps adapter.CapabilityS
 	}
 	caps.Environment = compatible
 	out := caps.Advertised()
+	out = append(out, "iu_graph_v1")
 	if desc, ok, err := adapter.ControlDescriptorFor(provider); ok && err == nil {
 		for _, capability := range desc.Capabilities {
 			if err := control.ValidateCapabilities([]control.Capability{capability}); err == nil {
