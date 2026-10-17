@@ -32,3 +32,5 @@
 ## v0.5.0 后续主线
 
 聚焦 Agent-aware Scheduler：硬能力/安全/凭据/环境约束保持先行，确定性软评分默认关闭，并记录候选过滤原因、主要评分因素、选中 Worker 和回退原因。代码与 CI 状态及待目标环境验证项见[当前实施计划](../superpowers/plans/2026-10-17-v05-agent-aware-scheduler.md)、[缺口矩阵](v0.5-scheduler-gap-matrix.md)和[受控试运行手册](../validation/agent-aware-scheduler-pilot.md)。Mobile pairing/push、Execution Usage MVP、Private Worker Pool 和跨节点 Artifact 各自切片，不作为 v0.4.9 发版条件。
+
+当前实现收敛记录：硬过滤不可被 readiness 高分覆盖的 Server assignment 回归、缺口矩阵和双 Worker 试运行手册已补齐。新增回归、Scheduler readiness/explainability race gates、配置/readiness 定向测试及 `go vet ./...` 在本地通过。完整 `ci-scheduler-readiness-flow` 在当前 macOS 沙箱因进程组清理探测返回 `operation not permitted` 而使 Worker fail-closed；`make test`/`make race` 的本机进程组用例同样受限，且全套 Server 集成测试未能完成。`make vet` 的漏洞扫描步骤也无法写入受限的 Go module cache；因此这些不是通过结果，需在具备正常进程检查和依赖缓存权限的 CI/目标环境重新验证。真实双 Worker 对照仍标记为 `目标环境待验收`，不得由 fixture 或本地受限执行关闭。
