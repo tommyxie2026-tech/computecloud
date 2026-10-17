@@ -18,17 +18,20 @@ import (
 )
 
 type frozenGraph struct {
-	GoalID     string                                `json:"goal_id"`
-	Generation int64                                 `json:"generation"`
-	Plan       graph.Plan                            `json:"plan"`
-	Digests    map[string]string                     `json:"template_digests"`
-	Commands   map[string]config.GraphCommandProfile `json:"command_bindings,omitempty"`
+	ReplayBindings map[string]graph.ReplayBinding        `json:"replay_bindings,omitempty"`
+	GoalID         string                                `json:"goal_id"`
+	Generation     int64                                 `json:"generation"`
+	Plan           graph.Plan                            `json:"plan"`
+	Digests        map[string]string                     `json:"template_digests"`
+	Commands       map[string]config.GraphCommandProfile `json:"command_bindings,omitempty"`
 }
 type GraphNodeStatus struct {
-	ID     string  `json:"node_id"`
-	State  string  `json:"state"`
-	TaskID *string `json:"task_id"`
-	Error  string  `json:"error_code,omitempty"`
+	ExecutionKind string               `json:"execution_kind"`
+	Reuse         *graph.ReuseDecision `json:"reuse,omitempty"`
+	ID            string               `json:"node_id"`
+	State         string               `json:"state"`
+	TaskID        *string              `json:"task_id"`
+	Error         string               `json:"error_code,omitempty"`
 }
 type GraphAdmissionStatus struct {
 	NodeID      string `json:"node_id"`
@@ -89,7 +92,7 @@ func (s *Server) SubmitGraph(ctx context.Context, key string, raw []byte) (*Job,
 		return nil, e
 	}
 	spec := f.Plan.Spec
-	if len(spec.Imports) > 0 {
+	if len(spec.Imports) > 0 || len(spec.Reuse) > 0 {
 		return nil, status.Error(codes.InvalidArgument, "IMPORT_REQUIRES_GUARDED_REPLAN")
 	}
 	plan := f.Plan
@@ -257,6 +260,27 @@ func (s *Server) GraphStatus(ctx context.Context, id string) (*GraphStatus, erro
 	if e = rows.Close(); e != nil {
 		return nil, e
 	}
+	for i := range out.Nodes {
+		n := &out.Nodes[i]
+		n.ExecutionKind = "NONE"
+		if n.TaskID != nil {
+			n.ExecutionKind = "TASK"
+		}
+		var raw []byte
+		err := s.db.SQL.QueryRowContext(ctx, `SELECT body FROM iu_node_reuse WHERE goal_id=? AND generation=? AND node_id=?`, f.GoalID, f.Generation, n.ID).Scan(&raw)
+		if err == nil {
+			var d graph.ReuseDecision
+			if err = json.Unmarshal(raw, &d); err != nil {
+				return nil, err
+			}
+			n.Reuse = &d
+			if d.Decision == "REUSE" {
+				n.ExecutionKind = "REUSED"
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+	}
 	admissions, e := s.db.SQL.QueryContext(ctx, `SELECT node_id,artifact_id,receipt_id,state,error_code,retry_count,next_retry_at FROM iu_admissions WHERE goal_id=? AND generation=? ORDER BY node_id,artifact_id,output_port`, f.GoalID, f.Generation)
 	if e != nil {
 		return nil, e
@@ -348,6 +372,18 @@ func (s *Server) freezeGraph(raw []byte, p rpcutil.Principal) (frozenGraph, erro
 		if f.Digests[key] == "" {
 			return frozenGraph{}, status.Error(codes.FailedPrecondition, "TEMPLATE_NOT_CONFIGURED")
 		}
+	}
+	f.ReplayBindings = map[string]graph.ReplayBinding{}
+	for _, n := range spec.Nodes {
+		if n.ReplayProfile == "" {
+			continue
+		}
+		op := graphOperator(&f, n)
+		b, ok := s.cfg.Jobs.GraphReplayBindings[n.ReplayProfile]
+		if !ok || !b.Valid() || op.Kind != "agent" || op.Execution == nil || !op.Execution.ReplaySafe || op.Execution.RuntimeProfile != b.RuntimeProfile || op.Execution.Model != b.Model {
+			return frozenGraph{}, status.Error(codes.FailedPrecondition, "REPLAY_BINDING_UNAVAILABLE")
+		}
+		f.ReplayBindings[n.ReplayProfile] = b
 	}
 	return f, nil
 }

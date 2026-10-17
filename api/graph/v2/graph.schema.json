@@ -131,7 +131,7 @@
     "schemas"
   ],
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:computecloud:iu-graph-v1",
+  "$id": "urn:computecloud:iu-graph-v2",
   "$defs": {
     "workspace": {
       "type": "object",

@@ -10,7 +10,7 @@
 
 **Spec:** [首轮完整设计目标](../specs/2026-10-17-iu-computation-model-design.md)、[当前运行契约](../../contracts/iu-graph-v1.md)、[实际交付范围](../../implementation/iu-computation-model.md)。
 
-**状态：实施中；IU-2 代码及定向回归已完成，CI/独立审查待验收，IU-3 代码/定向回归已完成、CI 待验收，其余阶段未完成。** 文档日期为 2026-10-18。代码基线为 main `b38e4c408310464bd1a74d4e82362736bb405d55`；[PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) 交付实验图，[PR #157](https://github.com/tommyxie2026-tech/computecloud/pull/157) 补齐认证门禁与缓存修正。[对应 main CI](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39041998004) 44 项运行检查成功。该证据不表示本计划中的待办已实现，也不表示已发布新版本。
+**状态：实施中；IU-2/3 对应提交 CI 已通过，最终独立审查待完成；IU-4 代码/定向回归完成、CI 待验收，IU-5/6 未完成。** 文档日期为 2026-10-18。代码基线为 main `b38e4c408310464bd1a74d4e82362736bb405d55`；[PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) 交付实验图，[PR #157](https://github.com/tommyxie2026-tech/computecloud/pull/157) 补齐认证门禁与缓存修正。[对应 main CI](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39041998004) 44 项运行检查成功。该证据不表示本计划中的待办已实现，也不表示已发布新版本。
 
 ## Global Constraints
 
@@ -35,9 +35,9 @@
 | 顺序 | 阶段 | 本轮状态 | 依赖与退出门槛 |
 | --- | --- | --- | --- |
 | 已完成基线 | IU-0 有限图、IU-1 可重复 CI | 实验性已交付 | 继续保留 18 场景、26 项 IU 必测和独立 Server/双 Worker 验收；认证门禁也必须实际运行 |
-| 第 1 迭代 | IU-2 持久失效事件 | 代码/定向回归完成，CI 待验收 | 事件持久化、两跳失效、事务重查、重启重放及权限/CAS 通过 |
-| 第 2 迭代 | IU-3 授权跨代 Memory import | 代码/定向回归完成，CI 待验收 | 依赖 IU-2；同一 Goal 跨代的依赖闭包、授权、版本与 provenance 通过 |
-| 第 3 迭代 | IU-4 按依赖增量重算 | 未实现 | 依赖 IU-2/3；先与全量重算业务结果一致，再评估节省的实际调用与成本 |
+| 第 1 迭代 | IU-2 持久失效事件 | CI 已通过，最终审查待完成 | 事件持久化、两跳失效、事务重查、重启重放及权限/CAS 通过 |
+| 第 2 迭代 | IU-3 授权跨代 Memory import | CI 已通过，最终审查待完成 | 依赖 IU-2；同一 Goal 跨代的依赖闭包、授权、版本与 provenance 通过 |
+| 第 3 迭代 | IU-4 按依赖增量重算 | 代码/定向回归完成，CI 待验收 | 依赖 IU-2/3；先与全量重算业务结果一致，再评估节省的实际调用与成本 |
 | 可并行准备 | IU-5A 上下文/token 治理 | 未实现 | 不依赖增量重算；冻结 tokenizer/模板、实际输入核对、超限和回源路径通过 |
 | 第 2～4 迭代 | IU-5B 独立记忆验证 | 未实现 | 可先设计；接入跨代时依赖 IU-2/3；验证作用域、证据与失效联动通过 |
 | 全程取证，后续接入 | IU-5C 真实模型评测与 aicloud | 未实现 | 小样本单节点/全量 IU 可先做；增量对照等 IU-4；远程接入另开契约 PR |

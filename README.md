@@ -334,3 +334,5 @@ Worker / Runtime / Tool / Environment
 > **可靠、可恢复、可治理地把 Agent Job 分配到合适的远程 Worker，并让 Runtime、Tool、Environment、Workspace、Artifact、Evaluator 和 Control 都服从同一个执行事实源。**
 
 IU 后续迭代：实验性 [v2 授权跨代记忆导入](docs/contracts/iu-graph-v2.md) 已进入实现分支，等待 CI/独立审查。默认关闭；真实模型/aicloud/独立主机验收仍未完成。
+
+实验性 [v3 增量结果复用](docs/contracts/iu-graph-v3.md) 要求显式授权及管理员锁定的 Server/Worker replay binding；未知环境继续全量执行。IU-2/3 CI 分别见 [39048549103](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39048549103)、[39049321358](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39049321358)，IU-4 等待 CI。
