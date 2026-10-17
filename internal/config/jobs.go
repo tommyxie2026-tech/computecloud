@@ -37,6 +37,7 @@ type JobTemplate struct {
 }
 type Jobs struct {
 	Enabled                  bool          `yaml:"enabled"`
+	GraphsEnabled            bool          `yaml:"graphs_enabled"`
 	MaxPartitions            int           `yaml:"max_partitions"`
 	MaxParallelism           int           `yaml:"max_parallelism"`
 	RecommendedParallelism   int           `yaml:"recommended_parallelism"`

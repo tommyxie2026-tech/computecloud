@@ -41,6 +41,7 @@ type Job struct {
 	manifest       []byte
 	manifestHash   string
 	result         json.RawMessage
+	graph          *frozenGraph
 }
 
 func readJob(ctx context.Context, q store.Query, id string) (*Job, error) {
@@ -50,7 +51,12 @@ func readJob(ctx context.Context, q store.Query, id string) (*Job, error) {
 	if e != nil {
 		return nil, e
 	}
-	if e = json.Unmarshal(raw, &j.frozen); e != nil {
+	if j.Mode == "iu_graph" {
+		if e = json.Unmarshal(raw, &j.graph); e != nil {
+			return nil, e
+		}
+		j.frozen = graphLegacyMetadata(j.graph)
+	} else if e = json.Unmarshal(raw, &j.frozen); e != nil {
 		return nil, e
 	}
 	j.result = result
@@ -540,6 +546,9 @@ func (s *Server) advanceJob(ctx context.Context, id string) error {
 		if terminal(j.State) {
 			return nil
 		}
+		if j.graph != nil {
+			return nil
+		} // Native graph controller advances these Jobs.
 		children, e := jobChildren(ctx, q, id)
 		if e != nil {
 			return e

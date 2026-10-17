@@ -52,7 +52,7 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 	// gateway_requests may already reference attempts. Integrity is checked
 	// explicitly before commit and enforcement is always restored afterwards.
 	restoreFK := false
-	if schema == ServerSchema && version < 4 {
+	if schema == ServerSchema && version < 20 {
 		if _, err := db.Exec("PRAGMA foreign_keys=OFF"); err != nil {
 			return err
 		}
@@ -253,6 +253,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 			return err
 		}
 		version = 19
+	}
+	if schema == ServerSchema && version < 20 {
+		if err = migrateGraphV20(tx); err != nil {
+			return err
+		}
+		version = 20
 	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
