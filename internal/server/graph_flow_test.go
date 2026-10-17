@@ -2,8 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
@@ -12,6 +14,20 @@ import (
 )
 
 func TestGraphTwoWorkerMemoryJoinAndTrustedCommandFlow(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		rule, applied, amount int
+		verdict               string
+	}{
+		{"discount_1000", 1000, 1000, 11000, "PASS"},
+		{"revised_discount_2000", 2000, 2000, 10000, "PASS"},
+		{"stale_rule_rejected", 2000, 1000, 11000, "FAIL"},
+		{"missing_global_rule_rejected", 1000, 0, 12000, "FAIL"},
+	} {
+		t.Run(tc.name, func(t *testing.T) { runGraphOrdersSimulation(t, tc.rule, tc.applied, tc.amount, tc.verdict) })
+	}
+}
+func runGraphOrdersSimulation(t *testing.T, ruleDiscount, appliedDiscount, wantAmount int, wantVerdict string) {
 	verifier := filepath.Join(t.TempDir(), "verify-orders")
 	program, e := os.ReadFile("../../examples/iu-graph/verify_orders.py")
 	if e != nil {
@@ -37,7 +53,7 @@ func TestGraphTwoWorkerMemoryJoinAndTrustedCommandFlow(t *testing.T) {
 	b.ID = "order_b"
 	b.Text = `{"order_id":"b","customer_id":"c","paid_cents":6000}`
 	b.SHA256 = graph.Hash([]byte(b.Text))
-	rule := graph.Source{ID: "discount", Text: `{"threshold_cents":10000,"discount_cents":1000}`}
+	rule := graph.Source{ID: "discount", Text: fmt.Sprintf(`{"threshold_cents":10000,"discount_cents":%d}`, ruleDiscount)}
 	rule.SHA256 = graph.Hash([]byte(rule.Text))
 	s.Sources = []graph.Source{a, b, rule}
 	s.Rules = []graph.Span{{Source: rule.ID, Start: 0, End: len(rule.Text), SHA256: rule.SHA256}}
@@ -47,7 +63,7 @@ func TestGraphTwoWorkerMemoryJoinAndTrustedCommandFlow(t *testing.T) {
 		{ID: "discount", Version: "1", Kind: "agent", Execution: &ex, Inputs: []graph.Port{{Name: "amounts", Schema: "amounts-v1"}}, Outputs: []graph.Port{{Name: "result", Schema: "amount-v1"}}},
 		{ID: "verify", Version: "1", Kind: "command", CommandProfile: "verify", Inputs: []graph.Port{{Name: "amount", Schema: "amount-v1"}}, Outputs: []graph.Port{{Name: "result", Schema: "verdict-v1"}, {Name: "expected_total", Schema: "optional-amount-v1"}}},
 	}
-	s.Nodes = []graph.Node{{ID: "a", Operator: "extract", Instructions: "fixture-amount:6000 fixture-record:order_a", Spans: []graph.Span{{Source: a.ID, Start: 0, End: len(a.Text), SHA256: a.SHA256}}}, {ID: "b", Operator: "extract", Instructions: "fixture-amount:6000 fixture-record:order_b", Spans: []graph.Span{{Source: b.ID, Start: 0, End: len(b.Text), SHA256: b.SHA256}}}, {ID: "join", Operator: "join", JoinPolicy: "all_success"}, {ID: "discount", Operator: "discount", Instructions: "fixture-discount:1000 fixture-record:total"}, {ID: "verify", Operator: "verify", Parameters: json.RawMessage(`{}`), Spans: []graph.Span{{Source: a.ID, Start: 0, End: len(a.Text), SHA256: a.SHA256}, {Source: b.ID, Start: 0, End: len(b.Text), SHA256: b.SHA256}}}}
+	s.Nodes = []graph.Node{{ID: "a", Operator: "extract", Instructions: "fixture-amount:6000 fixture-record:order_a", Spans: []graph.Span{{Source: a.ID, Start: 0, End: len(a.Text), SHA256: a.SHA256}}}, {ID: "b", Operator: "extract", Instructions: "fixture-amount:6000 fixture-record:order_b", Spans: []graph.Span{{Source: b.ID, Start: 0, End: len(b.Text), SHA256: b.SHA256}}}, {ID: "join", Operator: "join", JoinPolicy: "all_success"}, {ID: "discount", Operator: "discount", Instructions: fmt.Sprintf("fixture-discount:%d fixture-record:total", appliedDiscount)}, {ID: "verify", Operator: "verify", Parameters: json.RawMessage(`{}`), Spans: []graph.Span{{Source: a.ID, Start: 0, End: len(a.Text), SHA256: a.SHA256}, {Source: b.ID, Start: 0, End: len(b.Text), SHA256: b.SHA256}}}}
 	s.Edges = []graph.Edge{{FromNode: "a", FromPort: "result", ToNode: "join", ToPort: "a", Type: "memory"}, {FromNode: "b", FromPort: "result", ToNode: "join", ToPort: "b", Type: "memory"}, {FromNode: "join", FromPort: "result", ToNode: "discount", ToPort: "amounts", Type: "memory"}, {FromNode: "discount", FromPort: "result", ToNode: "verify", ToPort: "amount", Type: "memory"}}
 	s.Outputs = []graph.Output{{Node: "discount", Port: "result"}, {Node: "verify", Port: "result"}}
 	j, e := h.s.SubmitGraph(h.ctx, "orders-flow", job.JSON(s))
@@ -64,7 +80,7 @@ func TestGraphTwoWorkerMemoryJoinAndTrustedCommandFlow(t *testing.T) {
 	if e = json.Unmarshal(j.result, &result); e != nil {
 		t.Fatal(e)
 	}
-	if string(result.Outputs["discount/result"]) != "11000" || string(result.Outputs["verify/result"]) != `"PASS"` {
+	if string(result.Outputs["discount/result"]) != strconv.Itoa(wantAmount) || string(result.Outputs["verify/result"]) != strconv.Quote(wantVerdict) {
 		t.Fatalf("global discount lost: %s", j.result)
 	}
 	var viewJSON []byte
@@ -79,7 +95,21 @@ func TestGraphTwoWorkerMemoryJoinAndTrustedCommandFlow(t *testing.T) {
 	if e != nil || st.GoalState != "EVALUATING" {
 		t.Fatalf("goal completed before business acceptance %+v %v", st, e)
 	}
-	if e = h.s.EvaluateGraph(h.ctx, j.ID, GraphEvaluation{ID: "orders-pass", OutputHash: st.OutputHash, Verifier: "external", VerifierVersion: "1", Verdict: "PASS", EvidenceHash: graph.Hash(j.result)}); e != nil {
+	if e = h.s.EvaluateGraph(h.ctx, j.ID, GraphEvaluation{ID: "orders-pass", OutputHash: st.OutputHash, Verifier: "external", VerifierVersion: "1", Verdict: wantVerdict, EvidenceHash: graph.Hash(j.result)}); e != nil {
 		t.Fatal(e)
 	}
+	st, e = h.s.GraphStatus(h.ctx, j.ID)
+	wantGoal := "SUCCEEDED"
+	if wantVerdict == "FAIL" {
+		wantGoal = "FAILED"
+	}
+	if e != nil || st.GoalState != wantGoal {
+		t.Fatalf("business verdict not respected: %+v %v", st, e)
+	}
+	var workers int
+	if e = h.s.db.SQL.QueryRow(`SELECT count(DISTINCT a.worker) FROM attempts a JOIN tasks t ON t.id=a.task JOIN iu_nodes n ON n.task_id=t.id WHERE t.job_id=? AND n.node_id IN ('a','b')`, j.ID).Scan(&workers); e != nil || workers != 2 {
+		t.Fatalf("root execution did not use two Workers: %d %v", workers, e)
+	}
+	t.Logf("orders proof: rule=%d applied=%d amount=%d verdict=%s workers=%d memory_records=%d goal=%s", ruleDiscount, appliedDiscount, wantAmount, wantVerdict, workers, len(view.Records), st.GoalState)
+
 }

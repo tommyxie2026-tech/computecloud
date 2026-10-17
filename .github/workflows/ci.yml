@@ -27,6 +27,13 @@ jobs:
           go-version: '1.27.2'
           cache: true
       - run: make ci-iu-graph
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iu-graph-simulation-${{ github.run_id }}
+          path: dist/iu-graph/
+          if-no-files-found: warn
+          retention-days: 30
 
   agent-cli-contract:
     runs-on: ubuntu-latest

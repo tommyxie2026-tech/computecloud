@@ -50,3 +50,9 @@ computecloud job evaluate-graph --config evaluator-client.yaml --id JOB_ID --fil
 `python3 -m unittest discover -s examples/iu-graph -p 'test_*.py'` 覆盖 11000、规则修订 10000、错误 12000、缺失/冲突、重复订单去重、不同客户和非法 bool 值。
 
 `make ci-iu-graph` 包含真实 Server + 两 Worker 进程 fixture、memory join、独立固定 command、延后业务验收，以及契约/记忆/迁移/授权测试。fixture 使用确定性模拟 agent；不代表真实模型质量或跨主机生产验收。
+
+## 先测真实模型语义效果
+
+[本机对照实验](../../docs/validation/iu-local-quality-experiment.md) 提供单节点与 IU 组合的小样本入口，最多 8 次 CLI 调用尝试，输出正确性、耗时与已测用量。该实验复用真实图契约，尚不代表分布式调度性能。
+
+优先验证协议与模拟效果可运行 make ci-iu-graph，详见 [CI 验收与报告](../../docs/validation/iu-ci-simulation.md)。该入口不需要真实模型账号。

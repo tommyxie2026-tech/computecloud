@@ -37,3 +37,11 @@
 本地主机已取得 Go 1.27.2。定向纯逻辑/迁移/图协议测试、全包编译与 vet 的结果记录于本次 PR；本地完整进程测试受到桌面沙箱进程身份检查/进程组操作限制，出现 CLEANUP_UNCONFIRMED，不能称为本地全绿。完整进程与平台回归以 PR 对应 SHA 的 GitHub Actions 为准。
 
 首轮 CI 39018578316 的 iu-graph-contract（含真实两 Worker 进程 fixture）通过；其余失败定位为新增 command Provider 后旧枚举断言和 schema 版本断言未更新，已修正。最新提交的最终结论以 [PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) checks 为准，不将早期 SHA 的结果算作最终验证。
+
+## 效果测试入口
+
+新增 [本机质量对照实验](../validation/iu-local-quality-experiment.md)：同模型单节点与 IU 结构化拆分，复用实际 context/output/memory 契约。CLI 启动失败和无有效输出单独记录，不虚构真实模型收益；后续原生 Worker 和跨代复用验收仍按上方边界推进。
+
+## CI 模拟验收
+
+[CI 模拟与原生执行方案](../validation/iu-ci-simulation.md) 增加 18 个语义/故障场景，以及独立 Server / 双 Worker OS 进程的四图验收、授权评估和 Server 硬重启证据。必测项必须 PASS，报告与 JSONL 日志作为 Actions Artifact 保存；不将模拟通过写成真实模型收益。
