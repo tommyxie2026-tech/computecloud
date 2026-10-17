@@ -285,6 +285,12 @@ func migrateSchema(db *sql.DB, schema string, version, target int, migrate bool)
 		}
 		version = 23
 	}
+	if schema == ServerSchema && version < 24 {
+		if _, err = tx.Exec(serverV24); err != nil {
+			return err
+		}
+		version = 24
+	}
 	if schema == WorkerSchema && version < 2 {
 		version = 2
 	}

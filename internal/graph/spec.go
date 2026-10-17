@@ -15,6 +15,7 @@ import (
 	graphv1 "github.com/tommyxie2026-tech/computecloud/api/graph/v1"
 	graphv2 "github.com/tommyxie2026-tech/computecloud/api/graph/v2"
 	graphv3 "github.com/tommyxie2026-tech/computecloud/api/graph/v3"
+	graphv4 "github.com/tommyxie2026-tech/computecloud/api/graph/v4"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/jsonutil"
 )
@@ -22,6 +23,7 @@ import (
 const Version = "iu-graph-v1"
 const ImportVersion = "iu-graph-v2"
 const ReuseVersion = "iu-graph-v3"
+const ContextVersion = "iu-graph-v4"
 
 type ReuseBinding struct {
 	GrantID string `json:"grant_id"`
@@ -66,6 +68,7 @@ type Operator struct {
 }
 
 type Node struct {
+	ContextPolicy *ContextPolicy  `json:"context_policy,omitempty"`
 	Rules         []Span          `json:"rules,omitempty"`
 	ReplayProfile string          `json:"replay_profile,omitempty"`
 	ID            string          `json:"id"`
@@ -164,6 +167,9 @@ func Decode(raw []byte) (Spec, error) {
 	if s.Version == ReuseVersion {
 		schema = requestSchemaV3()
 	}
+	if s.Version == ContextVersion {
+		schema = requestSchemaV4()
+	}
 	if e := schema.Validate(instance); e != nil {
 		return s, invalid("schema: " + e.Error())
 	}
@@ -210,6 +216,18 @@ var requestSchemaV3 = sync.OnceValue(func() *jsonschema.Resolved {
 	return r
 })
 
+var requestSchemaV4 = sync.OnceValue(func() *jsonschema.Resolved {
+	var s jsonschema.Schema
+	if e := json.Unmarshal(graphv4.Schema, &s); e != nil {
+		panic(e)
+	}
+	r, e := s.Resolve(nil)
+	if e != nil {
+		panic(e)
+	}
+	return r
+})
+
 // Compile clones and normalizes its input, preserving source text byte-for-byte.
 // Sorted declarations and Kahn traversal make the plan independent of array order.
 func Compile(in Spec) (Plan, error) {
@@ -226,7 +244,7 @@ func Compile(in Spec) (Plan, error) {
 		return p, e
 	}
 	fail := func(reason string) (Plan, error) { return Plan{}, invalid(reason) }
-	if (s.Version != Version && s.Version != ImportVersion && s.Version != ReuseVersion) || !job.Ref(s.ProjectID) || !job.Ref(s.Workspace.RepositoryRef) || !commitPattern.MatchString(s.Workspace.BaseCommit) {
+	if (s.Version != Version && s.Version != ImportVersion && s.Version != ReuseVersion && s.Version != ContextVersion) || !job.Ref(s.ProjectID) || !job.Ref(s.Workspace.RepositoryRef) || !commitPattern.MatchString(s.Workspace.BaseCommit) {
 		return fail("version, project or workspace")
 	}
 	if !job.Ref(s.Evaluator.Profile) || !job.Ref(s.Evaluator.Version) {
@@ -337,16 +355,29 @@ func Compile(in Spec) (Plan, error) {
 	indegree := map[string]int{}
 	next := map[string][]string{}
 	for _, n := range s.Nodes {
+		if n.ContextPolicy != nil {
+			if s.Version != ContextVersion {
+				return fail("context policy version")
+			}
+			if e := n.ContextPolicy.Validate(); e != nil {
+				return p, e
+			}
+			for _, span := range n.ContextPolicy.RequiredEvidence {
+				if _, e := readSpan(sources, span); e != nil {
+					return p, e
+				}
+			}
+		}
 		if !keyPattern.MatchString(n.ID) || !utf8.ValidString(n.Instructions) || len(n.Instructions) > 64<<10 || len(n.Spans) > 128 || len(n.Rules) > 128 || len(n.ScopePaths) > 64 {
 			return fail("node")
 		}
 		if _, ok := nodes[n.ID]; ok {
 			return fail("duplicate node")
 		}
-		if len(n.Rules) > 0 && s.Version != ReuseVersion {
+		if len(n.Rules) > 0 && s.Version != ReuseVersion && s.Version != ContextVersion {
 			return fail("node rules version")
 		}
-		if n.ReplayProfile != "" && (s.Version != ReuseVersion || !keyPattern.MatchString(n.ReplayProfile)) {
+		if n.ReplayProfile != "" && (s.Version != ReuseVersion && s.Version != ContextVersion || !keyPattern.MatchString(n.ReplayProfile)) {
 			return fail("replay profile version")
 		}
 		op, ok := ops[n.Operator]
@@ -376,7 +407,7 @@ func Compile(in Spec) (Plan, error) {
 	if len(s.Imports) > 8 || s.Version == Version && len(s.Imports) > 0 {
 		return fail("import version or bounds")
 	}
-	if len(s.Reuse) > 32 || len(s.Reuse) > 0 && s.Version != ReuseVersion {
+	if len(s.Reuse) > 32 || len(s.Reuse) > 0 && s.Version != ReuseVersion && s.Version != ContextVersion {
 		return fail("reuse version or bounds")
 	}
 	reusedNodes := map[string]bool{}

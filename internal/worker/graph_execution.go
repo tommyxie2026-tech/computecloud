@@ -20,6 +20,9 @@ func prepareGraph(a *pb.Assignment) (*jobRun, error) {
 	if inv.Version != "computecloud-job-io-v2" || inv.GoalID == "" || inv.Generation < 1 || inv.NodeID == "" || len(inv.Context.Text) > 64<<10 || inv.Context.SHA256 != graph.Hash([]byte(a.Spec.Input.Text)) || a.Spec.Input.Text != inv.Context.Text || inv.Context.ReadViewHash != inv.View.SHA256 {
 		return nil, fmt.Errorf("IU_CONTEXT_MISMATCH")
 	}
+	if e := inv.Context.ValidateInput(a.Spec.Model, a.Spec.Input.Text); e != nil {
+		return nil, e
+	}
 	return &jobRun{prompt: inv.Context.Text, graph: &inv}, nil
 }
 
