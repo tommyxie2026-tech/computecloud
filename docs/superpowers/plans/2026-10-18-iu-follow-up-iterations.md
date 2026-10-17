@@ -10,7 +10,7 @@
 
 **Spec:** [首轮完整设计目标](../specs/2026-10-17-iu-computation-model-design.md)、[当前运行契约](../../contracts/iu-graph-v1.md)、[实际交付范围](../../implementation/iu-computation-model.md)。
 
-**状态：实施中；IU-2/3 对应提交 CI 已通过，最终独立审查待完成；IU-4 代码/定向回归完成、CI 待验收，IU-5/6 未完成。** 文档日期为 2026-10-18。代码基线为 main `b38e4c408310464bd1a74d4e82362736bb405d55`；[PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) 交付实验图，[PR #157](https://github.com/tommyxie2026-tech/computecloud/pull/157) 补齐认证门禁与缓存修正。[对应 main CI](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39041998004) 44 项运行检查成功。该证据不表示本计划中的待办已实现，也不表示已发布新版本。
+**状态：Task 1–6 代码与阶段 CI 已通过；Task 7 代码就绪，集成 CI/最终独立审查进行中。按用户选择，真实模型、远程 aicloud、独立双主机验收保留未完成。** 文档日期为 2026-10-18。代码基线为 main `b38e4c408310464bd1a74d4e82362736bb405d55`；[PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) 交付实验图，[PR #157](https://github.com/tommyxie2026-tech/computecloud/pull/157) 补齐认证门禁与缓存修正。[对应 main CI](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39041998004) 44 项运行检查成功。该证据不表示本计划中的待办已实现，也不表示已发布新版本。
 
 ## Global Constraints
 
@@ -37,13 +37,13 @@
 | 已完成基线 | IU-0 有限图、IU-1 可重复 CI | 实验性已交付 | 继续保留 18 场景、26 项 IU 必测和独立 Server/双 Worker 验收；认证门禁也必须实际运行 |
 | 第 1 迭代 | IU-2 持久失效事件 | CI 已通过，最终审查待完成 | 事件持久化、两跳失效、事务重查、重启重放及权限/CAS 通过 |
 | 第 2 迭代 | IU-3 授权跨代 Memory import | CI 已通过，最终审查待完成 | 依赖 IU-2；同一 Goal 跨代的依赖闭包、授权、版本与 provenance 通过 |
-| 第 3 迭代 | IU-4 按依赖增量重算 | 代码/定向回归完成，CI 待验收 | 依赖 IU-2/3；先与全量重算业务结果一致，再评估节省的实际调用与成本 |
-| 可并行准备 | IU-5A 上下文/token 治理 | 未实现 | 不依赖增量重算；冻结 tokenizer/模板、实际输入核对、超限和回源路径通过 |
-| 第 2～4 迭代 | IU-5B 独立记忆验证 | 未实现 | 可先设计；接入跨代时依赖 IU-2/3；验证作用域、证据与失效联动通过 |
-| 全程取证，后续接入 | IU-5C 真实模型评测与 aicloud | 未实现 | 小样本单节点/全量 IU 可先做；增量对照等 IU-4；远程接入另开契约 PR |
+| 第 3 迭代 | IU-4 按依赖增量重算 | 阶段 CI 已通过，集成审查待完成 | 依赖 IU-2/3；先与全量重算业务结果一致，再评估节省的实际调用与成本 |
+| 可并行准备 | IU-5A 上下文/token 治理 | 代码与阶段 CI 已通过；外部验收待完成 | 不依赖增量重算；冻结 tokenizer/模板、实际输入核对、超限和回源路径通过 |
+| 第 2～4 迭代 | IU-5B 独立记忆验证 | 代码与阶段 CI 已通过；外部验收待完成 | 可先设计；接入跨代时依赖 IU-2/3；验证作用域、证据与失效联动通过 |
+| 全程取证，后续接入 | IU-5C 真实模型评测与 aicloud | 代码与阶段 CI 已通过；外部验收待完成 | 小样本单节点/全量 IU 可先做；增量对照等 IU-4；远程接入另开契约 PR |
 | 最后推广 | IU-6 受控部署与发布 | 未完成 | 前序合同通过，并完成独立主机、恢复/升级、隔离和回滚演练 |
 
-IU-5A/B/C 是原路线 IU-5 的细分，不改变 IU-2→IU-3→IU-4 的安全依赖。后续阶段涉及独立子系统时，各自生成阶段设计和逐任务计划，经评审后再实现；下面明确阶段交付、接口边界和验收，不把拟议接口当作已有 API。
+IU-5A/B/C 是原路线 IU-5 的细分，不改变 IU-2→IU-3→IU-4 的安全依赖。阶段设计与实现已按独立 PR 159–164 交付，集成 PR 另含恢复门禁。精确生产 tokenizer、附件、远程服务和真实主机仍按明确边界保留待办。
 
 ## 现有代码与扩展落点
 
@@ -62,11 +62,11 @@ IU-5A/B/C 是原路线 IU-5 的细分，不改变 IU-2→IU-3→IU-4 的安全�
 
 **拟议接口：** `graph.InvalidationEvent` 包含事件 ID、目标 Goal/generation、来源或 record 引用、reason、证据 hash、expected_revision；`Server.InvalidateGraph(ctx context.Context, jobID string, in graph.InvalidationEvent) error` 是业务入口。持久追加事件内容，应用进度另存；幂等键同内容重放成功，不同内容拒绝。新写接口沿用 principal/project 鉴权，阶段契约必须明确专用权限，不复用提交者自授权。
 
-- [ ] 写阶段设计 `docs/superpowers/specs/iu-durable-invalidation.md`，冻结事件命名空间、授权、CAS、迁移和线性化点。首版拒绝修改已终结 Goal 的执行结论；迟到反证仅保留审计依据，不隐式重开 Goal。
-- [ ] 先写 `TestGraphInvalidationSurvivesRestart`、`TestInvalidationBlocksLateAdmissionAndPass`、`TestInvalidationRejectsUnauthorizedOrStaleRevision`：覆盖至少两跳派生、重复/冲突事件、激活后事件、提交前撤权、旧代事件及事务回滚；在未实现时观察失败。
-- [ ] 实现追加事件及可恢复应用；激活、Artifact 准入、业务评估、新代发布在各自提交事务中检查有效性 revision。已运行节点的冻结 Context 不改写，迟到产物按有效性复查。
-- [ ] 运行 `go test -race ./internal/graph ./internal/store ./internal/server -run 'Test.*Invalidation' -count=1`；CI 增加事件提交前后、应用中断和 PASS 竞争的进程/DB 故障证据，要求测试实际 PASS。
-- [ ] 提交独立 PR，并更新契约/运维说明。退出条件：重启不漏事件、不重复应用；事件先提交时旧证据不能 PASS；未受支持状态明确拒绝。
+- [x] 写阶段设计 `docs/superpowers/specs/iu-durable-invalidation.md`，冻结事件命名空间、授权、CAS、迁移和线性化点。首版拒绝修改已终结 Goal 的执行结论；迟到反证仅保留审计依据，不隐式重开 Goal。
+- [x] 先写 `TestGraphInvalidationSurvivesRestart`、`TestInvalidationBlocksLateAdmissionAndPass`、`TestInvalidationRejectsUnauthorizedOrStaleRevision`：覆盖至少两跳派生、重复/冲突事件、激活后事件、提交前撤权、旧代事件及事务回滚；在未实现时观察失败。
+- [x] 实现追加事件及可恢复应用；激活、Artifact 准入、业务评估、新代发布在各自提交事务中检查有效性 revision。已运行节点的冻结 Context 不改写，迟到产物按有效性复查。
+- [x] 运行 `go test -race ./internal/graph ./internal/store ./internal/server -run 'Test.*Invalidation' -count=1`；CI 增加事件提交前后、应用中断和 PASS 竞争的进程/DB 故障证据，要求测试实际 PASS。
+- [x] 提交独立 PR，并更新契约/运维说明。退出条件：重启不漏事件、不重复应用；事件先提交时旧证据不能 PASS；未受支持状态明确拒绝。
 
 ## Task 2 — IU-3：授权跨代导入与依赖闭包
 
@@ -74,11 +74,11 @@ IU-5A/B/C 是原路线 IU-5 的细分，不改变 IU-2→IU-3→IU-4 的安全�
 
 **接口边界：** 拟议 `ImportRequest` 指定目标 Goal/generation、expected_revision、授权主体和精确来源 `(project, goal, generation, view_sha256, record_id)`。返回不可变导入快照及 receipt。首版只允许同项目、同 Goal 的旧代到新代；跨 Goal/项目共享另案处理。原 record 身份和来源保留，目标 ID 用稳定映射区分命名空间，禁止按同名覆盖。
 
-- [ ] 写 `docs/superpowers/specs/iu-authorized-memory-import.md`，冻结依赖闭包、目标 ID 映射、Schema/算元/来源版本匹配和授权撤销语义；禁止由 import 自动产生 verified 状态。
-- [ ] 先写 `TestImportRejectsInvalidOrIncompleteClosure`、`TestImportRechecksRevokedGrantAtCommit`、`TestImportPreservesOriginAndNamespace`，覆盖 INVALID/NEEDS_REVALIDATION、缺失来源、冲突、跨 Goal、同名 ID 和失效竞争；观察失败。
-- [ ] 实现事务内授权、revision 与闭包重查，固定 read-view、导入回执及 Artifact pin；旧历史保持不变。新代默认仍全量重算，只有显式导入请求才走复用路径。
-- [ ] 运行 `go test -race ./internal/graph ./internal/store ./internal/server -run 'Test.*Import' -count=1`；增加导入提交前后重启、同键不同内容及 GC 竞争的 CI 必测项。
-- [ ] 提交独立 PR。退出条件：折扣从 1000 修订到 2000 后，旧 11000 不能被导入为有效结论；合法且未失效的订单原始观察可按授权复用。
+- [x] 写 `docs/superpowers/specs/iu-authorized-memory-import.md`，冻结依赖闭包、目标 ID 映射、Schema/算元/来源版本匹配和授权撤销语义；禁止由 import 自动产生 verified 状态。
+- [x] 先写 `TestImportRejectsInvalidOrIncompleteClosure`、`TestImportRechecksRevokedGrantAtCommit`、`TestImportPreservesOriginAndNamespace`，覆盖 INVALID/NEEDS_REVALIDATION、缺失来源、冲突、跨 Goal、同名 ID 和失效竞争；观察失败。
+- [x] 实现事务内授权、revision 与闭包重查，固定 read-view、导入回执及 Artifact pin；旧历史保持不变。新代默认仍全量重算，只有显式导入请求才走复用路径。
+- [x] 运行 `go test -race ./internal/graph ./internal/store ./internal/server -run 'Test.*Import' -count=1`；增加导入提交前后重启、同键不同内容及 GC 竞争的 CI 必测项。
+- [x] 提交独立 PR。退出条件：折扣从 1000 修订到 2000 后，旧 11000 不能被导入为有效结论；合法且未失效的订单原始观察可按授权复用。
 
 ## Task 3 — IU-4：依赖增量重算
 
@@ -86,11 +86,11 @@ IU-5A/B/C 是原路线 IU-5 的细分，不改变 IU-2→IU-3→IU-4 的安全�
 
 **接口边界：** 拟议 `ReuseDecision` 输出 REUSE / RECOMPUTE / REJECT、reason、源节点和完整 provenance。key 必须覆盖实际输入、规则、read-view、算元/Schema、Runtime/model、工具/环境/工作区与策略版本。来源完整性不足或不可重放节点一律不复用。
 
-- [ ] 写 `docs/superpowers/specs/iu-incremental-recompute.md`，定义受影响依赖闭包与新的节点复用事实；不得把复用伪装成新的 Worker Attempt 或把旧 Task 改成新代 Task。需要新 wire/state 时采用独立版本与 capability，旧 v1 冻结合同不偷改。
-- [ ] 先写 `TestIncrementalEqualsFullRecompute`、`TestRuleChangeInvalidatesDependentNodes`、`TestReuseSurvivesRestartWithoutNewAttempt`、`TestReusePinsOriginArtifacts`；验证规则/模型/工具变更、条件分支、UNKNOWN、取消及缺失依赖。
-- [ ] 接入 IU-2/3 的有效性和授权检查；全量重算作为明确回退。只复用能证明依赖未变的结果，最终 Goal 仍须对当前代输出独立验收。
-- [ ] 对同一数据集运行全量与增量两臂：原订单 11000、改规则 10000、重复订单、不同客户、两跳反证。业务输出/验证结果必须一致；同时报告实际新 Task/Attempt/模型调用数和复用来源，不能只比耗时。
-- [ ] 提交独立 PR。退出条件：结果一致、受影响节点没有漏算、未受影响节点确实减少执行；若无收益保留实验性并记录失败范围。
+- [x] 写 `docs/superpowers/specs/iu-incremental-recompute.md`，定义受影响依赖闭包与新的节点复用事实；不得把复用伪装成新的 Worker Attempt 或把旧 Task 改成新代 Task。需要新 wire/state 时采用独立版本与 capability，旧 v1 冻结合同不偷改。
+- [x] 先写 `TestIncrementalEqualsFullRecompute`、`TestRuleChangeInvalidatesDependentNodes`、`TestReuseSurvivesRestartWithoutNewAttempt`、`TestReusePinsOriginArtifacts`；验证规则/模型/工具变更、条件分支、UNKNOWN、取消及缺失依赖。
+- [x] 接入 IU-2/3 的有效性和授权检查；全量重算作为明确回退。只复用能证明依赖未变的结果，最终 Goal 仍须对当前代输出独立验收。
+- [x] 对同一数据集运行全量与增量两臂：原订单 11000、改规则 10000、重复订单、不同客户、两跳反证。业务输出/验证结果必须一致；同时报告实际新 Task/Attempt/模型调用数和复用来源，不能只比耗时。
+- [x] 提交独立 PR。退出条件：结果一致、受影响节点没有漏算、未受影响节点确实减少执行；若无收益保留实验性并记录失败范围。
 
 ## Task 4 — IU-5A：token、语义上下文与回源
 
@@ -98,12 +98,12 @@ IU-5A/B/C 是原路线 IU-5 的细分，不改变 IU-2→IU-3→IU-4 的安全�
 
 **接口边界：** 拟议 `CountInput(ctx, modelID, tokenizerVersion, templateVersion, serializedInput) (count, coverage, error)`；声明计数覆盖的实际包装。Usage 是实际用量，Context 计数是输入预算，二者分别记录。自动回源由上层提出新的受限执行请求，不允许 Worker 私下访问未授权内容。
 
-- [ ] 先冻结来源分区与上下文选择的区别、跨片段指代/全局规则依赖、回源协议和最大次数。保留原始 byte spans、role/order、原文 hash；摘要不是原文替代品。
-- [ ] 先写 `TestTokenizerChangeRequiresRecount`、`TestRequiredContextCannotBeTruncated`、`TestCrossChunkReferenceNeedsEvidence`、`TestModelSwitchDoesNotReuseTokenIDs`；覆盖中文/emoji、重叠区间、附件摘要、计数器不可用与实际 Adapter 包装变化。
-- [ ] 对附件/二进制单独设计不可变快照、授权读取、大小限制、来源引用和 GC pin；文本转换产物记录转换器版本，不把二进制当作可跨模型拼接的 token 序列。未支持的附件类型明确拒绝。
-- [ ] 实现固定版本计数器和实际输入核对；无可靠计数器时继续 unknown 与字节硬上限。不能容纳必需信息时返回不足，进入有界回源/重新拆分/模型升级决策，禁止静默删规则。
-- [ ] 验证原文重建完全一致、全局规则被保留、预算内实际输入与计数对象一致；精确 token 硬预算只对通过 contract test 的 Adapter 开放。
-- [ ] 单独 PR 交付。退出条件：机制可审计、缺失语义显式未决；不宣称任意拆分均语义无损。
+- [x] 先冻结来源分区与上下文选择的区别、跨片段指代/全局规则依赖、回源协议和最大次数。保留原始 byte spans、role/order、原文 hash；摘要不是原文替代品。
+- [x] 先写 `TestTokenizerChangeRequiresRecount`、`TestRequiredContextCannotBeTruncated`、`TestCrossChunkReferenceNeedsEvidence`、`TestModelSwitchDoesNotReuseTokenIDs`；覆盖中文/emoji、重叠区间、附件摘要、计数器不可用与实际 Adapter 包装变化。
+- [x] 对附件/二进制单独设计不可变快照、授权读取、大小限制、来源引用和 GC pin；文本转换产物记录转换器版本，不把二进制当作可跨模型拼接的 token 序列。未支持的附件类型明确拒绝。
+- [x] 实现固定版本计数器和实际输入核对；无可靠计数器时继续 unknown 与字节硬上限。不能容纳必需信息时返回不足，进入有界回源/重新拆分/模型升级决策，禁止静默删规则。
+- [x] 验证原文重建完全一致、全局规则被保留、预算内实际输入与计数对象一致；精确 token 硬预算只对通过 contract test 的 Adapter 开放。
+- [x] 单独 PR 交付。退出条件：机制可审计、缺失语义显式未决；不宣称任意拆分均语义无损。
 
 ## Task 5 — IU-5B：独立 record 验证与概率契约
 
@@ -111,21 +111,21 @@ IU-5A/B/C 是原路线 IU-5 的细分，不改变 IU-2→IU-3→IU-4 的安全�
 
 **接口边界：** 拟议 `VerificationReceipt` 绑定精确命题/record hash、来源/规则版本、验证器 profile/version、证据摘要、作用域和 PASS/FAIL/UNKNOWN。verified 只表示该作用域的验证结论，不等于全局真理。模型经验成功率来自外部 Evaluation 版本，不能写成 Hoare 确定性证明。
 
-- [ ] 先冻结阶段设计 `docs/superpowers/specs/iu-record-verification.md`，明确验证主体、证据可取回性、信任/签名策略和撤销路径。首版使用管理员注册的只读验证器，不执行模型拼接命令。
-- [ ] 先写 `TestVerificationCannotPromoteUncoveredRecords`、`TestVerificationRejectsStaleEvidence`、`TestVerifierTimeoutRemainsUnknown`：覆盖伪造回执、整批漂白、规则更新、跨代及权限撤销。
-- [ ] 实现不可变验证回执和受限投影；验证只覆盖明确命题，证据失效通过 IU-2 传播。验证器不可用保持 UNKNOWN，不将执行成功自动等同业务 PASS。
-- [ ] 用同任务的有/无独立验证对照测误接纳率、漏检率、额外调用/延迟及重试次数；保留失败样本，概率指标不提升为绝对保证。
-- [ ] 提交独立 PR。退出条件：权限、命题作用域和失效联动通过，模型自身不能授予 verified。
+- [x] 先冻结阶段设计 `docs/superpowers/specs/iu-record-verification.md`，明确验证主体、证据可取回性、信任/签名策略和撤销路径。首版使用管理员注册的只读验证器，不执行模型拼接命令。
+- [x] 先写 `TestVerificationCannotPromoteUncoveredRecords`、`TestVerificationRejectsStaleEvidence`、`TestVerifierTimeoutRemainsUnknown`：覆盖伪造回执、整批漂白、规则更新、跨代及权限撤销。
+- [x] 实现不可变验证回执和受限投影；验证只覆盖明确命题，证据失效通过 IU-2 传播。验证器不可用保持 UNKNOWN，不将执行成功自动等同业务 PASS。
+- [x] 用同任务的有/无独立验证对照测误接纳率、漏检率、额外调用/延迟及重试次数；保留失败样本，概率指标不提升为绝对保证。
+- [x] 提交独立 PR。退出条件：权限、命题作用域和失效联动通过，模型自身不能授予 verified。
 
 ## Task 6 — IU-5C：真实模型基线与 aicloud 接入
 
 **Files:** 扩展 `internal/iuexperiment`、`cmd/iu-experiment`、真实实验说明；新增版本化 aicloud 适配器设计，不把 Registry/Router 实现迁入 computecloud。
 
-- [ ] 冻结首批样本和模型/CLI/Adapter/提示词/采样设置、调用/时间/费用预算；先跑 20 个分层小样本用于流程验证，不据此声称统计显著或普遍收益。
-- [ ] 对照组至少包含同模型单节点、同模型全量 IU、IU 去掉记忆/验证的消融组；IU-4 完成后加入增量 IU。较大模型可作独立基线，不能混用模型后将收益全部归因于拆分。
-- [ ] 记录任务完成率、有效输出分母、原始字段保留、独立业务通过率、错误接纳、调用数、端到端 P50/P95、实际 usage 与费用来源；CLI/Provider 启动失败单独列出，不从失败样本中筛出“准确率”。
+- [x] 冻结首批样本和模型/CLI/Adapter/提示词/采样设置、调用/时间/费用预算；先跑 20 个分层小样本用于流程验证，不据此声称统计显著或普遍收益。
+- [x] 对照组至少包含同模型单节点、同模型全量 IU、IU 去掉记忆/验证的消融组；IU-4 完成后加入增量 IU。较大模型可作独立基线，不能混用模型后将收益全部归因于拆分。
+- [x] 记录任务完成率、有效输出分母、原始字段保留、独立业务通过率、错误接纳、调用数、端到端 P50/P95、实际 usage 与费用来源；CLI/Provider 启动失败单独列出，不从失败样本中筛出“准确率”。
 - [ ] 扩大正式评测前预注册非劣界限、成本目标、样本量和置信区间；费用口径包含失败、重试、检索和验证。达不到目标就记录适用边界或否定收益假设，不倒改目标。
-- [ ] 冻结 `docs/superpowers/specs/iu-aicloud-adapter.md`：绑定 Registry/Evaluation/Router 的版本化决策结果，computecloud 冻结执行绑定并保留决策来源。覆盖路由不可用、模型下线、配置漂移、限流及预算不足；不绕过硬调度约束或执行中静默换模型。
+- [x] 冻结 `docs/superpowers/specs/iu-aicloud-adapter.md`：绑定 Registry/Evaluation/Router 的版本化决策结果，computecloud 冻结执行绑定并保留决策来源。覆盖路由不可用、模型下线、配置漂移、限流及预算不足；不绕过硬调度约束或执行中静默换模型。
 - [ ] 实际执行经授权的实验并保存完整报告；接口契约通过后再分 PR 接入远程 aicloud。无服务访问或模型配置时仅交付设计与模拟，真实验收保持未完成。
 
 ## Task 7 — IU-6：跨主机、发布与副作用边界
@@ -143,5 +143,5 @@ IU-5A/B/C 是原路线 IU-5 的细分，不改变 IU-2→IU-3→IU-4 的安全�
 - 本文的所有待办在实际交付前保持未勾选；新增阶段设计、测试和代码分别标明状态，不把文档通过当作功能验收。
 - 每项实施遵循“失败测试 → 最小实现 → 定向验证 → 回归/CI → 独立审查 → 提交”的顺序，具体实现 PR 按子系统拆分。
 - 每阶段回填[长期路线图](../../implementation/long-term-roadmap.md#iu-计算模型迭代台账)、[实现范围](../../implementation/iu-computation-model.md)、README 及证据链接；注明未通过、未测量和回退边界。
-- 第一轮只启动 Task 1（IU-2）。Task 4 的 tokenizer 契约与 Task 6 的样本准备可并行设计；不得越过 IU-2/3 直接开放跨代复用或增量重算。
+- 本轮按用户授权完成七项代码与 CI；真实模型、aicloud 联调、独立双主机部署不计作本轮通过，仍须另行执行。
 - 任意循环、通用 Workflow Engine、模型内部 token/KV 状态切分、通用长期记忆平台及不可回滚写操作不作为默认后续交付；确有需求时先独立立项验证。

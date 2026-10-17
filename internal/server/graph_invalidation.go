@@ -275,6 +275,33 @@ func (s *Server) reconcileGraphInvalidations(ctx context.Context) error {
 			if e != nil {
 				return e
 			}
+			contexts := map[string][]graph.Span{}
+			contextRows, e := q.QueryContext(ctx, `SELECT context_json FROM iu_nodes WHERE goal_id=? AND context_json IS NOT NULL`, f.GoalID)
+			if e != nil {
+				return e
+			}
+			for contextRows.Next() {
+				var raw []byte
+				var m graph.ContextManifest
+				if e = contextRows.Scan(&raw); e != nil {
+					contextRows.Close()
+					return e
+				}
+				if e = json.Unmarshal(raw, &m); e != nil {
+					contextRows.Close()
+					return e
+				}
+				if m.SHA256 != graph.Hash([]byte(m.Text)) {
+					contextRows.Close()
+					return fmt.Errorf("VALIDITY_CONTEXT_CORRUPT")
+				}
+				contexts[m.SHA256] = m.Spans
+			}
+			e = contextRows.Err()
+			contextRows.Close()
+			if e != nil {
+				return e
+			}
 			for _, node := range nodes {
 				original := node.View
 				if len(original) == 0 {
@@ -297,7 +324,7 @@ func (s *Server) reconcileGraphInvalidations(ctx context.Context) error {
 				} else if !errors.Is(readErr, sql.ErrNoRows) {
 					return readErr
 				}
-				view, e = graph.ProjectInvalidation(view, in)
+				view, e = graph.ProjectInvalidationWithContexts(view, in, contexts)
 				if e != nil {
 					return e
 				}

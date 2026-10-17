@@ -88,7 +88,11 @@ func checkImportSourceTx(ctx context.Context, q store.Query, j *Job, in GraphImp
 	if v.SHA256 != in.ViewHash {
 		return empty, importFailure("VIEW_MISMATCH")
 	}
-	if _, e = graph.ImportView(v, in.RecordIDs, j.graph.GoalID+"/"+in.ID); e != nil {
+	identity, e := importIdentityTx(ctx, q, j, in.NodeID)
+	if e != nil {
+		return empty, e
+	}
+	if _, e = graph.ImportView(v, in.RecordIDs, j.graph.GoalID+"/"+in.ID, identity); e != nil {
 		return empty, importFailure(e.Error())
 	}
 	return v, nil
@@ -416,7 +420,11 @@ func bindGraphImportsTx(ctx context.Context, q store.Query, target *Job) error {
 			if e = importCompatible(ctx, q, source, in, f, nodeID); e != nil {
 				return e
 			}
-			memory, e := graph.ImportView(view, in.RecordIDs, fmt.Sprintf("%s/%d/%s/%s", f.GoalID, f.Generation, nodeID, in.ID))
+			identity, e := importIdentityTx(ctx, q, source, in.NodeID)
+			if e != nil {
+				return e
+			}
+			memory, e := graph.ImportView(view, in.RecordIDs, fmt.Sprintf("%s/%d/%s/%s", f.GoalID, f.Generation, nodeID, in.ID), identity)
 			if e != nil {
 				return e
 			}
@@ -542,4 +550,21 @@ func (s *Server) httpRevokeGraphImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.httpGraphImport(w, r)
+}
+
+func importIdentityTx(ctx context.Context, q store.Query, source *Job, node string) (graph.ImportIdentity, error) {
+	identity := graph.ImportIdentity{GoalID: source.graph.GoalID, Generation: source.graph.Generation, JobID: source.ID, NodeID: node}
+	var raw []byte
+	if e := q.QueryRowContext(ctx, `SELECT context_json FROM iu_nodes WHERE goal_id=? AND generation=? AND node_id=?`, source.graph.GoalID, source.graph.Generation, node).Scan(&raw); e != nil {
+		return identity, e
+	}
+	var m graph.ContextManifest
+	if e := json.Unmarshal(raw, &m); e != nil {
+		return identity, e
+	}
+	identity.ContextHash = m.SHA256
+	if !identity.Valid() || m.SHA256 != graph.Hash([]byte(m.Text)) {
+		return identity, importFailure("SOURCE_CONTEXT_UNPROVEN")
+	}
+	return identity, nil
 }

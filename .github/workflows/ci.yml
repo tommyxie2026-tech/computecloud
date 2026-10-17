@@ -37,7 +37,7 @@ jobs:
         with:
           name: iu-graph-simulation-${{ github.run_id }}
           path: dist/iu-graph/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
 
   agent-cli-contract:
@@ -815,7 +815,7 @@ jobs:
           retention-days: 30
 
   package:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.run_slow)
     needs: [certification-simulation, iu-graph-contract, relay-fixture, v047-stable-gate-contract, v047-release-transition, transport-seam, control-review, goal-governance, goal-execution, scheduler-readiness, prepared-workspace-cache, verify-macos, verify, task-flow, retry-flow, manual-retry-negative, artifact-flow, workspace-flow, prepared-workspace-contract, prepared-workspace-recovery, long-run-flow, fair-flow, runtime-contract-flow, runtime-execution-flow, tool-contract-flow, environment-contract-flow, environment-execution-flow, agent-control-schema, agent-control-read, runtime-adapter-contract, runtime-budget, agent-control-fencing, agent-control-negative, agent-control-dispatch, agent-control-approval, agent-control-resume, control-client-check, control-client-e2e, control-mobile-check, agent-cli-contract, container-image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -874,6 +874,13 @@ jobs:
               release=true
               release_tag="v$project_version"
             fi
+          fi
+          # Manual slow validation builds review artifacts only, even if a
+          # branch happens to contain a release request in its latest commit.
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            version="$project_version-dev.${GITHUB_SHA:0:12}"
+            release=false
+            release_tag=""
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "release=$release" >> "$GITHUB_OUTPUT"

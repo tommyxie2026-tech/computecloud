@@ -77,3 +77,9 @@ func TestJobGraphCLIImportEndpoints(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestJobGraphCompileRequiresNoClientConnection(t *testing.T) {
+	if e := runJob(context.Background(), config.Client{}, jobOptions{op: "compile-graph", file: "../../examples/iu-graph/orders.json"}); e != nil {
+		t.Fatal(e)
+	}
+}

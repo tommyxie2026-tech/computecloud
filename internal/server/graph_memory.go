@@ -169,6 +169,9 @@ func (s *Server) admitGraphCandidate(ctx context.Context, c graphCandidate) erro
 		parseErr = fmt.Errorf("IU_OUTPUT_IDENTITY_MISMATCH")
 	}
 	if parseErr == nil {
+		out.Delta, parseErr = graph.BindDeltaSources(out.Delta, manifest.Spans)
+	}
+	if parseErr == nil {
 		next, parseErr = graph.ApplyDelta(view, out.Delta)
 	}
 	return s.db.Tx(ctx, func(q store.Query) error {

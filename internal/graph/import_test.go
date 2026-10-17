@@ -14,32 +14,32 @@ func importFixture() MemoryView {
 func TestImportRejectsInvalidOrIncompleteClosure(t *testing.T) {
 	v := importFixture()
 	for _, ids := range [][]string{{"total"}, {"missing"}, {"raw", "raw"}, nil} {
-		if _, e := ImportView(v, ids, "grant_a"); e == nil {
+		if _, e := ImportView(v, ids, "grant_a", originIdentity()); e == nil {
 			t.Fatalf("accepted %v", ids)
 		}
 	}
 	for _, state := range []string{"INVALID", "NEEDS_REVALIDATION"} {
 		records := v.Records
 		records[0].Validity = state
-		if _, e := ImportView(NewView(records), []string{"raw", "total"}, "grant_a"); e == nil {
+		if _, e := ImportView(NewView(records), []string{"raw", "total"}, "grant_a", originIdentity()); e == nil {
 			t.Fatal(state)
 		}
 	}
 	v = importFixture()
 	v.Conflicts = []MemoryConflict{{RecordID: "raw", Candidates: []MemoryRecord{v.Records[0]}}}
 	v = sealView(v)
-	if _, e := ImportView(v, []string{"raw"}, "grant_a"); e == nil {
+	if _, e := ImportView(v, []string{"raw"}, "grant_a", originIdentity()); e == nil {
 		t.Fatal("conflict imported")
 	}
 }
 func TestImportPreservesOriginAndNamespace(t *testing.T) {
 	v := importFixture()
 	before := string(canonical(v))
-	a, e := ImportView(v, []string{"total", "raw"}, "grant_a")
+	a, e := ImportView(v, []string{"total", "raw"}, "grant_a", originIdentity())
 	if e != nil {
 		t.Fatal(e)
 	}
-	b, e := ImportView(v, []string{"raw", "total"}, "grant_b")
+	b, e := ImportView(v, []string{"raw", "total"}, "grant_b", originIdentity())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -57,7 +57,7 @@ func TestImportPreservesOriginAndNamespace(t *testing.T) {
 			t.Fatal("lost lineage")
 		}
 	}
-	again, e := ImportView(v, []string{"raw", "total"}, "grant_a")
+	again, e := ImportView(v, []string{"raw", "total"}, "grant_a", originIdentity())
 	if e != nil || again.View.SHA256 != a.View.SHA256 {
 		t.Fatal("unstable import")
 	}

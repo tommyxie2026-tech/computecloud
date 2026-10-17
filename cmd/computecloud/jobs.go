@@ -18,17 +18,33 @@ import (
 	"time"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/graph"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 )
 
 type jobOptions struct {
-	op, file, id, key, control, artifact, out, cursor string
-	after                                             int64
-	limit                                             int
+	op, file, id, key, control, artifact, out, cursor, node, record string
+	after                                                           int64
+	limit                                                           int
 }
 
 func runJob(ctx context.Context, c config.Client, o jobOptions) error {
+	if o.op == "compile-graph" {
+		raw, e := os.ReadFile(o.file)
+		if e != nil {
+			return e
+		}
+		spec, e := graph.Decode(raw)
+		if e != nil {
+			return e
+		}
+		plan, e := graph.Compile(spec)
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(os.Stdout).Encode(plan)
+	}
 	base, e := url.Parse(c.HTTPURL)
 	if e != nil || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" || base.Path != "" && base.Path != "/" {
 		return fmt.Errorf("client.http_url must be a server origin")
@@ -128,6 +144,17 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		return fmt.Errorf("--id required")
 	}
 	switch o.op {
+	case "graph-record":
+		if o.node == "" || o.record == "" {
+			return fmt.Errorf("--node and --record required")
+		}
+		return print("GET", path+"/graph/record/"+url.PathEscape(o.node)+"/"+url.PathEscape(o.record), nil)
+	case "propose-graph":
+		b, e := os.ReadFile(o.file)
+		if e != nil {
+			return e
+		}
+		return print("POST", path+"/goal/replans", b)
 	case "graph":
 		return print("GET", path+"/graph", nil)
 	case "graph-validity":

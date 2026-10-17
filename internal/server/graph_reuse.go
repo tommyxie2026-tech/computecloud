@@ -92,7 +92,11 @@ func freezeReuseOfferTx(ctx context.Context, q store.Query, source, target *Job,
 	if len(view.Records) != len(in.RecordIDs) {
 		return importFailure("RESULT_REQUIRES_FULL_VIEW")
 	}
-	memory, e := graph.ImportView(view, in.RecordIDs, fmt.Sprintf("%s/%d/%s/%s", target.graph.GoalID, target.graph.Generation, nodeID, in.ID))
+	identity, e := importIdentityTx(ctx, q, source, in.NodeID)
+	if e != nil {
+		return e
+	}
+	memory, e := graph.ImportView(view, in.RecordIDs, fmt.Sprintf("%s/%d/%s/%s", target.graph.GoalID, target.graph.Generation, nodeID, in.ID), identity)
 	if e != nil {
 		return e
 	}

@@ -32,7 +32,9 @@ func TestGraphTwoWorkerMemoryJoinAndTrustedCommandFlow(t *testing.T) {
 	}
 }
 func runGraphOrdersSimulation(t *testing.T, ruleDiscount, appliedDiscount, wantAmount int, wantVerdict string, incremental ...bool) {
-	incrementalMode := len(incremental) > 0 && incremental[0]
+	runGraphOrdersVariant(t, ruleDiscount, appliedDiscount, wantAmount, wantVerdict, len(incremental) > 0 && incremental[0], "rule_change")
+}
+func runGraphOrdersVariant(t *testing.T, ruleDiscount, appliedDiscount, wantAmount int, wantVerdict string, incrementalMode bool, variant string) {
 	var replay graph.ReplayBinding
 	verifier := filepath.Join(t.TempDir(), "verify-orders")
 	program, e := os.ReadFile("../../examples/iu-graph/verify_orders.py")
@@ -67,6 +69,12 @@ func runGraphOrdersSimulation(t *testing.T, ruleDiscount, appliedDiscount, wantA
 	b := a
 	b.ID = "order_b"
 	b.Text = `{"order_id":"b","customer_id":"c","paid_cents":6000}`
+	if incrementalMode && variant == "duplicate" {
+		b.Text = a.Text
+	}
+	if incrementalMode && variant == "different_customer" {
+		b.Text = `{"order_id":"b","customer_id":"d","paid_cents":6000}`
+	}
 	b.SHA256 = graph.Hash([]byte(b.Text))
 	rule := graph.Source{ID: "discount", Text: fmt.Sprintf(`{"threshold_cents":10000,"discount_cents":%d}`, ruleDiscount)}
 	rule.SHA256 = graph.Hash([]byte(rule.Text))
@@ -82,6 +90,17 @@ func runGraphOrdersSimulation(t *testing.T, ruleDiscount, appliedDiscount, wantA
 	s.Edges = []graph.Edge{{FromNode: "a", FromPort: "result", ToNode: "join", ToPort: "a", Type: "memory"}, {FromNode: "b", FromPort: "result", ToNode: "join", ToPort: "b", Type: "memory"}, {FromNode: "join", FromPort: "result", ToNode: "discount", ToPort: "amounts", Type: "memory"}, {FromNode: "discount", FromPort: "result", ToNode: "verify", ToPort: "amount", Type: "memory"}}
 	s.Outputs = []graph.Output{{Node: "discount", Port: "result"}, {Node: "verify", Port: "result"}}
 	if incrementalMode {
+		s.Schemas["order-v1"] = json.RawMessage(`{"type":"object","required":["order_id","customer_id","paid_cents"],"additionalProperties":false,"properties":{"order_id":{"type":"string"},"customer_id":{"type":"string"},"paid_cents":{"type":"integer"}}}`)
+		s.Schemas["orders-v1"] = json.RawMessage(`{"type":"object","additionalProperties":{"type":"object"}}`)
+		s.Operators[0].Outputs[0].Schema = "order-v1"
+		for i := range s.Operators[1].Inputs {
+			s.Operators[1].Inputs[i].Schema = "order-v1"
+		}
+		s.Operators[1].Outputs[0].Schema = "orders-v1"
+		s.Operators[2].Inputs[0].Schema = "orders-v1"
+		s.Nodes[0].Instructions = "fixture-order-object fixture-record:order_a"
+		s.Nodes[1].Instructions = "fixture-order-object fixture-record:order_b"
+		s.Nodes[3].Instructions = fmt.Sprintf("fixture-customer-total:%d fixture-record:total", appliedDiscount)
 		s.Version = graph.ReuseVersion
 		s.Limits.MaxReplans = 1
 		for i := range s.Operators {
@@ -130,7 +149,7 @@ func runGraphOrdersSimulation(t *testing.T, ruleDiscount, appliedDiscount, wantA
 		t.Fatalf("goal completed before business acceptance %+v %v", st, e)
 	}
 	if incrementalMode {
-		runOrdersIncrementalComparison(t, h, j, s, st)
+		runOrdersIncrementalComparison(t, h, j, s, st, variant)
 		return
 	}
 	if e = h.s.EvaluateGraph(h.ctx, j.ID, GraphEvaluation{ID: "orders-pass", OutputHash: st.OutputHash, Verifier: "external", VerifierVersion: "1", Verdict: wantVerdict, EvidenceHash: graph.Hash(j.result)}); e != nil {
@@ -154,9 +173,14 @@ func runGraphOrdersSimulation(t *testing.T, ruleDiscount, appliedDiscount, wantA
 
 // Local fixture processes exercise real Server/Worker Task/Attempt and admission.
 func TestGraphIncrementalOrdersMatchesFullRecompute(t *testing.T) {
-	runGraphOrdersSimulation(t, 1000, 1000, 11000, "PASS", true)
+	for _, tc := range []struct {
+		name string
+		old  int
+	}{{"rule_change", 11000}, {"duplicate", 6000}, {"different_customer", 12000}, {"two_hop_counterevidence", 11000}} {
+		t.Run(tc.name, func(t *testing.T) { runGraphOrdersVariant(t, 1000, 1000, tc.old, "PASS", true, tc.name) })
+	}
 }
-func runOrdersIncrementalComparison(t *testing.T, h *jobHarness, prior *Job, spec graph.Spec, st *GraphStatus) {
+func runOrdersIncrementalComparison(t *testing.T, h *jobHarness, prior *Job, spec graph.Spec, st *GraphStatus, variant string) {
 	t.Helper()
 	rule := graph.Source{ID: "discount", Text: `{"threshold_cents":10000,"discount_cents":1000}`}
 	rule.SHA256 = graph.Hash([]byte(rule.Text))
@@ -180,7 +204,7 @@ func runOrdersIncrementalComparison(t *testing.T, h *jobHarness, prior *Job, spe
 	for i := range spec.Nodes {
 		n := &spec.Nodes[i]
 		if n.ID == "discount" {
-			n.Instructions = "fixture-discount:2000 fixture-record:total"
+			n.Instructions = "fixture-customer-total:2000 fixture-record:total"
 		}
 		for k := range n.Rules {
 			if n.Rules[k].Source == rule.ID {
@@ -247,7 +271,14 @@ func runOrdersIncrementalComparison(t *testing.T, h *jobHarness, prior *Job, spe
 		Outputs map[string]json.RawMessage `json:"outputs"`
 	}
 	json.Unmarshal(next.result, &result)
-	if string(result.Outputs["discount/result"]) != "10000" || string(result.Outputs["verify/result"]) != `"PASS"` {
+	wantNew := "10000"
+	if variant == "duplicate" {
+		wantNew = "6000"
+	}
+	if variant == "different_customer" {
+		wantNew = "12000"
+	}
+	if string(result.Outputs["discount/result"]) != wantNew || string(result.Outputs["verify/result"]) != `"PASS"` {
 		t.Fatal(string(next.result))
 	}
 	var newTasks, fullTasks, newAttempts, fullAttempts int
@@ -274,7 +305,38 @@ func runOrdersIncrementalComparison(t *testing.T, h *jobHarness, prior *Job, spe
 	if reused != 2 || a.GoalState != "EVALUATING" {
 		t.Fatalf("reuse=%d goal=%s", reused, a.GoalState)
 	}
-	if e = h.s.EvaluateGraph(h.ctx, next.ID, GraphEvaluation{ID: "current-pass", OutputHash: a.OutputHash, Verifier: "external", VerifierVersion: "1", Verdict: "PASS", EvidenceHash: a.OutputHash}); e != nil {
+	if variant == "two_hop_counterevidence" {
+		root, e := h.s.GraphMemory(h.ctx, next.ID, "a")
+		if e != nil || len(root.Records) != 1 {
+			t.Fatalf("root %+v %v", root, e)
+		}
+		event := graph.InvalidationEvent{ID: "counterevidence", GoalID: a.GoalID, Generation: 2, Reason: "SOURCE_REVISED", EvidenceHash: graph.Hash([]byte("counterevidence")), Records: []string{root.Records[0].ID}}
+		if e = h.s.InvalidateGraph(h.ctx, next.ID, event); e != nil {
+			t.Fatal(e)
+		}
+		if e = h.s.reconcileGraphInvalidations(h.ctx); e != nil {
+			t.Fatal(e)
+		}
+		view, e := h.s.GraphMemory(h.ctx, next.ID, "verify")
+		if e != nil {
+			t.Fatal(e)
+		}
+		found := false
+		for _, r := range view.Records {
+			if r.ID == "total" {
+				found = true
+				if r.Validity != "INVALID" {
+					t.Fatalf("two-hop derived total survived %+v", r)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("missing derived total")
+		}
+		if e = h.s.EvaluateGraph(h.ctx, next.ID, GraphEvaluation{ID: "stale-pass", ExpectedValidityRevision: 1, OutputHash: a.OutputHash, Verifier: "external", VerifierVersion: "1", Verdict: "PASS", EvidenceHash: a.OutputHash}); e == nil {
+			t.Fatal("counterevidence accepted stale PASS")
+		}
+	} else if e = h.s.EvaluateGraph(h.ctx, next.ID, GraphEvaluation{ID: "current-pass", OutputHash: a.OutputHash, Verifier: "external", VerifierVersion: "1", Verdict: "PASS", EvidenceHash: a.OutputHash}); e != nil {
 		t.Fatal(e)
 	}
 	sources := []string{}

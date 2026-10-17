@@ -263,6 +263,9 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 		}
 		task := ex.Task(j.frozen.Spec, j.ID+"/node/"+id, manifest.Text)
 		task.RequiredCapabilities = append(task.RequiredCapabilities, "iu_graph_v1")
+		if graph.HasMemoryOrigins(view) {
+			task.RequiredCapabilities = append(task.RequiredCapabilities, graph.MemoryOriginCapability)
+		}
 		if n.ReplayProfile != "" {
 			task.RequiredCapabilities = append(task.RequiredCapabilities, f.ReplayBindings[n.ReplayProfile].Capability())
 		}

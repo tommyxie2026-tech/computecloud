@@ -16,7 +16,7 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - 当前功能基线：Agent Job Executor、Runtime / Tool / Environment、Prepared Workspace、synthetic Goal、Control 与实验性 Relay。
 - 已实现并有 CI 覆盖：Goal 原子 Plan/Job 发布和受限 `claude_http` 估算费用控制、Relay direct-first 运维基础、Worker strict OCI 边界、Codex/Claude Attempt Gateway 合约及敏感值脱敏。
 - 实验性 IU 有限计算图：在既有 Task / Attempt 上支持 agent / command / join、冻结原文上下文、不可变记忆与准入、独立业务评估及 Guard 下一代；默认关闭，代码合入不代表真实模型效果或生产验收完成。
-- Server schema：**v21**；Worker schema：**v6**。
+- Server schema：**v25**；Worker schema：**v6**。
 - 仍待目标环境验收：固定版本真实 Runtime、独立双 Worker 故障/升级恢复、代表性 Linux Worker 缓存性能、真实 NAT Relay、OCI/egress 隔离负向测试、mTLS 轮换/撤销、公网源站保护及供应商账单硬上限。CI 通过不等于这些验收完成，也不代表可接纳任意不可信公网租户。
 - v0.4.9 发布收尾记录见[迭代计划](docs/superpowers/plans/v0.4.9-release-iteration.md)；v0.5.0 主线仍是 Agent-aware Scheduler，保持确定性软评分、默认关闭。
 - 发布状态以 [GitHub Actions](https://github.com/tommyxie2026-tech/computecloud/actions) 与 [GitHub Releases](https://github.com/tommyxie2026-tech/computecloud/releases) 为准；代码合入不等于版本已发布。
@@ -333,6 +333,4 @@ Worker / Runtime / Tool / Environment
 
 > **可靠、可恢复、可治理地把 Agent Job 分配到合适的远程 Worker，并让 Runtime、Tool、Environment、Workspace、Artifact、Evaluator 和 Control 都服从同一个执行事实源。**
 
-IU 后续迭代：实验性 [v2 授权跨代记忆导入](docs/contracts/iu-graph-v2.md) 已进入实现分支，等待 CI/独立审查。默认关闭；真实模型/aicloud/独立主机验收仍未完成。
-
-实验性 [v3 增量结果复用](docs/contracts/iu-graph-v3.md) 要求显式授权及管理员锁定的 Server/Worker replay binding；未知环境继续全量执行。IU-2/3 CI 分别见 [39048549103](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39048549103)、[39049321358](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39049321358)，IU-4 等待 CI。
+IU 后续迭代已交付持久失效、授权导入、增量复用、Context/token 治理、独立 record 验证、评测/aicloud 只读适配及恢复/发布 CI 门禁。见 [实现范围与阶段证据](docs/implementation/iu-computation-model.md)、[长期路线图](docs/implementation/long-term-roadmap.md#iu-计算模型迭代台账)和[操作手册](docs/operations/iu-controlled-rollout.md)。默认关闭；最终合并依据是集成 PR 当前 SHA 的 CI/审查。真实模型/aicloud 服务/独立主机验收继续未完成。

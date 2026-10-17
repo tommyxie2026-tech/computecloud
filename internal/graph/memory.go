@@ -13,6 +13,7 @@ type SourceRef struct {
 	SHA256 string `json:"sha256"`
 }
 type MemoryRecord struct {
+	Origin       *MemoryOrigin   `json:"origin,omitempty"`
 	ID           string          `json:"id"`
 	Kind         string          `json:"kind"`
 	Payload      json.RawMessage `json:"payload"`
@@ -56,10 +57,25 @@ func NewView(records []MemoryRecord) MemoryView {
 	sort.Slice(cloned, func(i, j int) bool { return cloned[i].ID < cloned[j].ID })
 	return sealView(MemoryView{Version: "iu-memory-view-v1", Records: cloned})
 }
-func sealView(v MemoryView) MemoryView { v.SHA256 = ""; v.SHA256 = Hash(canonical(v)); return v }
+func sealView(v MemoryView) MemoryView {
+	v.Version = "iu-memory-view-v1"
+	if HasMemoryOrigins(v) {
+		v.Version = "iu-memory-view-v2"
+	}
+	v.SHA256 = ""
+	v.SHA256 = Hash(canonical(v))
+	return v
+}
 func validateView(v MemoryView) error {
-	if v.Version != "iu-memory-view-v1" || v.SHA256 != sealView(v).SHA256 {
+	if (v.Version != "iu-memory-view-v1" && v.Version != "iu-memory-view-v2") || (v.Version == "iu-memory-view-v2") != HasMemoryOrigins(v) || v.SHA256 != sealView(v).SHA256 {
 		return invalid("memory view hash")
+	}
+	for _, c := range v.Conflicts {
+		for _, r := range c.Candidates {
+			if e := validateOrigin(r.Origin); e != nil {
+				return e
+			}
+		}
 	}
 	records := map[string]MemoryRecord{}
 	for _, r := range v.Records {
@@ -111,11 +127,14 @@ func validateRecord(r MemoryRecord, candidate bool) error {
 	default:
 		return invalid("memory kind")
 	}
-	if candidate && r.Validation != "unchecked" || r.Validation != "unchecked" && r.Validation != "verified" {
+	if candidate && (r.Validation != "unchecked" || r.Origin != nil) || r.Validation != "unchecked" && r.Validation != "verified" {
 		return invalid("memory verification")
 	}
 	if r.Validity != "VALID" && r.Validity != "INVALID" && r.Validity != "NEEDS_REVALIDATION" {
 		return invalid("memory validity")
+	}
+	if e := validateOrigin(r.Origin); e != nil {
+		return e
 	}
 	seen := map[string]bool{}
 	for _, src := range r.Sources {

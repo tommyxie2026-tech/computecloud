@@ -39,23 +39,44 @@ func invalidationFixture(t *testing.T, h *jobHarness, key string) (*Job, graph.I
 }
 func TestGraphInvalidationSurvivesRestart(t *testing.T) {
 	h := newOfflineGraphHarness(t)
-	j, in := invalidationFixture(t, h, "restart-invalid")
-	raw := graphCandidateOutput(t, h, j)
-	var output graph.ExecutionOutput
-	if e := json.Unmarshal(raw, &output); e != nil {
+	spec := graphSpec(h)
+	spec.Sources = []graph.Source{{ID: "rule", Text: "discount=1000"}}
+	spec.Nodes[0].Spans = []graph.Span{{Source: "rule", Start: 0, End: 13, SHA256: graph.Hash([]byte("discount=1000"))}}
+	op := spec.Operators[0]
+	op.ID = "derive"
+	op.Inputs = []graph.Port{{Name: "data", Schema: "report-v1"}}
+	spec.Operators = append(spec.Operators, op)
+	spec.Nodes = append(spec.Nodes, graph.Node{ID: "middle", Operator: "derive", Instructions: "derive middle"}, graph.Node{ID: "end", Operator: "derive", Instructions: "derive end"})
+	spec.Edges = []graph.Edge{{FromNode: "extract", FromPort: "result", ToNode: "middle", ToPort: "data", Type: "memory"}, {FromNode: "middle", FromPort: "result", ToNode: "end", ToPort: "data", Type: "memory"}}
+	spec.Outputs = []graph.Output{{Node: "end", Port: "result"}}
+	j, e := h.s.SubmitGraph(h.ctx, "restart-invalid", job.JSON(spec))
+	if e != nil {
 		t.Fatal(e)
 	}
-	output.Delta.Records = []graph.MemoryRecord{
-		{ID: "base", Kind: "observation", Payload: json.RawMessage(`1`), Sources: in.Sources, Validation: "unchecked", Validity: "VALID"},
-		{ID: "middle", Kind: "result", Payload: json.RawMessage(`2`), Dependencies: []string{"base"}, Validation: "unchecked", Validity: "VALID"},
-		{ID: "end", Kind: "result", Payload: json.RawMessage(`3`), Dependencies: []string{"middle"}, Validation: "unchecked", Validity: "VALID"},
+	in := graph.InvalidationEvent{ID: "changed", GoalID: j.graph.GoalID, Generation: 1, Reason: "RULE_CHANGED", EvidenceHash: graph.Hash([]byte("new rule")), Sources: []graph.SourceRef{{ID: "rule", SHA256: graph.Hash([]byte("discount=1000"))}}}
+	for i, node := range []string{"extract", "middle", "end"} {
+		var output graph.ExecutionOutput
+		if e := json.Unmarshal(graphNodeCandidateOutput(t, h, j, node), &output); e != nil {
+			t.Fatal(e)
+		}
+		id := []string{"base", "middle", "end"}[i]
+		output.Delta.Records = []graph.MemoryRecord{{ID: id, Kind: "result", Payload: json.RawMessage(fmt.Sprint(i + 1)), Validation: "unchecked", Validity: "VALID"}}
+		seedGraphNodeCandidate(t, h, j, node, job.JSON(output))
+		if e := h.s.reconcileGraphMemory(h.ctx); e != nil {
+			t.Fatal(e)
+		}
 	}
-	seedGraphCandidate(t, h, j, job.JSON(output))
-	if e := h.s.reconcileGraphMemory(h.ctx); e != nil {
-		t.Fatal(e)
+	before, e := h.s.GraphMemory(h.ctx, j.ID, "end")
+	if e != nil || len(before.Records) != 3 {
+		t.Fatalf("actual admitted chain missing: %+v %v", before, e)
+	}
+	for _, r := range before.Records {
+		if r.ID != "base" && len(r.Dependencies) == 0 {
+			t.Fatalf("missing dependency: %+v", r)
+		}
 	}
 	var original []byte
-	h.s.db.SQL.QueryRow(`SELECT output_view FROM iu_nodes WHERE goal_id=?`, j.graph.GoalID).Scan(&original)
+	h.s.db.SQL.QueryRow(`SELECT output_view FROM iu_nodes WHERE goal_id=? AND node_id='end'`, j.graph.GoalID).Scan(&original)
 	if e := h.s.InvalidateGraph(h.ctx, j.ID, in); e != nil {
 		t.Fatal(e)
 	}
@@ -74,9 +95,12 @@ func TestGraphInvalidationSurvivesRestart(t *testing.T) {
 	if e = h.s.reconcileGraphInvalidations(h.ctx); e != nil {
 		t.Fatal(e)
 	}
-	v, e := h.s.GraphMemory(h.ctx, j.ID, "extract")
+	v, e := h.s.GraphMemory(h.ctx, j.ID, "end")
 	if e != nil {
 		t.Fatal(e)
+	}
+	if len(v.Records) != 3 {
+		t.Fatalf("missing projected chain: %+v", v)
 	}
 	for _, r := range v.Records {
 		if r.Validity != "INVALID" {
@@ -84,7 +108,7 @@ func TestGraphInvalidationSurvivesRestart(t *testing.T) {
 		}
 	}
 	var now []byte
-	h.s.db.SQL.QueryRow(`SELECT output_view FROM iu_nodes WHERE goal_id=?`, j.graph.GoalID).Scan(&now)
+	h.s.db.SQL.QueryRow(`SELECT output_view FROM iu_nodes WHERE goal_id=? AND node_id='end'`, j.graph.GoalID).Scan(&now)
 	if string(now) != string(original) {
 		t.Fatal("immutable view changed")
 	}
@@ -335,5 +359,44 @@ func TestInvalidationRejectsReplanUsingOldEvaluation(t *testing.T) {
 	h.s.db.SQL.QueryRow(`SELECT count(*) FROM iu_graphs WHERE goal_id=?`, st.GoalID).Scan(&count)
 	if count != 1 {
 		t.Fatal("new generation published from stale evidence")
+	}
+}
+func TestInvalidationUsesFrozenContextForLegacyOmittedSources(t *testing.T) {
+	h := newOfflineGraphHarness(t)
+	j, event := invalidationFixture(t, h, "omitted-source")
+	var out graph.ExecutionOutput
+	if e := json.Unmarshal(graphCandidateOutput(t, h, j), &out); e != nil {
+		t.Fatal(e)
+	}
+	out.Delta.Records = []graph.MemoryRecord{{ID: "claim", Kind: "result", Payload: json.RawMessage(`11000`), Validation: "unchecked", Validity: "VALID"}}
+	seedGraphCandidate(t, h, j, job.JSON(out))
+	if e := h.s.reconcileGraphMemory(h.ctx); e != nil {
+		t.Fatal(e)
+	}
+	// Reproduce an old accepted View whose candidate did not declare a source.
+	// InputHash still binds the trusted frozen producer Context.
+	var raw []byte
+	if e := h.s.db.SQL.QueryRow(`SELECT output_view FROM iu_nodes WHERE goal_id=?`, j.graph.GoalID).Scan(&raw); e != nil {
+		t.Fatal(e)
+	}
+	var view graph.MemoryView
+	json.Unmarshal(raw, &view)
+	view.Records[0].Sources = nil
+	view = graph.NewView(view.Records)
+	if _, e := h.s.db.SQL.Exec(`UPDATE iu_nodes SET output_view=? WHERE goal_id=?`, job.JSON(view), j.graph.GoalID); e != nil {
+		t.Fatal(e)
+	}
+	if e := h.s.InvalidateGraph(h.ctx, j.ID, event); e != nil {
+		t.Fatal(e)
+	}
+	if e := h.s.reconcileGraphInvalidations(h.ctx); e != nil {
+		t.Fatal(e)
+	}
+	projected, e := h.s.GraphMemory(h.ctx, j.ID, "extract")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if projected.Records[0].Validity != "INVALID" {
+		t.Fatal("legacy omitted source survived invalidation")
 	}
 }

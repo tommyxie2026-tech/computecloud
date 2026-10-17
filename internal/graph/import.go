@@ -8,12 +8,12 @@ type ImportedMemory struct {
 	IDs            map[string]string `json:"record_ids"`
 }
 
-func ImportView(origin MemoryView, ids []string, namespace string) (ImportedMemory, error) {
+func ImportView(origin MemoryView, ids []string, namespace string, source ImportIdentity) (ImportedMemory, error) {
 	var out ImportedMemory
 	if e := validateView(origin); e != nil {
 		return out, e
 	}
-	if namespace == "" || len(namespace) > 512 || len(ids) < 1 || len(ids) > 32 {
+	if !source.Valid() || namespace == "" || len(namespace) > 512 || len(ids) < 1 || len(ids) > 32 {
 		return out, invalid("import bounds")
 	}
 	selected := map[string]bool{}
@@ -47,6 +47,10 @@ func ImportView(origin MemoryView, ids []string, namespace string) (ImportedMemo
 	// NewView below detaches all slices from the immutable origin.
 	for id := range selected {
 		r := records[id]
+		r.Origin = &MemoryOrigin{Version: "iu-record-origin-v1", Source: source, ViewHash: origin.SHA256, RecordID: id, RecordHash: Hash(canonical(r)), Previous: r.Origin}
+		if e := validateOrigin(r.Origin); e != nil {
+			return ImportedMemory{}, e
+		}
 		r.ID = out.IDs[id]
 		r.Validation = "unchecked"
 		r.Dependencies = append([]string{}, r.Dependencies...)

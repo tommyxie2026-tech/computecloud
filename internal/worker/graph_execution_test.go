@@ -81,3 +81,23 @@ func TestGraphWorkerRejectsModelOrSerializationDrift(t *testing.T) {
 		t.Fatal("serialization binding drift accepted")
 	}
 }
+func TestGraphWorkerRequiresOriginCapabilityForV2Memory(t *testing.T) {
+	original := graph.NewView([]graph.MemoryRecord{{ID: "raw", Kind: "observation", Payload: json.RawMessage(`1`), Validation: "unchecked", Validity: "VALID"}})
+	imported, e := graph.ImportView(original, []string{"raw"}, "target", graph.ImportIdentity{GoalID: "goal", Generation: 1, JobID: "source", NodeID: "n", ContextHash: graph.Hash([]byte("source context"))})
+	if e != nil {
+		t.Fatal(e)
+	}
+	m, e := graph.CompileContext(graph.ContextRequest{Instructions: "use origin", Model: "m", View: imported.View})
+	if e != nil {
+		t.Fatal(e)
+	}
+	inv := graph.Invocation{Version: "computecloud-job-io-v2", GoalID: "goal", Generation: 2, NodeID: "n", Context: m, View: imported.View}
+	a := &pb.Assignment{Spec: &pb.TaskSpec{Model: "m", Input: &pb.Input{Text: m.Text}}, Job: &pb.JobExecution{GraphExecutionJson: job.JSON(inv)}}
+	if _, e = prepareGraph(a); e == nil {
+		t.Fatal("new memory wire without negotiated capability accepted")
+	}
+	a.Spec.RequiredCapabilities = []string{graph.MemoryOriginCapability}
+	if _, e = prepareGraph(a); e != nil {
+		t.Fatal(e)
+	}
+}
