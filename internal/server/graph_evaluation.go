@@ -17,15 +17,16 @@ import (
 )
 
 type GraphEvaluation struct {
-	ExpectedValidityRevision int64  `json:"expected_validity_revision,omitempty"`
-	ID                       string `json:"id"`
-	ExpectedVersion          int64  `json:"expected_version"`
-	Supersedes               string `json:"supersedes_evaluation_id,omitempty"`
-	OutputHash               string `json:"output_sha256"`
-	Verifier                 string `json:"verifier_profile"`
-	VerifierVersion          string `json:"verifier_version"`
-	Verdict                  string `json:"verdict"`
-	EvidenceHash             string `json:"evidence_sha256"`
+	RecordProofs             []GraphRecordProofRef `json:"record_proofs,omitempty"`
+	ExpectedValidityRevision int64                 `json:"expected_validity_revision,omitempty"`
+	ID                       string                `json:"id"`
+	ExpectedVersion          int64                 `json:"expected_version"`
+	Supersedes               string                `json:"supersedes_evaluation_id,omitempty"`
+	OutputHash               string                `json:"output_sha256"`
+	Verifier                 string                `json:"verifier_profile"`
+	VerifierVersion          string                `json:"verifier_version"`
+	Verdict                  string                `json:"verdict"`
+	EvidenceHash             string                `json:"evidence_sha256"`
 }
 
 func (s *Server) EvaluateGraph(ctx context.Context, id string, in GraphEvaluation) error {
@@ -49,11 +50,11 @@ func (s *Server) EvaluateGraph(ctx context.Context, id string, in GraphEvaluatio
 		if _, e := graphMutationAuthorityTx(ctx, q, j, "goals:evaluate"); e != nil {
 			return e
 		}
-		return applyGraphEvaluationTx(ctx, q, j.ID, in)
+		return s.applyGraphEvaluationTx(ctx, q, j.ID, in)
 	})
 }
 
-func applyGraphEvaluationTx(ctx context.Context, q store.Query, jobID string, in GraphEvaluation) error {
+func (s *Server) applyGraphEvaluationTx(ctx context.Context, q store.Query, jobID string, in GraphEvaluation) error {
 	j, e := readJob(ctx, q, jobID)
 	if e != nil {
 		return e
@@ -100,6 +101,9 @@ func applyGraphEvaluationTx(ctx context.Context, q store.Query, jobID string, in
 	}
 	if in.Verdict == "PASS" && j.State != "SUCCEEDED" {
 		return status.Error(codes.FailedPrecondition, "FAILED_EXECUTION_CANNOT_PASS")
+	}
+	if e = s.validateRecordProofsTx(ctx, q, f, in); e != nil {
+		return e
 	}
 	if _, e = q.ExecContext(ctx, `INSERT INTO iu_evaluations(id,goal_id,generation,version,verdict,body,created) VALUES(?,?,?,?,?,?,?)`, id, f.GoalID, f.Generation, version+1, in.Verdict, body, store.Now()); e != nil {
 		return e
@@ -154,7 +158,7 @@ func (s *Server) reconcileGraphEvaluations(ctx context.Context) error {
 			if readErr != nil {
 				return readErr
 			}
-			return applyGraphEvaluationTx(ctx, q, f.id, GraphEvaluation{ExpectedValidityRevision: revision, ID: "execution-failure", OutputHash: f.hash, Verifier: "computecloud-execution", VerifierVersion: "1", Verdict: "FAIL", EvidenceHash: job.Hash([]byte(f.reason))})
+			return s.applyGraphEvaluationTx(ctx, q, f.id, GraphEvaluation{ExpectedValidityRevision: revision, ID: "execution-failure", OutputHash: f.hash, Verifier: "computecloud-execution", VerifierVersion: "1", Verdict: "FAIL", EvidenceHash: job.Hash([]byte(f.reason))})
 		}); e != nil {
 			return e
 		}

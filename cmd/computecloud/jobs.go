@@ -132,12 +132,15 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		return print("GET", path+"/graph", nil)
 	case "graph-validity":
 		return print("GET", path+"/graph/validity", nil)
-	case "read-source", "issue-import":
+	case "verify-record", "read-source", "issue-import":
 		b, e := os.ReadFile(o.file)
 		if e != nil {
 			return e
 		}
 		endpoint := path + "/graph/import-grants"
+		if o.op == "verify-record" {
+			endpoint = path + "/graph/verifications"
+		}
 		if o.op == "read-source" {
 			endpoint = path + "/graph/source-reads"
 		}

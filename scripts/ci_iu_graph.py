@@ -13,6 +13,10 @@ import uuid
 
 PREFIX = "github.com/tommyxie2026-tech/computecloud/"
 SERVER_TESTS = [
+    "TestVerificationCannotPromoteUncoveredRecords",
+    "TestVerificationRejectsStaleEvidence",
+    "TestVerificationRechecksManagedKeyAndProfileChanges",
+    "TestVerificationEvaluationReferencesCannotBeForged",
     "TestGraphSourceReadIsBoundedDurableAndIdempotent",
     "TestGraphSourceReadRejectsWrongPlanOrUTF8Boundary",
     "TestReuseSurvivesRestartWithoutNewAttempt",
@@ -49,13 +53,14 @@ SERVER_TESTS = [
 REQUIRED_TESTS = tuple(
     [PREFIX + "internal/server::" + name for name in SERVER_TESTS]
     + [PREFIX + "internal/graph::" + name for name in (
-        "TestCountUnavailableAndWrapperCoverageStayUnknown", "TestContextPolicyV4RejectsUnsupportedTokensAndAttachments", "TestTokenizerChangeRequiresRecount", "TestRequiredContextCannotBeTruncated",
+        "TestVerifierTimeoutRemainsUnknown", "TestEmpiricalContractDoesNotInventCertainty",
+        "TestVerificationProjectionRetainsConflictEvidence", "TestCountUnavailableAndWrapperCoverageStayUnknown", "TestContextPolicyV4RejectsUnsupportedTokensAndAttachments", "TestTokenizerChangeRequiresRecount", "TestRequiredContextCannotBeTruncated",
         "TestCrossChunkReferenceNeedsEvidence", "TestModelSwitchDoesNotReuseTokenIDs", "TestRuleChangeInvalidatesDependentNodes", "TestImportRejectsInvalidOrIncompleteClosure", "TestImportPreservesOriginAndNamespace",
         "TestImportGraphVersionAndCanonicalBindings", "TestCompileContextPreservesSourceAndRequiredRules", "TestContextNeverSilentlyTruncates",
         "TestReconstructSourceValidatesOverlapsAndCoverage", "TestMemoryDeltaRequiresFrozenViewAndCannotSelfVerify",
         "TestMemoryMergeConflictsAndDeduplicates", "TestMemoryInvalidationPropagatesWithoutChangingHistory",
         "TestApplyDeltaPreservesConflictsAndInheritedInvalidity", "TestOutputSchemaRebasesFrozenLocalDefinitions")]
-    + [PREFIX + "internal/iuexperiment::TestIncrementalEvidenceKeepsUnknownCostAndRequiresProvenance", PREFIX + "internal/worker::TestGraphWorkerRejectsModelOrSerializationDrift", PREFIX + "internal/worker::TestGraphReplayBindingRejectsWorkerDrift", PREFIX + "cmd/iu-experiment::TestCLIProcessTimeoutDrainsWholeGroup",
+    + [PREFIX + "internal/iuexperiment::TestIndependentVerificationContrastRetainsRejectedSamples", PREFIX + "internal/iuexperiment::TestIncrementalEvidenceKeepsUnknownCostAndRequiresProvenance", PREFIX + "internal/worker::TestGraphWorkerRejectsModelOrSerializationDrift", PREFIX + "internal/worker::TestGraphReplayBindingRejectsWorkerDrift", PREFIX + "cmd/iu-experiment::TestCLIProcessTimeoutDrainsWholeGroup",
        PREFIX + "internal/iuexperiment::TestSimulationChecksHealthyAndInjectedFailures",
        PREFIX + "internal/iuexperiment::TestCorrectFinalTotalDoesNotHideCorruptedIntermediateIdentity"]
 )
@@ -141,7 +146,7 @@ def main():
         ("contracts", [args.go, "test", "-json", "-race", "./internal/graph", "./internal/store", "./internal/config",
                        "./internal/iuexperiment", "./cmd/iu-experiment", "-count=1", "-timeout=5m"], 330),
         ("native", [args.go, "test", "-json", "-race", "./internal/server", "./internal/worker", "./internal/adapter",
-                    "-run", "TestGraph|TestCommandProvider|TestInvalidation|TestImport|TestReuse|TestIncremental", "-count=1", "-timeout=5m"], 330),
+                    "-run", "TestGraph|TestCommandProvider|TestInvalidation|TestImport|TestReuse|TestIncremental|TestVerification", "-count=1", "-timeout=5m"], 330),
         ("cli", [args.go, "test", "-json", "./cmd/computecloud", "-run", "TestJobGraphCLI", "-count=1", "-timeout=2m"], 150),
         ("simulation", [args.go, "run", "./cmd/iu-experiment", "--simulate", "--output", str(simulation_path)], 120),
         ("build", [args.go, "build", "-o", str(binary), "./cmd/computecloud"], 120),
