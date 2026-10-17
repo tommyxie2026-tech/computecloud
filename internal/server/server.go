@@ -582,6 +582,9 @@ func (s *Server) tick(ctx context.Context) error {
 	if e := s.reconcile(ctx); e != nil {
 		return e
 	}
+	if e := s.reconcileGraphInvalidations(ctx); e != nil {
+		return e
+	}
 	if e := s.reconcileGraphMemory(ctx); e != nil {
 		return e
 	}

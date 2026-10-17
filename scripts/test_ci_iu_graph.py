@@ -10,7 +10,13 @@ class CIReportTest(unittest.TestCase):
 
     def process_report(self):
         return {"summary":{"status":"PASSED"},"steps":[{"name":"native_iu_graphs","status":"PASSED",
-          "evidence":{"real_model_calls":False,"worker_processes":2,"cases":[{"server_process_restart":i==0} for i in range(4)]}}]}
+          "evidence":{"real_model_calls":False,"worker_processes":2,"invalidation":{"applied":True,"server_process_restart":True,"attempts_unchanged":True,"unauthorized_denied":True,"stale_pass_denied":True,"revision":1,"goal_state":"FAILED"},"cases":[{"server_process_restart":i==0} for i in range(4)]}}]}
+
+    def test_missing_invalidation_process_evidence_cannot_pass(self):
+        stages, events, simulation = self.healthy()
+        report = self.process_report()
+        report["steps"][0]["evidence"].pop("invalidation", None)
+        self.assertEqual(build_report(stages, events, simulation, report)["status"], "FAILED")
 
     def test_requires_all_native_checks_and_simulation(self):
         stages, events, simulation = self.healthy()

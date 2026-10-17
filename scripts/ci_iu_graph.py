@@ -13,6 +13,13 @@ import uuid
 
 PREFIX = "github.com/tommyxie2026-tech/computecloud/"
 SERVER_TESTS = [
+    "TestGraphInvalidationSurvivesRestart",
+    "TestInvalidationBlocksLateAdmissionAndPass",
+    "TestInvalidationRejectsUnauthorizedOrStaleRevision",
+    "TestInvalidationRejectsRevokedManagedKeyAndRollsBack",
+    "TestInvalidationLinearizesWithPass",
+    "TestInvalidationProjectionBatchesLeaveDurableBacklog",
+    "TestInvalidationRejectsReplanUsingOldEvaluation",
     "TestGraphTwoWorkerMemoryJoinAndTrustedCommandFlow",
     *["TestGraphTwoWorkerMemoryJoinAndTrustedCommandFlow/" + name for name in (
         "discount_1000", "revised_discount_2000", "stale_rule_rejected", "missing_global_rule_rejected")],
@@ -58,7 +65,11 @@ def build_report(stages, events, simulation, process_report=None):
     valid_processes = (process_report.get("summary", {}).get("status") == "PASSED"
                        and native.get("real_model_calls") is False
                        and native.get("worker_processes") == 2
-                       and len(native_cases) == 4 and any(c.get("server_process_restart") for c in native_cases))
+                       and len(native_cases) == 4 and any(c.get("server_process_restart") for c in native_cases)
+                       and all(native.get("invalidation", {}).get(key) is True for key in (
+                           "applied", "server_process_restart", "attempts_unchanged", "unauthorized_denied", "stale_pass_denied"))
+                       and native.get("invalidation", {}).get("revision") == 1
+                       and native.get("invalidation", {}).get("goal_state") == "FAILED")
     passed = stage_ok and valid_sim and valid_processes and all(c["action"] == "pass" for c in critical)
     return {"schema_version": "iu-ci-validation-v1", "status": "PASSED" if passed else "FAILED",
             "real_model_calls": False, "stages": stages, "required_checks": critical,
@@ -116,7 +127,7 @@ def main():
         ("contracts", [args.go, "test", "-json", "-race", "./internal/graph", "./internal/store", "./internal/config",
                        "./internal/iuexperiment", "./cmd/iu-experiment", "-count=1", "-timeout=5m"], 330),
         ("native", [args.go, "test", "-json", "-race", "./internal/server", "./internal/worker", "./internal/adapter",
-                    "-run", "TestGraph|TestCommandProvider", "-count=1", "-timeout=5m"], 330),
+                    "-run", "TestGraph|TestCommandProvider|TestInvalidation", "-count=1", "-timeout=5m"], 330),
         ("cli", [args.go, "test", "-json", "./cmd/computecloud", "-run", "TestJobGraphCLI", "-count=1", "-timeout=2m"], 150),
         ("simulation", [args.go, "run", "./cmd/iu-experiment", "--simulate", "--output", str(simulation_path)], 120),
         ("build", [args.go, "build", "-o", str(binary), "./cmd/computecloud"], 120),

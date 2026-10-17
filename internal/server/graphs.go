@@ -40,6 +40,7 @@ type GraphAdmissionStatus struct {
 	NextRetryAt int64  `json:"next_retry_at"`
 }
 type GraphStatus struct {
+	ValidityRevision  int64                  `json:"validity_revision"`
 	Admissions        []GraphAdmissionStatus `json:"admissions"`
 	GoalID            string                 `json:"goal_id"`
 	Generation        int64                  `json:"graph_generation"`
@@ -222,6 +223,10 @@ func (s *Server) GraphStatus(ctx context.Context, id string) (*GraphStatus, erro
 	f := j.graph
 	out := &GraphStatus{GoalID: f.GoalID, Generation: f.Generation, JobID: id, State: j.State, Plan: f.Plan, Nodes: []GraphNodeStatus{}, Admissions: []GraphAdmissionStatus{}}
 	if e = s.db.SQL.QueryRowContext(ctx, `SELECT g.state,x.evaluation_version,x.evaluation_id,x.output_hash FROM goals g JOIN iu_graphs x ON x.goal_id=g.id WHERE x.job_id=?`, id).Scan(&out.GoalState, &out.EvaluationVersion, &out.EvaluationID, &out.OutputHash); e != nil {
+		return nil, e
+	}
+	out.ValidityRevision, e = graphValidityRevisionTx(ctx, s.db.SQL, f)
+	if e != nil {
 		return nil, e
 	}
 	if out.EvaluationID != "" {
