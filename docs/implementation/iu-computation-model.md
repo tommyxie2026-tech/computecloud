@@ -59,3 +59,7 @@
 ## IU-3 实施进度
 
 [v2 导入合同](../contracts/iu-graph-v2.md) 新增同 Goal 一次性授权、完整闭包、稳定命名空间、Guard 发布事务复查、不可变快照/provenance 与 Artifact pin，Server schema v22。导入记录重置 unchecked，节点继续正常执行；没有实现增量跳过节点。重启重放、撤权/过期、GC pin 与失效竞争定向测试已通过，完整 CI 和最终审查待验收。真实模型、远程 aicloud、独立主机验证依用户决定保持未完成。
+
+## IU-4 实施进度
+
+[v3 增量合同](../contracts/iu-graph-v3.md) 新增显式结果授权、管理员冻结的只读 replay binding、Worker capability/config/policy 复查、独立复用事实和来源 pin。当前代实际输入 key 改变就回退普通 Task；复用节点不制造 Attempt。节点局部 Rules 仅在 v3 支持，全局规则仍必须注入所有节点。Server schema v23。定向 race 已通过；订单双 Worker 对照交 CI 验收，本机进程测试受 CLEANUP_UNCONFIRMED 限制，尚不能声明通过。没有真实模型成本收益结论。

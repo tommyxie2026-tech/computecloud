@@ -191,12 +191,19 @@ func (w *Worker) probe(ctx context.Context) error {
 				digests[tmpl.Key()] = tmpl.Digest
 			}
 		}
+		advertised := advertisedCapabilitySet(provider, caps)
+		for _, b := range w.cfg.GraphReplayBindings {
+			if replayRuntimeMatches(b, profile, r) {
+				advertised = append(advertised, b.Capability())
+			}
+		}
+		sort.Strings(advertised)
 		h.Runtimes = append(h.Runtimes, &pb.Runtime{
 			Profile:         profile,
 			Version:         r.Version,
 			Models:          r.Models,
 			Credentials:     r.Credentials,
-			Capabilities:    advertisedCapabilitySet(provider, caps),
+			Capabilities:    advertised,
 			Repositories:    keys(w.cfg.Repositories),
 			Policies:        keys(w.cfg.Policies),
 			Verifiers:       keys(w.cfg.Verifiers),

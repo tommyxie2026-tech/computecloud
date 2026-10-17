@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/tommyxie2026-tech/computecloud/internal/graph"
 	"net"
 	"net/url"
 	"os"
@@ -36,6 +37,7 @@ type JobTemplate struct {
 	Digest            string `yaml:"digest" json:"digest"`
 }
 type Jobs struct {
+	GraphReplayBindings      map[string]graph.ReplayBinding `yaml:"graph_replay_bindings"`
 	Enabled                  bool                           `yaml:"enabled"`
 	GraphsEnabled            bool                           `yaml:"graphs_enabled"`
 	GraphCommands            map[string]GraphCommandProfile `yaml:"graph_commands"`

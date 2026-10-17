@@ -21,6 +21,7 @@ import (
 )
 
 type GraphImportRequest struct {
+	Purpose          string   `json:"purpose,omitempty"`
 	ID               string   `json:"id"`
 	NodeID           string   `json:"node_id"`
 	ViewHash         string   `json:"view_sha256"`
@@ -111,7 +112,7 @@ func collectImportArtifactsTx(ctx context.Context, q store.Query, f *frozenGraph
 	if e != nil {
 		return nil, e
 	}
-	rows, e = q.QueryContext(ctx, `SELECT artifacts FROM iu_import_snapshots WHERE goal_id=? AND generation=?`, f.GoalID, f.Generation)
+	rows, e = q.QueryContext(ctx, `SELECT artifacts FROM iu_import_snapshots WHERE goal_id=? AND generation=? UNION ALL SELECT artifacts FROM iu_reuse_offers WHERE goal_id=? AND generation=?`, f.GoalID, f.Generation, f.GoalID, f.Generation)
 	if e != nil {
 		return nil, e
 	}
@@ -146,7 +147,7 @@ func collectImportArtifactsTx(ctx context.Context, q store.Query, f *frozenGraph
 	return ids, nil
 }
 func (s *Server) IssueGraphImport(ctx context.Context, id string, in GraphImportRequest) (*GraphImportGrant, error) {
-	if !job.Ref(in.ID) || len(in.ID) > 64 || !job.Ref(in.NodeID) || !job.ValidHash(in.ViewHash) || !job.ValidHash(in.TargetPlanHash) || len(in.RecordIDs) < 1 || len(in.RecordIDs) > 32 || in.ExpectedRevision < 0 {
+	if (in.Purpose != "" && in.Purpose != "node_result") || !job.Ref(in.ID) || len(in.ID) > 64 || !job.Ref(in.NodeID) || !job.ValidHash(in.ViewHash) || !job.ValidHash(in.TargetPlanHash) || len(in.RecordIDs) < 1 || len(in.RecordIDs) > 32 || in.ExpectedRevision < 0 {
 		return nil, status.Error(codes.InvalidArgument, "IMPORT_INVALID")
 	}
 	j, e := s.jobAuthorized(ctx, id, "jobs:read")
@@ -365,7 +366,13 @@ func importCompatible(ctx context.Context, q store.Query, source *Job, in GraphI
 }
 func bindGraphImportsTx(ctx context.Context, q store.Query, target *Job) error {
 	f := target.graph
-	for _, binding := range f.Plan.Spec.Imports {
+	bindings := append([]graph.ImportBinding{}, f.Plan.Spec.Imports...)
+	reuse := map[string]bool{}
+	for _, b := range f.Plan.Spec.Reuse {
+		bindings = append(bindings, graph.ImportBinding{GrantID: b.GrantID, NodeIDs: []string{b.NodeID}})
+		reuse[b.GrantID] = true
+	}
+	for _, binding := range bindings {
 		var sourceID string
 		if e := q.QueryRowContext(ctx, `SELECT source_job FROM iu_import_grants WHERE goal_id=? AND grant_id=?`, f.GoalID, binding.GrantID).Scan(&sourceID); e != nil {
 			return importFailure("GRANT_MISSING")
@@ -382,6 +389,9 @@ func bindGraphImportsTx(ctx context.Context, q store.Query, target *Job) error {
 			return e
 		}
 		in := grant.Request
+		if reuse[binding.GrantID] != (in.Purpose == "node_result") {
+			return importFailure("GRANT_PURPOSE")
+		}
 		var expires int64
 		if e = q.QueryRowContext(ctx, `SELECT expires_at FROM iu_import_grant_state WHERE goal_id=? AND grant_id=?`, f.GoalID, in.ID).Scan(&expires); e != nil {
 			return e
@@ -397,6 +407,12 @@ func bindGraphImportsTx(ctx context.Context, q store.Query, target *Job) error {
 			return e
 		}
 		for _, nodeID := range binding.NodeIDs {
+			if reuse[binding.GrantID] {
+				if e = freezeReuseOfferTx(ctx, q, source, target, in, nodeID, view, artifacts); e != nil {
+					return e
+				}
+				continue
+			}
 			if e = importCompatible(ctx, q, source, in, f, nodeID); e != nil {
 				return e
 			}
