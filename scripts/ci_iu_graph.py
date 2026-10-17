@@ -13,6 +13,8 @@ import uuid
 
 PREFIX = "github.com/tommyxie2026-tech/computecloud/"
 SERVER_TESTS = [
+    "TestGraphSourceReadIsBoundedDurableAndIdempotent",
+    "TestGraphSourceReadRejectsWrongPlanOrUTF8Boundary",
     "TestReuseSurvivesRestartWithoutNewAttempt",
     "TestReusePinsOriginArtifacts",
     "TestIncrementalEqualsFullRecompute",
@@ -47,12 +49,13 @@ SERVER_TESTS = [
 REQUIRED_TESTS = tuple(
     [PREFIX + "internal/server::" + name for name in SERVER_TESTS]
     + [PREFIX + "internal/graph::" + name for name in (
-        "TestRuleChangeInvalidatesDependentNodes", "TestImportRejectsInvalidOrIncompleteClosure", "TestImportPreservesOriginAndNamespace",
+        "TestCountUnavailableAndWrapperCoverageStayUnknown", "TestContextPolicyV4RejectsUnsupportedTokensAndAttachments", "TestTokenizerChangeRequiresRecount", "TestRequiredContextCannotBeTruncated",
+        "TestCrossChunkReferenceNeedsEvidence", "TestModelSwitchDoesNotReuseTokenIDs", "TestRuleChangeInvalidatesDependentNodes", "TestImportRejectsInvalidOrIncompleteClosure", "TestImportPreservesOriginAndNamespace",
         "TestImportGraphVersionAndCanonicalBindings", "TestCompileContextPreservesSourceAndRequiredRules", "TestContextNeverSilentlyTruncates",
         "TestReconstructSourceValidatesOverlapsAndCoverage", "TestMemoryDeltaRequiresFrozenViewAndCannotSelfVerify",
         "TestMemoryMergeConflictsAndDeduplicates", "TestMemoryInvalidationPropagatesWithoutChangingHistory",
         "TestApplyDeltaPreservesConflictsAndInheritedInvalidity", "TestOutputSchemaRebasesFrozenLocalDefinitions")]
-    + [PREFIX + "internal/iuexperiment::TestIncrementalEvidenceKeepsUnknownCostAndRequiresProvenance", PREFIX + "internal/worker::TestGraphReplayBindingRejectsWorkerDrift", PREFIX + "cmd/iu-experiment::TestCLIProcessTimeoutDrainsWholeGroup",
+    + [PREFIX + "internal/iuexperiment::TestIncrementalEvidenceKeepsUnknownCostAndRequiresProvenance", PREFIX + "internal/worker::TestGraphWorkerRejectsModelOrSerializationDrift", PREFIX + "internal/worker::TestGraphReplayBindingRejectsWorkerDrift", PREFIX + "cmd/iu-experiment::TestCLIProcessTimeoutDrainsWholeGroup",
        PREFIX + "internal/iuexperiment::TestSimulationChecksHealthyAndInjectedFailures",
        PREFIX + "internal/iuexperiment::TestCorrectFinalTotalDoesNotHideCorruptedIntermediateIdentity"]
 )

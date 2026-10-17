@@ -63,3 +63,7 @@
 ## IU-4 实施进度
 
 [v3 增量合同](../contracts/iu-graph-v3.md) 新增显式结果授权、管理员冻结的只读 replay binding、Worker capability/config/policy 复查、独立复用事实和来源 pin。当前代实际输入 key 改变就回退普通 Task；复用节点不制造 Attempt。节点局部 Rules 仅在 v3 支持，全局规则仍必须注入所有节点。Server schema v23。定向 race 已通过；订单双 Worker 对照交 CI 验收，本机进程测试受 CLEANUP_UNCONFIRMED 限制，尚不能声明通过。没有真实模型成本收益结论。
+
+## IU-5A 实施进度
+
+[v4 上下文合同](../contracts/iu-graph-v4.md) 增加必需语义证据/字节预算、固定模型/tokenizer/template/Adapter 的计数 receipt 合同、Worker 实际输入核对与持久有界来源读取。生产 CLI 未通过完整包装计数合同，精确 token 上限仍拒绝，unknown 不变 0；附件只交付设计，未知类型明确拒绝。Server schema v24，CI/最终审查待验收。

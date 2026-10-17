@@ -230,7 +230,7 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 			return fmt.Errorf("GRAPH_COMMAND_PROFILE_UNAVAILABLE")
 		}
 		instruction := n.Instructions + "\nReturn only JSON with version=iu-node-output-v1, values matching the declared ports, and records=[] or unchecked memory records. Declared output ports: " + string(job.JSON(op.Outputs))
-		manifest, e := graph.CompileContext(graph.ContextRequest{Sources: f.Plan.Spec.Sources, Rules: append(append([]graph.Span{}, f.Plan.Spec.Rules...), n.Rules...), Spans: n.Spans, Instructions: instruction, View: view, Inputs: inputs, Model: ex.Model, Parameters: n.Parameters, OutputSchema: graph.OutputSchema(op.Outputs, f.Plan.Spec.Schemas)})
+		manifest, e := graph.CompileContext(graph.ContextRequest{Policy: n.ContextPolicy, Sources: f.Plan.Spec.Sources, Rules: append(append([]graph.Span{}, f.Plan.Spec.Rules...), n.Rules...), Spans: n.Spans, Instructions: instruction, View: view, Inputs: inputs, Model: ex.Model, Parameters: n.Parameters, OutputSchema: graph.OutputSchema(op.Outputs, f.Plan.Spec.Schemas)})
 		if e != nil {
 			j.StopReason = "CONTEXT_INSUFFICIENT"
 			j.ErrorCode = j.StopReason
