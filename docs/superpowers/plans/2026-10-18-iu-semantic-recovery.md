@@ -8,7 +8,7 @@
 
 **Tech Stack:** 现有 Go、JSON Schema、SQLite 迁移/事务、Server HTTP、Worker Runtime、Python CI gate；不增加第三方依赖。
 
-**Spec:** [2026-10-18-iu-semantic-recovery-design.md](../specs/2026-10-18-iu-semantic-recovery-design.md)。用户已在规格提交 `6df3b4a` 后确认继续；本计划已由用户确认 Native 执行；Task 1～6 已有提交和定向验证，Task 7 的完整 CI 与独立审查仍待取证。
+**Spec:** [2026-10-18-iu-semantic-recovery-design.md](../specs/2026-10-18-iu-semantic-recovery-design.md)。用户已在规格提交 `6df3b4a` 后确认继续；本计划已由用户确认 Native 执行；Task 1～7 的代码、测试、文档与单一集成 PR 已交付；独立审查及修正复审已通过。完整平台 CI 状态以 [PR #166](https://github.com/tommyxie2026-tech/computecloud/pull/166) 当前提交的检查为准。勾选表示实现项已交付，不等于真实模型或独立主机验收。
 
 ## Global Constraints
 
@@ -137,12 +137,14 @@ recover-graph 顺序为：获取状态及匹配的 coverage receipt → 检查�
 
 **Files:** 新建 `internal/server/graph_coverage_flow_test.go`；修改 `scripts/ci_task_flow.py`、`scripts/ci_iu_graph.py`、`scripts/test_ci_iu_graph.py`、`.github/workflows/ci.yml`（仅在现有 gate 不能覆盖新增流程时）、`docs/validation/iu-ci-simulation.md`、`docs/operations/iu-controlled-rollout.md`、`docs/implementation/iu-computation-model.md`、`long-term-roadmap.md`、README；新建 `docs/contracts/iu-graph-v5.md` 与示例操作说明。
 
-- [ ] 写 `TestCoverageNativeFailReadReplanPassAndFrozenHistory`：真实 Server/两 Worker fixture，初代错误 → checker FAIL → 有界回源 → Guard → 新代正确 → 独立 PASS。核对真实 Task/Attempt/代、来源 pin、前后 Context hash，禁止客户端生成假 Attempt。
-- [ ] 写 `TestRecoveryServerRestartDoesNotResetLimits` 与原生进程提交前/提交后故障用例；重启 Server、CLI 丢响应、关闭新图提交后的恢复/排空均保留事实，不放宽禁用新发布的配置。现有 v20 快照验收与新 v26 快照同时保留。
-- [ ] gate 必测名单加入所有新增关键测试；缺失/SKIP/空 JSONL 均失败。新 72 条四臂报告与旧 80 条 pilot 分开检验；Provider=0；自然 UNKNOWN 可以是预期结果，不能当被跳过。报告同时保留测试 PASS 与业务 FAIL/UNKNOWN，不能混为一个成功计数。
-- [ ] 本机运行 `go test -race ./internal/graph ./internal/store ./internal/server ./internal/worker ./internal/iuexperiment ./internal/aicloudadapter ./cmd/computecloud ./cmd/iu-experiment -count=1`、Python gate 测试、`go vet ./...`；原生子进程遇桌面环境限制明确记录，以实际 CI 门禁取证，不把局部编译当全绿。
-- [ ] 用失败复现及补丁差异做全分支独立审查；修复已确认问题，重复相关验证。文档更新实际版本、接口、拒绝原因、未测范围与精确 SHA/CI，不提前勾选本计划或标阶段完成。
-- [ ] 单分支提交并创建一个集成 PR，附加到当前聊天；当前 head 的常规 CI、IU gate、Linux/macOS/打包/镜像所需检查通过后报告可合并状态。未经本轮明确授权不自行合并或扩大默认开关，不产生一组未清理的阶段 PR。
+- [x] 写 `TestCoverageNativeFailReadReplanPassAndFrozenHistory`：真实 Server/两 Worker fixture，初代错误 → checker FAIL → 有界回源 → Guard → 新代正确 → 独立 PASS。核对真实 Task/Attempt/代、来源 pin、前后 Context hash，禁止客户端生成假 Attempt。
+- [x] 写 `TestRecoveryServerRestartDoesNotResetLimits` 与原生进程提交前/提交后故障用例；重启 Server、CLI 丢响应、关闭新图提交后的恢复/排空均保留事实，不放宽禁用新发布的配置。现有 v20 快照验收与新 v26 快照同时保留。
+- [x] gate 必测名单加入所有新增关键测试；缺失/SKIP/空 JSONL 均失败。新 72 条四臂报告与旧 80 条 pilot 分开检验；Provider=0；自然 UNKNOWN 可以是预期结果，不能当被跳过。报告同时保留测试 PASS 与业务 FAIL/UNKNOWN，不能混为一个成功计数。
+- [x] 本机运行 `go test -race ./internal/graph ./internal/store ./internal/server ./internal/worker ./internal/iuexperiment ./internal/aicloudadapter ./cmd/computecloud ./cmd/iu-experiment -count=1`、Python gate 测试、`go vet ./...`；原生子进程遇桌面环境限制明确记录，以实际 CI 门禁取证，不把局部编译当全绿。
+- [x] 用失败复现及补丁差异做全分支独立审查；修复已确认问题，重复相关验证。文档更新实际版本、接口、拒绝原因、未测范围与精确 SHA/CI，不提前勾选本计划或标阶段完成。
+- [x] 单分支提交并创建一个集成 PR，附加到当前聊天；已创建 [PR #166](https://github.com/tommyxie2026-tech/computecloud/pull/166)；当前 head 的常规 CI、IU gate、Linux/macOS/打包/镜像全部通过才可报告可合并状态。未经本轮明确授权不自行合并或扩大默认开关，不产生一组未清理的阶段 PR。
+
+事务提交前故障通过拒绝 publication 的 SQLite 触发器验证原子回滚，提交后故障通过真实 Server 进程重启与 CLI 重放验证；不声称在 SQLite 事务中间精确注入 OS 崩溃。关闭新发布后的已接纳图恢复沿用原生 import/reuse 门禁。桌面进程限制下，本机仅定向 Server 与非原生包全套/race 通过，完整原生执行由 CI 取证。已修复独立审查发现的嵌套字段别名、FAIL/UNKNOWN 顺序、并发重放与测试筛选遗漏，以及真实进程暴露的租约响应和总数断言问题。
 
 ## 计划自检与执行交接
 

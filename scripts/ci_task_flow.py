@@ -849,14 +849,15 @@ def main():
                     tasks = dict(database.execute("SELECT state,count(*) FROM tasks GROUP BY state"))
                 if integrity != "ok":
                     raise AssertionError("SQLite integrity check failed")
-                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": (12 if args.workspace_benchmark else 2) + (9 if args.iu_graph_check else 0)}
+                # IU: four canonical + one invalidation + four import/reuse + two coverage generations.
+                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": (12 if args.workspace_benchmark else 2) + (11 if args.iu_graph_check else 0)}
                 if jobs != expected_jobs:
                     raise AssertionError(f"unexpected Job state totals: {jobs}")
                 return {"sqlite_integrity": integrity, "job_states": jobs, "task_states": tasks}
 
             record("shutdown_and_integrity", shutdown_and_integrity)
             report["summary"] = {"status": "PASSED", "steps_passed": len(report["steps"]),
-                                 "successful_jobs": (12 if args.workspace_benchmark else 2) + (9 if args.iu_graph_check else 0), "canceled_jobs": 1, "failed_jobs": 1}
+                                 "successful_jobs": report["steps"][-1]["evidence"]["job_states"]["SUCCEEDED"], "canceled_jobs": 1, "failed_jobs": 1}
     except BaseException as error:
         failure = error
         report["summary"] = {"status": "FAILED", "error": f"{type(error).__name__}: {error}"}

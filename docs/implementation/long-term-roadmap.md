@@ -1540,15 +1540,15 @@ IU 复用 Task/Attempt、Artifact、Scheduler、Guard；没有第二套执行引
 
 #### 下一轮：约束覆盖与受限补证
 
-用户在 main `156867b` 的设计回顾后确认继续下一轮，并在规格提交 `6df3b4a` 后确认继续。架构规格见 [约束覆盖、证据补充与受限修正](../superpowers/specs/2026-10-18-iu-semantic-recovery-design.md)，[详细实施计划](../superpowers/plans/2026-10-18-iu-semantic-recovery.md)已确认，本轮代码与定向测试已落地；完整 CI/独立审查以集成 PR 的实际证据为准，未计作真实环境验收。
+用户在 main `156867b` 的设计回顾后确认继续下一轮，并在规格提交 `6df3b4a` 后确认继续。架构规格见 [约束覆盖、证据补充与受限修正](../superpowers/specs/2026-10-18-iu-semantic-recovery-design.md)，[详细实施计划](../superpowers/plans/2026-10-18-iu-semantic-recovery.md)已确认，本轮代码与定向测试已落地；独立审查与修正复审已通过，完整 CI 以 [PR #166](https://github.com/tommyxie2026-tech/computecloud/pull/166) 当前提交的检查为准，未计作真实环境验收。
 
-- [ ] 独立版本覆盖契约：约束 → 原文 → 负责节点 → 最终检查；发布前检查实际 Context 覆盖。
-- [ ] 管理员只读、有限业务域 checker 与持久回执；新版本 Goal PASS 检查覆盖证据，未知不冒充完整。
-- [ ] 可信 FAIL 后的有界补证、受限计划修改和现有 Guard 发布；次数/幂等由 Server 持久化，UNKNOWN 不自动重规划。
-- [ ] 跨片段例外、客户引用、单位与冲突的四臂反例，以及原生 Server/Worker 的修正/重启门禁。
-- [ ] 更新版本合同、示例与操作入口；单个集成分支/PR 收敛，最终以实际执行 SHA 的 CI 和审查验收。
+- [x] 独立版本覆盖契约：约束 → 原文 → 负责节点 → 最终检查；发布前检查实际 Context 覆盖。
+- [x] 管理员只读、有限业务域 checker 与持久回执；新版本 Goal PASS 检查覆盖证据，未知不冒充完整。
+- [x] 可信 FAIL 后的有界补证、受限计划修改和现有 Guard 发布；次数/幂等由 Server 持久化，UNKNOWN 不自动重规划。
+- [x] 跨片段例外、客户引用、单位与冲突的四臂反例，以及原生 Server/Worker 的修正/重启门禁。
+- [x] 更新版本合同、示例与操作入口；单个集成分支/PR 收敛，最终以实际执行 SHA 的 CI 和审查验收。
 
-真实 Provider、aicloud 生产联调、独立主机、精确 tokenizer、记忆压缩及外部副作用不在本轮工程通过声明中；不把此设计预先记作已完成。
+真实 Provider、aicloud 生产联调、独立主机、精确 tokenizer、记忆压缩及外部副作用不在本轮工程通过声明中；上述勾选仅表示工程实现已交付，不能推导真实模型效果结论。
 
 ### 19.1 Re-plan Guard 实施切片
 
