@@ -8,7 +8,8 @@ const browser = await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_
 const context = await browser.newContext(mode==='rotated' ? {storageState:path.join(path.dirname(specFile),'old-web-session.json')} : {});
 const page = await context.newPage();
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
-const checks=[];
+const checks=[];const failures=[];
+page.on('response',async r=>{if(r.status()>=400){let code='';try{code=(await r.json()).error?.code||''}catch{};failures.push({path:new URL(r.url()).pathname,status:r.status(),code})}});
 const streams=[];const activeStreams=new Set();
 page.on('request',r=>{if(new URL(r.url()).pathname.endsWith('/events/stream')){streams.push(r.url());activeStreams.add(r)}});
 page.on('requestfinished',r=>activeStreams.delete(r));page.on('requestfailed',r=>activeStreams.delete(r));
@@ -55,5 +56,5 @@ try {
   await login(process.env.TEST_WEB_PASSWORD || 'admin');await expect(page.getByRole('button',{name:'退出登录'})).toBeVisible();await page.getByRole('button',{name:'退出登录'}).click();await expect(page.getByRole('button',{name:'登录',exact:true})).toBeVisible();checks.push('logout');
   if(mode==='primary'){await login('admin');await expect(page.getByRole('button',{name:'退出登录'})).toBeVisible();await context.storageState({path:path.join(path.dirname(specFile),'old-web-session.json')});fs.chmodSync(path.join(path.dirname(specFile),'old-web-session.json'),0o600)}
   expect(errors).toEqual([]);console.log(JSON.stringify({status:'PASSED',checks,real_model_calls:false}));
-} catch(e) {await page.screenshot({path:outputDir+'/failure.png',fullPage:true});throw e;}
+} catch(e) {fs.writeFileSync(outputDir+'/failure.json',JSON.stringify({checks,failures:failures.slice(-30),active_streams:activeStreams.size,error:String(e)},null,2));await page.screenshot({path:outputDir+'/failure.png',fullPage:true});throw e;}
 finally {await browser.close();}

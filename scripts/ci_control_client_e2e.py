@@ -7,6 +7,7 @@ from pathlib import Path
 import secrets
 import signal
 import socket
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -163,7 +164,27 @@ def main():
             if args.web_auth:
                 spec_path = write("web-job.json", spec)
                 browser_script = e2e.parent / "web-browser-e2e.mjs"
-                browser_output = run("node", str(browser_script), "http://"+http_addr, str(spec_path), str(output.parent), timeout=120)
+                try:
+                    browser_output = run("node", str(browser_script), "http://"+http_addr, str(spec_path), str(output.parent), timeout=120)
+                except BaseException:
+                    # Fixture-only diagnostics: no prompts, keys, cookies or configuration.
+                    try:
+                        connection = sqlite3.connect(f"file:{root / 'server' / 'state.db'}?mode=ro", uri=True, timeout=2)
+                        snapshots = {}
+                        for table, query in {
+                            "jobs": "SELECT state,count(*) FROM jobs GROUP BY state",
+                            "tasks": "SELECT state,count(*) FROM tasks GROUP BY state",
+                            "attempts": "SELECT released,count(*) FROM attempts GROUP BY released",
+                            "commands": "SELECT kind,acked,count(*) FROM commands GROUP BY kind,acked",
+                        }.items(): snapshots[table] = connection.execute(query).fetchall()
+                        connection.close()
+                        (output.parent / "fixture-state.json").write_text(json.dumps(snapshots, indent=2))
+                    except Exception: pass
+                    # Dump only our isolated fixture Server to diagnose blocked goroutines.
+                    if processes["server"].poll() is None:
+                        processes["server"].send_signal(signal.SIGQUIT)
+                        processes["server"].wait(timeout=10)
+                    raise
                 evidence = json.loads(browser_output.splitlines()[-1])
                 # Re-start with configured secret-file password; default password must stop working.
                 process = processes["server"]
