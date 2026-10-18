@@ -110,6 +110,8 @@ def build_report(stages, events, simulation, process_report=None):
                     and all(c.get("generation")==2 and c.get("origin_pins",0)>0
                             and c.get("attempts")==c.get("tasks")== (1 if c.get("mode")=="memory" else 0)
                             and c.get("source_output")==c.get("recovered_output")==6000
+                            and c.get("attempts_before_restart")==0
+                            and "IMPORT_GRANT_NOT_USABLE" in c.get("revoked_denial","")
                             and all(c.get(key) is True for key in ("grant_consumed","server_process_restart","submissions_disabled_recovery",
                                 "publication_idempotent","revoked_denied","verification_authorized","submitter_verification_denied","source_read_receipt_preserved","origin_forwarded"))
                             for c in recovery))

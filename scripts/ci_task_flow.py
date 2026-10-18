@@ -608,29 +608,39 @@ def main():
                                 "strategy_delta":{"changed_dimensions":["strategy"],"summary":"explicit authorized next generation"},
                                 "progress":{"accepted_checks":1,"failed_checks":1,"unknown_checks":1,"resolved_assumptions":1,"unresolved_blockers":1}},"job_spec":spec}
                             return write("proposal-"+proposal_id+".json",proposal)
-                        revoked_denied=True
-                        if mode=="memory":
-                            revoked_spec=json.loads(json.dumps(target_spec));revoked_spec["imports"][0]["grant_id"]="revoked_memory"
-                            revoked_proposal=prepare_publication(revoked_spec,"revoked_memory","rejected-memory")
-                            run_command(binary,"job","revoke-import","--id",source_id,"--key","revoked_memory","--config",eval_config)
-                            revoked_denied=False
-                            try:run_command(binary,"job","propose-graph","--id",source_id,"--file",revoked_proposal,"--config",eval_config)
-                            except RuntimeError as error:
-                                if "IMPORT_GRANT_NOT_USABLE" not in str(error):raise
-                                revoked_denied=True
-                            if not revoked_denied:raise AssertionError("revoked grant published")
-                            with sqlite3.connect(f"file:{root/'server'/'state.db'}?mode=ro",uri=True) as db:
-                                if db.execute("SELECT active_graph_generation FROM goals WHERE id=?",(source_status["goal_id"],)).fetchone()[0]!=1:raise AssertionError("rejected import partially published")
+                        revoked_id="revoked_"+mode
+                        revoked_spec=json.loads(json.dumps(target_spec))
+                        revoked_spec["imports" if mode=="memory" else "reuse"][0]["grant_id"]=revoked_id
+                        revoked_proposal=prepare_publication(revoked_spec,revoked_id,"rejected-"+mode)
+                        run_command(binary,"job","revoke-import","--id",source_id,"--key",revoked_id,"--config",eval_config)
+                        revoked_denied=False;revoked_denial=""
+                        try:run_command(binary,"job","propose-graph","--id",source_id,"--file",revoked_proposal,"--config",eval_config)
+                        except RuntimeError as error:
+                            if "IMPORT_GRANT_NOT_USABLE" not in str(error):raise
+                            revoked_denied=True;revoked_denial=str(error)
+                        if not revoked_denied:raise AssertionError("revoked grant published")
+                        with sqlite3.connect(f"file:{root/'server'/'state.db'}?mode=ro",uri=True) as db:
+                            if db.execute("SELECT active_graph_generation FROM goals WHERE id=?",(source_status["goal_id"],)).fetchone()[0]!=1:raise AssertionError("rejected import partially published")
                         proposal_file=prepare_publication(target_spec,grant_id,"accepted-"+mode)
-                        publication=json.loads(run_command(binary,"job","propose-graph","--id",source_id,"--file",proposal_file,"--config",eval_config))
-                        target_id=publication["job"]["job_id"]
-                        replay=json.loads(run_command(binary,"job","propose-graph","--id",source_id,"--file",proposal_file,"--config",eval_config))
-                        if replay["job"]["job_id"]!=target_id or replay["decision"]["existing"] is not True:raise AssertionError("publication replay duplicated a job")
-                        # Disable new graph submissions, then hard-restart the Server.
-                        # The already accepted graph must still finish without new duplicate attempts.
-                        server_data["server"]["jobs"]["graphs_enabled"]=False
-                        Path(server_config).write_text(json.dumps(server_data));old_pid=processes["server"].pid
-                        stop("server",hard=True);start("server","server",server_config)
+                        stopped=[]
+                        try:
+                            if mode=="memory":
+                                for worker_name in worker_configs:
+                                    stop(worker_name);stopped.append(worker_name)
+                            publication=json.loads(run_command(binary,"job","propose-graph","--id",source_id,"--file",proposal_file,"--config",eval_config))
+                            target_id=publication["job"]["job_id"]
+                            replay=json.loads(run_command(binary,"job","propose-graph","--id",source_id,"--file",proposal_file,"--config",eval_config))
+                            if replay["job"]["job_id"]!=target_id or replay["decision"]["existing"] is not True:raise AssertionError("publication replay duplicated a job")
+                            before_restart=attempt_snapshot(target_id)
+                            if before_restart:raise AssertionError("target executed before the recovery boundary")
+                            # Disable new graph submissions, then hard-restart the Server.
+                            # The already accepted graph must still finish without new duplicate attempts.
+                            server_data["server"]["jobs"]["graphs_enabled"]=False
+                            Path(server_config).write_text(json.dumps(server_data));old_pid=processes["server"].pid
+                            stop("server",hard=True);start("server","server",server_config)
+                        finally:
+                            for worker_name in stopped:
+                                start(worker_name,"worker",worker_configs[worker_name])
                         if wait_job(target_id)["state"]!="SUCCEEDED":raise AssertionError("accepted graph did not recover with submissions disabled")
                         target_status=json.loads(cli("job","graph","--id",target_id));attempts=attempt_snapshot(target_id)
                         expected_attempts=1 if mode=="memory" else 0
@@ -662,7 +672,7 @@ def main():
                         run_command(binary,"job","evaluate-graph","--id",target_id,"--file",evaluation,"--config",eval_config)
                         import_recovery.append({"mode":mode,"source_job":source_id,"target_job":target_id,"generation":2,"grant_consumed":True,
                             "server_process_restart":processes["server"].pid!=old_pid,"submissions_disabled_recovery":True,"publication_idempotent":True,
-                            "origin_pins":pins,"attempts":len(attempts),"tasks":len(job_tasks(target_id)),"revoked_denied":revoked_denied,
+                            "origin_pins":pins,"attempts_before_restart":len(before_restart),"revoked_denial":revoked_denial,"attempts":len(attempts),"tasks":len(job_tasks(target_id)),"revoked_denied":revoked_denied,
                             "verification_authorized":True,"submitter_verification_denied":verify_denied,"source_read_receipt_preserved":True,
                             "origin_forwarded":True,"source_output":6000,"recovered_output":output["outputs"]["a/result"]})
                     return {"real_model_calls":False,"cases":results,"server_processes":1,"worker_processes":2,
