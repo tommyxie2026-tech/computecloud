@@ -10,7 +10,8 @@
     "export:web": "expo export --platform web --output-dir dist",
     "check": "npm run typecheck && npm run export:web",
     "test:web:api": "node scripts/web-api-test.mjs && node scripts/web-snapshot-test.mjs && node scripts/web-read-recovery-test.mjs",
-    "test:web": "node scripts/web-browser-e2e.mjs"
+    "test:web": "node scripts/web-browser-e2e.mjs",
+    "test:mobile": "node scripts/mobile-session-test.mjs && node scripts/mobile-gate-test.mjs && node scripts/mobile-observation-test.mjs && node scripts/mobile-strictmode-test.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@playwright/test": "1.58.2",
     "@types/react": "~19.2.0",
+    "react-test-renderer": "19.2.3",
     "typescript": "~5.9.2"
   }
 }
