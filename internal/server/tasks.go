@@ -46,7 +46,18 @@ func dbErr(e error) error {
 		code = sqliteError.Code()
 	}
 	// Never log SQL text, parameters, credential values, or the raw driver error.
-	slog.Warn("storage operation failed", "error_type", fmt.Sprintf("%T", e), "sqlite_code", code)
+	errorClass := "OTHER"
+	switch {
+	case errors.Is(e, context.Canceled):
+		errorClass = "REQUEST_CANCELED"
+	case errors.Is(e, context.DeadlineExceeded):
+		errorClass = "REQUEST_DEADLINE"
+	case errors.Is(e, sql.ErrTxDone):
+		errorClass = "TRANSACTION_CLOSED"
+	case errors.Is(e, sql.ErrConnDone):
+		errorClass = "CONNECTION_CLOSED"
+	}
+	slog.Warn("storage operation failed", "error_type", fmt.Sprintf("%T", e), "sqlite_code", code, "error_class", errorClass)
 	return status.Error(codes.Unavailable, "storage operation failed")
 }
 func readTask(ctx context.Context, q store.Query, id string) (*pb.Task, string, error) {

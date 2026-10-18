@@ -61,8 +61,8 @@ export class ControlAPI {
     return response;
   }
 
-  private async json<T>(path: string): Promise<T> {
-    return await (await this.fetch(path)).json() as T;
+  private async json<T>(path: string, signal?: AbortSignal): Promise<T> {
+    return await (await this.fetch(path, { signal })).json() as T;
   }
 
   private async writeJSON<T>(path: string, method: string, body: unknown, leaseToken?: string): Promise<T> {
@@ -113,17 +113,17 @@ export class ControlAPI {
     return this.json("/v1/workers" + suffix);
   }
 
-  async jobSnapshot(jobID: string): Promise<JobSnapshot> {
+  async jobSnapshot(jobID: string, signal?: AbortSignal): Promise<JobSnapshot> {
     const id = encodeURIComponent(jobID);
     const [job, tasks, sessions, approvals, artifacts, events] = await Promise.all([
-      this.json<JobDetail>(`/v1/jobs/${id}`),
-      this.json<{ tasks: TaskView[] }>(`/v1/jobs/${id}/tasks?limit=100`),
-      this.json<{ sessions: SessionView[] }>(`/v1/jobs/${id}/sessions`),
-      this.json<{ approvals: ApprovalView[] }>(`/v1/jobs/${id}/approvals`),
-      this.json<{ artifacts: ArtifactView[] }>(`/v1/jobs/${id}/artifacts?limit=100`),
-      this.json<{ events: JobEvent[] }>(`/v1/jobs/${id}/events?after_seq=0&limit=500`),
+      this.json<JobDetail>(`/v1/jobs/${id}`, signal),
+      this.json<{ tasks: TaskView[] }>(`/v1/jobs/${id}/tasks?limit=100`, signal),
+      this.json<{ sessions: SessionView[] }>(`/v1/jobs/${id}/sessions`, signal),
+      this.json<{ approvals: ApprovalView[] }>(`/v1/jobs/${id}/approvals`, signal),
+      this.json<{ artifacts: ArtifactView[] }>(`/v1/jobs/${id}/artifacts?limit=100`, signal),
+      this.json<{ events: JobEvent[] }>(`/v1/jobs/${id}/events?after_seq=0&limit=500`, signal),
     ]);
-    const goal = job.links?.goal ? await this.json<GoalView>(`/v1/jobs/${id}/goal`) : undefined;
+    const goal = job.links?.goal ? await this.json<GoalView>(`/v1/jobs/${id}/goal`, signal) : undefined;
     return {
       goal,
       job,

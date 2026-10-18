@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"strings"
 	"testing"
@@ -23,5 +24,15 @@ func TestStorageErrorDiagnosticDoesNotLogRawValues(t *testing.T) {
 	}
 	if strings.Contains(text, "DO_NOT_LOG") {
 		t.Fatal("raw error leaked")
+	}
+}
+func TestStorageErrorDiagnosticClassifiesCancellation(t *testing.T) {
+	var output bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	defer slog.SetDefault(old)
+	dbErr(context.Canceled)
+	if !strings.Contains(output.String(), "error_class=REQUEST_CANCELED") {
+		t.Fatal("cancellation not classified")
 	}
 }

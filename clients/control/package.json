@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "export:web": "expo export --platform web --output-dir dist",
     "check": "npm run typecheck && npm run export:web",
-    "test:web:api": "node scripts/web-api-test.mjs && node scripts/web-snapshot-test.mjs",
+    "test:web:api": "node scripts/web-api-test.mjs && node scripts/web-snapshot-test.mjs && node scripts/web-read-recovery-test.mjs",
     "test:web": "node scripts/web-browser-e2e.mjs"
   },
   "dependencies": {

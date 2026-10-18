@@ -12,6 +12,7 @@ import {
 } from "react-native";
 
 import { mergeJobSnapshot, jobFromHash, jobHash } from "./src/webSnapshot";
+import { readSnapshotWithRetry } from "./src/readRecovery";
 import { WebGate } from "./src/Login";
 import type { WebSession } from "./src/webAuth";
 import { ControlAPI, isSnapshotReset } from "./src/api";
@@ -230,7 +231,9 @@ function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSessi
     setBusy(true);
     setError("");
     try {
-      const initial = await api.jobSnapshot(jobID);
+      const initial = await readSnapshotWithRetry(api, jobID, controller.signal, () => { if (!controller.signal.aborted) { setBusy(false); setError("连接暂时中断，正在重新获取任务状态…"); } });
+      if (controller.signal.aborted) return;
+      setError("");
       setSnapshot(initial);
       setBusy(false);
       let cursor = initial.events.at(-1)?.seq ?? "0";
@@ -252,7 +255,8 @@ function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSessi
         }
         if (controller.signal.aborted) return;
         try {
-          const latest = await api.jobSnapshot(jobID);
+          const latest = await readSnapshotWithRetry(api, jobID, controller.signal, () => { if (!controller.signal.aborted) setError("连接暂时中断，正在恢复任务观察…"); });
+          setError("");
           if (controller.signal.aborted) return;
           setSnapshot(current => mergeJobSnapshot(current, latest));
           if (terminal.has(latest.job.state)) return;
