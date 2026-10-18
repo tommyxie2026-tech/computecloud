@@ -107,3 +107,13 @@ func TestCoverageCheckerCustomerExceptionAndDuplicate(t *testing.T) {
 		})
 	}
 }
+func TestCoverageCheckerRejectsCaseAliasFields(t *testing.T) {
+	for _, raw := range []string{`{"order_id":"a","customer_id":"c","paid_cents":6000,"PAID_CENTS":1,"is_special":false}`, `{"order_id":"a","customer_id":"c","PAID_CENTS":6000,"is_special":false}`} {
+		s, v := orderCoverageFixture()
+		s.Sources[1].Text = raw
+		s.Sources[1].SHA256 = Hash([]byte(raw))
+		if r := coverageRun(s, v); r.Verdict != "UNKNOWN" {
+			t.Fatalf("ambiguous case alias not unknown: %+v", r)
+		}
+	}
+}

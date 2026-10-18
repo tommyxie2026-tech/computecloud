@@ -3,10 +3,13 @@ package graph
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/jsonutil"
 	"math"
+	"reflect"
 	"time"
+	"unicode/utf8"
 )
 
 var OrderCoverageChecks = []string{"source_identity", "source_fields", "customer_grouping", "threshold_once", "exception_rules", "currency_unit"}
@@ -98,7 +101,7 @@ func RunCoverageVerifier(ctx context.Context, p CoverageVerifierProfile, s Spec,
 		return unknown("GOAL_SOURCE_MISSING")
 	}
 	var g coverageGoal
-	if jsonutil.Decode([]byte(goalSource.Text), &g) != nil || g.Version != "iu-orders-goal-v1" || len(g.Currency) != 3 || g.Unit != "cent" || len(g.Orders) < 1 || len(g.Orders) > 32 || g.Exceptions == nil {
+	if decodeCoverageJSON([]byte(goalSource.Text), &g) != nil || g.Version != "iu-orders-goal-v1" || len(g.Currency) != 3 || g.Unit != "cent" || len(g.Orders) < 1 || len(g.Orders) > 32 || g.Exceptions == nil {
 		return unknown("GOAL_UNSUPPORTED")
 	}
 	required := map[string]bool{}
@@ -132,7 +135,7 @@ func RunCoverageVerifier(ctx context.Context, p CoverageVerifierProfile, s Spec,
 			return false
 		}
 		used[id] = true
-		return jsonutil.Decode([]byte(src.Text), target) == nil
+		return decodeCoverageJSON([]byte(src.Text), target) == nil
 	}
 	originals := map[string]CoverageOrder{}
 	for _, id := range g.Orders {
@@ -193,7 +196,7 @@ func RunCoverageVerifier(ctx context.Context, p CoverageVerifierProfile, s Spec,
 		for _, out := range b.Outputs {
 			raw, ok := values[out.Node+"/"+out.Port]
 			var actual CoverageOrderResult
-			if !ok || len(raw) > 64<<10 || jsonutil.Decode(raw, &actual) != nil || actual.Total == nil || actual.Orders == nil {
+			if !ok || len(raw) > 64<<10 || decodeCoverageJSON(raw, &actual) != nil || actual.Total == nil || actual.Orders == nil {
 				verdict = "UNKNOWN"
 				reason = "OUTPUT_INCOMPLETE"
 				break
@@ -260,4 +263,26 @@ func RunCoverageVerifier(ctx context.Context, p CoverageVerifierProfile, s Spec,
 		Result  []CoverageCheckResult
 	}{p, c.SHA256, s.Sources, r.Checks}))
 	return r
+}
+
+// Go's decoder accepts case-insensitive aliases; this business contract does not.
+func decodeCoverageJSON(raw []byte, target any) error {
+	if !utf8.Valid(raw) {
+		return fmt.Errorf("invalid UTF-8")
+	}
+	var fields map[string]json.RawMessage
+	if e := jsonutil.Decode(raw, &fields); e != nil {
+		return e
+	}
+	typ := reflect.TypeOf(target).Elem()
+	if typ.Kind() != reflect.Struct || len(fields) != typ.NumField() {
+		return fmt.Errorf("coverage fields incomplete or unknown")
+	}
+	for i := 0; i < typ.NumField(); i++ {
+		name := typ.Field(i).Tag.Get("json")
+		if _, ok := fields[name]; !ok {
+			return fmt.Errorf("coverage field name mismatch")
+		}
+	}
+	return jsonutil.Decode(raw, target)
 }

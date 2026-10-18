@@ -1,0 +1,380 @@
+{
+  "version": "iu-graph-v5",
+  "project_id": "demo",
+  "workspace": {
+    "repository_ref": "demo-repo",
+    "base_commit": "006792b0994f7fcc67588684053b8f8e6a965785"
+  },
+  "schemas": {
+    "coverage-result-v1": {
+      "type": "object"
+    }
+  },
+  "evaluator": {
+    "profile": "orders-proof",
+    "version": "1"
+  },
+  "sources": [
+    {
+      "id": "goal",
+      "text": "{\"version\":\"iu-orders-goal-v1\",\"currency\":\"CNY\",\"unit\":\"cent\",\"order_source_ids\":[\"one\",\"two\"],\"rule_source_id\":\"rule\",\"exception_source_ids\":[],\"required_checks\":[\"source_identity\",\"source_fields\",\"customer_grouping\",\"threshold_once\",\"exception_rules\",\"currency_unit\"]}",
+      "sha256": "85746cad2b1744ebf067d3faed775e84121f96132e6823aae49662f0fc42d320",
+      "role": "user",
+      "message_index": 0
+    },
+    {
+      "id": "one",
+      "text": "{\"order_id\":\"a\",\"customer_id\":\"c\",\"paid_cents\":6000,\"is_special\":false}",
+      "sha256": "9e68f345df43ae85630f8b66e5a186fa5f5e5f11d2dfd864aafc41f7fc2b6126",
+      "role": "user",
+      "message_index": 1
+    },
+    {
+      "id": "two",
+      "text": "{\"order_id\":\"b\",\"customer_id\":\"c\",\"paid_cents\":6000,\"is_special\":false}",
+      "sha256": "03a83d52ac9b26fed712676cd1f72e41e2b7ac458b99dced08e9b7f1d1aa3a97",
+      "role": "user",
+      "message_index": 2
+    },
+    {
+      "id": "rule",
+      "text": "{\"threshold_cents\":10000,\"discount_cents\":1000,\"max_discounts_per_customer\":1}",
+      "sha256": "9d62eb90dbb4a17404d25bbe7bc0141e885a08869ce6ab00d0b0719ad32eaea7",
+      "role": "user",
+      "message_index": 3
+    }
+  ],
+  "rules": [],
+  "operators": [
+    {
+      "id": "extract",
+      "version": "1",
+      "kind": "agent",
+      "execution": {
+        "runtime_profile": "codex_exec",
+        "model": "REPLACE_WITH_MODEL",
+        "credential_ref": "codex-account",
+        "policy_ref": "inspect",
+        "acceptance_profile": "basic",
+        "replay_safe": true
+      },
+      "outputs": [
+        {
+          "name": "result",
+          "schema": "coverage-result-v1"
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "extract",
+      "operator": "extract",
+      "instructions": "Return all original order fields, currency, unit and independently calculated total_cents in the result port; preserve duplicates only once.",
+      "spans": [
+        {
+          "source": "goal",
+          "start": 0,
+          "end": 270,
+          "sha256": "85746cad2b1744ebf067d3faed775e84121f96132e6823aae49662f0fc42d320"
+        },
+        {
+          "source": "one",
+          "start": 0,
+          "end": 71,
+          "sha256": "9e68f345df43ae85630f8b66e5a186fa5f5e5f11d2dfd864aafc41f7fc2b6126"
+        },
+        {
+          "source": "two",
+          "start": 0,
+          "end": 71,
+          "sha256": "03a83d52ac9b26fed712676cd1f72e41e2b7ac458b99dced08e9b7f1d1aa3a97"
+        },
+        {
+          "source": "rule",
+          "start": 0,
+          "end": 78,
+          "sha256": "9d62eb90dbb4a17404d25bbe7bc0141e885a08869ce6ab00d0b0719ad32eaea7"
+        }
+      ]
+    }
+  ],
+  "edges": [],
+  "outputs": [
+    {
+      "node": "extract",
+      "port": "result"
+    }
+  ],
+  "limits": {
+    "parallelism": 2,
+    "timeout_seconds": 300,
+    "max_attempts_per_task": 1,
+    "max_replans": 2
+  },
+  "coverage": {
+    "version": "iu-coverage-v1",
+    "goal_source_id": "goal",
+    "goal_spec_sha256": "85746cad2b1744ebf067d3faed775e84121f96132e6823aae49662f0fc42d320",
+    "profile": "orders",
+    "profile_version": "1",
+    "scope": "orders",
+    "obligations": [
+      {
+        "constraint_id": "source_identity",
+        "sources": [
+          {
+            "source": "goal",
+            "start": 0,
+            "end": 270,
+            "sha256": "85746cad2b1744ebf067d3faed775e84121f96132e6823aae49662f0fc42d320"
+          },
+          {
+            "source": "one",
+            "start": 0,
+            "end": 71,
+            "sha256": "9e68f345df43ae85630f8b66e5a186fa5f5e5f11d2dfd864aafc41f7fc2b6126"
+          },
+          {
+            "source": "two",
+            "start": 0,
+            "end": 71,
+            "sha256": "03a83d52ac9b26fed712676cd1f72e41e2b7ac458b99dced08e9b7f1d1aa3a97"
+          },
+          {
+            "source": "rule",
+            "start": 0,
+            "end": 78,
+            "sha256": "9d62eb90dbb4a17404d25bbe7bc0141e885a08869ce6ab00d0b0719ad32eaea7"
+          }
+        ],
+        "node_ids": [
+          "extract"
+        ],
+        "check_id": "source_identity"
+      },
+      {
+        "constraint_id": "source_fields",
+        "sources": [
+          {
+            "source": "goal",
+            "start": 0,
+            "end": 270,
+            "sha256": "85746cad2b1744ebf067d3faed775e84121f96132e6823aae49662f0fc42d320"
+          },
+          {
+            "source": "one",
+            "start": 0,
+            "end": 71,
+            "sha256": "9e68f345df43ae85630f8b66e5a186fa5f5e5f11d2dfd864aafc41f7fc2b6126"
+          },
+          {
+            "source": "two",
+            "start": 0,
+            "end": 71,
+            "sha256": "03a83d52ac9b26fed712676cd1f72e41e2b7ac458b99dced08e9b7f1d1aa3a97"
+          },
+          {
+            "source": "rule",
+            "start": 0,
+            "end": 78,
+            "sha256": "9d62eb90dbb4a17404d25bbe7bc0141e885a08869ce6ab00d0b0719ad32eaea7"
+          }
+        ],
+        "node_ids": [
+          "extract"
+        ],
+        "check_id": "source_fields"
+      },
+      {
+        "constraint_id": "customer_grouping",
+        "sources": [
+          {
+            "source": "goal",
+            "start": 0,
+            "end": 270,
+            "sha256": "85746cad2b1744ebf067d3faed775e84121f96132e6823aae49662f0fc42d320"
+          },
+          {
+            "source": "one",
+            "start": 0,
+            "end": 71,
+            "sha256": "9e68f345df43ae85630f8b66e5a186fa5f5e5f11d2dfd864aafc41f7fc2b6126"
+          },
+          {
+            "source": "two",
+            "start": 0,
+            "end": 71,
+            "sha256": "03a83d52ac9b26fed712676cd1f72e41e2b7ac458b99dced08e9b7f1d1aa3a97"
+          },
+          {
+            "source": "rule",
+            "start": 0,
+            "end": 78,
+            "sha256": "9d62eb90dbb4a17404d25bbe7bc0141e885a08869ce6ab00d0b0719ad32eaea7"
+          }
+        ],
+        "node_ids": [
+          "extract"
+        ],
+        "check_id": "customer_grouping"
+      },
+      {
+        "constraint_id": "threshold_once",
+        "sources": [
+          {
+            "source": "goal",
+            "start": 0,
+            "end": 270,
+            "sha256": "85746cad2b1744ebf067d3faed775e84121f96132e6823aae49662f0fc42d320"
+          },
+          {
+            "source": "one",
+            "start": 0,
+            "end": 71,
+            "sha256": "9e68f345df43ae85630f8b66e5a186fa5f5e5f11d2dfd864aafc41f7fc2b6126"
+          },
+          {
+            "source": "two",
+            "start": 0,
+            "end": 71,
+            "sha256": "03a83d52ac9b26fed712676cd1f72e41e2b7ac458b99dced08e9b7f1d1aa3a97"
+          },
+          {
+            "source": "rule",
+            "start": 0,
+            "end": 78,
+            "sha256": "9d62eb90dbb4a17404d25bbe7bc0141e885a08869ce6ab00d0b0719ad32eaea7"
+          }
+        ],
+        "node_ids": [
+          "extract"
+        ],
+        "check_id": "threshold_once"
+      },
+      {
+        "constraint_id": "exception_rules",
+        "sources": [
+          {
+            "source": "goal",
+            "start": 0,
+            "end": 270,
+            "sha256": "85746cad2b1744ebf067d3faed775e84121f96132e6823aae49662f0fc42d320"
+          },
+          {
+            "source": "one",
+            "start": 0,
+            "end": 71,
+            "sha256": "9e68f345df43ae85630f8b66e5a186fa5f5e5f11d2dfd864aafc41f7fc2b6126"
+          },
+          {
+            "source": "two",
+            "start": 0,
+            "end": 71,
+            "sha256": "03a83d52ac9b26fed712676cd1f72e41e2b7ac458b99dced08e9b7f1d1aa3a97"
+          },
+          {
+            "source": "rule",
+            "start": 0,
+            "end": 78,
+            "sha256": "9d62eb90dbb4a17404d25bbe7bc0141e885a08869ce6ab00d0b0719ad32eaea7"
+          }
+        ],
+        "node_ids": [
+          "extract"
+        ],
+        "check_id": "exception_rules"
+      },
+      {
+        "constraint_id": "currency_unit",
+        "sources": [
+          {
+            "source": "goal",
+            "start": 0,
+            "end": 270,
+            "sha256": "85746cad2b1744ebf067d3faed775e84121f96132e6823aae49662f0fc42d320"
+          },
+          {
+            "source": "one",
+            "start": 0,
+            "end": 71,
+            "sha256": "9e68f345df43ae85630f8b66e5a186fa5f5e5f11d2dfd864aafc41f7fc2b6126"
+          },
+          {
+            "source": "two",
+            "start": 0,
+            "end": 71,
+            "sha256": "03a83d52ac9b26fed712676cd1f72e41e2b7ac458b99dced08e9b7f1d1aa3a97"
+          },
+          {
+            "source": "rule",
+            "start": 0,
+            "end": 78,
+            "sha256": "9d62eb90dbb4a17404d25bbe7bc0141e885a08869ce6ab00d0b0719ad32eaea7"
+          }
+        ],
+        "node_ids": [
+          "extract"
+        ],
+        "check_id": "currency_unit"
+      }
+    ],
+    "checks": [
+      {
+        "check_id": "source_identity",
+        "outputs": [
+          {
+            "node": "extract",
+            "port": "result"
+          }
+        ]
+      },
+      {
+        "check_id": "source_fields",
+        "outputs": [
+          {
+            "node": "extract",
+            "port": "result"
+          }
+        ]
+      },
+      {
+        "check_id": "customer_grouping",
+        "outputs": [
+          {
+            "node": "extract",
+            "port": "result"
+          }
+        ]
+      },
+      {
+        "check_id": "threshold_once",
+        "outputs": [
+          {
+            "node": "extract",
+            "port": "result"
+          }
+        ]
+      },
+      {
+        "check_id": "exception_rules",
+        "outputs": [
+          {
+            "node": "extract",
+            "port": "result"
+          }
+        ]
+      },
+      {
+        "check_id": "currency_unit",
+        "outputs": [
+          {
+            "node": "extract",
+            "port": "result"
+          }
+        ]
+      }
+    ],
+    "sha256": "65696bc542c913e126cf6b0463e37ae6c574c92122daa9b29df91f21f90bb63a"
+  }
+}
