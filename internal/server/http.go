@@ -105,6 +105,7 @@ func (s *Server) HTTPHandler() http.Handler {
 	mux.HandleFunc("GET /v1/jobs/{id}/artifacts/{artifact}/review", s.httpArtifactReview)
 	mux.HandleFunc("GET /v1/jobs/{id}/goal", s.httpJobGoal)
 	mux.HandleFunc("POST /v1/graphs", s.httpSubmitGraph)
+	mux.HandleFunc("POST /v1/jobs/{id}/graph/recovery-proposals", s.httpRecoverGraph)
 	mux.HandleFunc("POST /v1/jobs/{id}/graph/coverage-verifications", s.httpVerifyGraphCoverage)
 	mux.HandleFunc("GET /v1/jobs/{id}/graph/coverage-verifications/{receipt}", s.httpGraphCoverage)
 	mux.HandleFunc("GET /v1/jobs/{id}/graph/record/{node}/{record}", s.httpGraphRecord)
