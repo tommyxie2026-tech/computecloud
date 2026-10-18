@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,6 +38,12 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		}
 		spec, e := graph.Decode(raw)
 		if e != nil {
+			var ce *graph.CoverageError
+			if errors.As(e, &ce) {
+				if outErr := json.NewEncoder(os.Stdout).Encode(ce); outErr != nil {
+					return outErr
+				}
+			}
 			return e
 		}
 		plan, e := graph.Compile(spec)
