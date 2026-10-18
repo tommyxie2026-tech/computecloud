@@ -13,10 +13,11 @@ import {
 
 import { mergeJobSnapshot, jobFromHash, jobHash } from "./src/webSnapshot";
 import { readSnapshotWithRetry, subscribeConnectivity } from "./src/readRecovery";
+import { MobileGate, type MobileSession, type MobileDraft } from "./src/MobileGate";
 import { WebGate } from "./src/Login";
 import type { WebSession } from "./src/webAuth";
 import { ControlAPI, isSnapshotReset } from "./src/api";
-import { clearMobileProfile, initialConnectURL, isNativeMobile, loadMobileProfile, loadOrCreateDeviceID, saveMobileProfile, serverFromConnectURL, subscribeConnectURLs } from "./src/mobile";
+import { isNativeMobile } from "./src/mobile";
 import type {
   ControlBootstrap,
   JobEvent,
@@ -76,14 +77,12 @@ function Events({ items }: { items: JobEvent[] }) {
 }
 
 export default function App() {
-  if (isNativeMobile()) return <ControlApp />;
+  if (isNativeMobile()) return <MobileGate>{(session, expired, disconnect, selected, draft) => <ControlApp mobileSession={session} onExpired={expired} onLogout={disconnect} mobileSelected={selected} mobileDraft={draft} />}</MobileGate>;
   return <WebGate>{(session, expired, signOut) => <ControlApp key={session.csrf_token} webSession={session} onExpired={expired} onLogout={signOut} />}</WebGate>;
 }
-function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSession; onExpired?: () => void; onLogout?: () => void }) {
+function ControlApp({ webSession, mobileSession, mobileSelected, mobileDraft, onExpired, onLogout }: { webSession?: WebSession; mobileSession?: MobileSession; mobileSelected?: React.MutableRefObject<string>; mobileDraft?: React.MutableRefObject<MobileDraft>; onExpired?: () => void; onLogout?: () => void }) {
   const { width } = useWindowDimensions();
   const compact = width < 960;
-  const [serverURL, setServerURL] = useState(process.env.EXPO_PUBLIC_COMPUTECLOUD_URL ?? "http://127.0.0.1:8080");
-  const [token, setToken] = useState("");
   const [api, setAPI] = useState<ControlAPI | null>(null);
   const [bootstrap, setBootstrap] = useState<ControlBootstrap | null>(null);
   const [jobPage, setJobPage] = useState<JobPage | null>(null);
@@ -95,41 +94,14 @@ function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSessi
   const [error, setError] = useState("");
   const [writeLease, setWriteLease] = useState<ControlWriteLease | null>(null);
   const [sessionInput, setSessionInput] = useState("");
-  const [newJobSpec, setNewJobSpec] = useState("{}");
-  const [newJobKey, setNewJobKey] = useState(operationID("job"));
+  const [newJobSpec, setNewJobSpec] = useState(mobileDraft?.current.spec ?? "{}");
+  const [newJobKey, setNewJobKey] = useState(() => mobileDraft?.current.key || operationID("job"));
+  useEffect(() => { if (mobileDraft) mobileDraft.current = {spec: newJobSpec, key: newJobKey}; }, [mobileDraft, newJobSpec, newJobKey]);
+  const lifetime = useRef(new AbortController());
   const streamAbort = useRef<AbortController | null>(null);
   const holderID = useRef(operationID("device"));
-  const nativeMobile = isNativeMobile();
 
-  useEffect(() => {
-    let mounted = true;
-    let unsubscribe = () => {};
-    void loadOrCreateDeviceID().then((deviceID) => {
-      if (mounted) holderID.current = deviceID;
-    });
-    if (nativeMobile) {
-      void loadMobileProfile().then((profile) => {
-        if (!mounted || !profile) return;
-        holderID.current = profile.deviceID;
-        setServerURL(profile.serverURL);
-        setToken(profile.token);
-      });
-      const applyConnectURL = (value: string | null) => {
-        if (!mounted || !value) return;
-        const server = serverFromConnectURL(value);
-        if (server) setServerURL(server);
-        else if (value.startsWith("computecloud://connect")) {
-          setError("Invalid connect link. Tokens are not accepted in deep links.");
-        }
-      };
-      void initialConnectURL().then(applyConnectURL);
-      unsubscribe = subscribeConnectURLs((value) => applyConnectURL(value));
-    }
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, [nativeMobile]);
+  useEffect(() => { if (mobileSession) holderID.current = mobileSession.deviceID; }, [mobileSession]);
 
   const attention = useMemo(() => {
     if (!snapshot) return 0;
@@ -145,47 +117,43 @@ function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSessi
       w.set("epoch", epoch);
     }
     const [jobs, workerPage] = await Promise.all([client.listJobs(q), client.listWorkers(w)]);
+    if (client.closed) return;
     setJobPage(jobs);
     setWorkers(workerPage);
   }, []);
 
   const connect = useCallback(async () => {
+    const connection = lifetime.current;
     streamAbort.current?.abort();
     setBusy(true);
     setError("");
     try {
-      const client = new ControlAPI(webSession ? globalThis.location.origin : serverURL, webSession ? { kind: "web", csrfToken: webSession.csrf_token, onExpired: onExpired! } : token);
+      const client = new ControlAPI(webSession ? globalThis.location.origin : mobileSession!.serverURL, webSession ? { kind: "web", csrfToken: webSession.csrf_token, onExpired: onExpired! } : { kind: "native", token: mobileSession!.token, onExpired: onExpired! }, connection.signal);
       const boot = await client.bootstrap();
+      if (connection.signal.aborted) return;
       await refreshCollections(client, boot.server_epoch);
+      if (connection.signal.aborted) return;
       setAPI(client);
       setBootstrap(boot);
       setSelected("");
       setSnapshot(null);
       setWriteLease(null);
-      if (nativeMobile) {
-        await saveMobileProfile(client.baseURL, token.trim(), holderID.current);
-      }
+
     } catch (e) {
+      if (connection.signal.aborted) return;
       setAPI(null);
       setBootstrap(null);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      if (!connection.signal.aborted) setBusy(false);
     }
-  }, [nativeMobile, refreshCollections, serverURL, token, webSession?.csrf_token]);
-  useEffect(() => { if (webSession) void connect(); }, [webSession?.csrf_token]);
-
-  const forgetMobileProfile = useCallback(async () => {
-    if (!nativeMobile) return;
-    streamAbort.current?.abort();
-    await clearMobileProfile();
-    setToken("");
-    setAPI(null);
-    setBootstrap(null);
-    setSelected("");
-    setSnapshot(null);
-    setWriteLease(null);
-  }, [nativeMobile]);
+  }, [refreshCollections, webSession?.csrf_token, mobileSession]);
+  useEffect(() => {
+    const connection = new AbortController();
+    lifetime.current = connection;
+    if (webSession || mobileSession) void connect();
+    return () => { connection.abort(); streamAbort.current?.abort(); };
+  }, [webSession?.csrf_token, mobileSession]);
 
   const resetSnapshot = useCallback(async () => {
     if (!api) return;
@@ -217,15 +185,19 @@ function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSessi
   }, [api, jobPage, resetSnapshot]);
 
   const loadJob = useCallback(async (jobID: string) => {
+    const connection = lifetime.current;
     if (!api) return;
     streamAbort.current?.abort();
-    if (writeLease && selected) {
-      try { await api.releaseWriteLease(selected, holderID.current, writeLease.lease_token); } catch { /* lease expires quickly */ }
-      setWriteLease(null);
-    }
     const controller = new AbortController();
     streamAbort.current = controller;
+    if (connection.signal.aborted) { controller.abort(); return; }
+    if (writeLease && selected) {
+      try { await api.releaseWriteLease(selected, holderID.current, writeLease.lease_token); } catch { /* lease expires quickly */ }
+      if (controller.signal.aborted || connection.signal.aborted) return;
+      setWriteLease(null);
+    }
     setSelected(jobID);
+    if (mobileSelected) mobileSelected.current = jobID;
     if (webSession) globalThis.history.replaceState(null, "", globalThis.location.pathname + globalThis.location.search + jobHash(jobID));
     setSnapshot(null);
     setBusy(true);
@@ -272,6 +244,10 @@ function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSessi
   }, [api, selected, writeLease]);
 
   useEffect(() => {
+    if (mobileSession && api && mobileSelected?.current) void loadJob(mobileSelected.current);
+  }, [api, mobileSession]);
+
+  useEffect(() => {
     if (!webSession || !api) return;
     const restore = () => { const id = jobFromHash(globalThis.location.hash); if (id) void loadJob(id); };
     restore(); globalThis.addEventListener("hashchange", restore);
@@ -292,7 +268,6 @@ function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSessi
     });
   }, [api, selected, webSession?.csrf_token]);
 
-  useEffect(() => () => streamAbort.current?.abort(), []);
 
   useEffect(() => {
     if (!api || !selected || !writeLease) return;
@@ -460,27 +435,13 @@ function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSessi
           <Text style={styles.title}>computecloud Control</Text>
         </View>
         <View style={styles.headerMeta}>
-          {webSession && !api && <Button title="重试连接" onPress={connect} disabled={busy} />}
-          {webSession && <Button title="退出登录" onPress={onLogout!} />}
+          {(webSession || mobileSession) && !api && <Button title="重试连接" onPress={connect} disabled={busy} />}
+          {(webSession || mobileSession) && <Button title={webSession ? "退出登录" : "切换 Server / 退出连接"} onPress={onLogout!} />}
           {bootstrap ? <StatePill value={`ACP ${bootstrap.protocol_max}`} /> : <StatePill value="未连接" />}
           {!!attention && <StatePill value={`${attention} attention`} />}
         </View>
       </View>
 
-      {!webSession && <View style={styles.connection}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Server</Text>
-          <TextInput autoCapitalize="none" value={serverURL} onChangeText={setServerURL} style={styles.input} placeholder="https://control.example.com" />
-        </View>
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>{nativeMobile ? "Bearer token · OS secure storage" : "Bearer token · memory only"}</Text>
-          <TextInput autoCapitalize="none" secureTextEntry value={token} onChangeText={setToken} style={styles.input} placeholder="Paste token" />
-        </View>
-        <Button title={busy && !api ? "Connecting…" : "Connect"} disabled={busy || !token.trim()} onPress={connect} />
-        {nativeMobile && <Button title="Forget profile" disabled={busy || !token} onPress={() => { void forgetMobileProfile(); }} />}
-      </View>
-
-      }
       {!!error && <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View>}
 
       <View style={[styles.body, compact && styles.bodyCompact]}>

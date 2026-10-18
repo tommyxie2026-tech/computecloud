@@ -32,23 +32,31 @@ function trimBaseURL(value: string): string {
 
 export type WebAuthentication = { kind: "web"; csrfToken: string; onExpired: () => void };
 
+export type NativeAuthentication = { kind: "native"; token: string; onExpired: () => void };
+
 export class ControlAPI {
   readonly baseURL: string;
+  private expired = false;
 
-  constructor(baseURL: string, private readonly token: string | WebAuthentication) {
+  constructor(baseURL: string, private readonly token: string | WebAuthentication | NativeAuthentication, private readonly lifetime?: AbortSignal) {
     this.baseURL = trimBaseURL(baseURL);
     if (!this.baseURL) throw new Error("Server URL is required");
     if (typeof token === "string" && !token.trim()) throw new Error("Bearer token is required");
   }
 
+  get closed(): boolean { return !!this.lifetime?.aborted || this.expired; }
+
   private async fetch(path: string, init: RequestInit = {}): Promise<Response> {
+    if (this.lifetime?.aborted) { const error = new Error("Connection closed"); error.name = "AbortError"; throw error; }
+    if (this.expired) throw new ControlAPIError(401, "CREDENTIAL_EXPIRED");
     const headers = new Headers(init.headers);
-    if (typeof this.token === "string") headers.set("Authorization", `Bearer ${this.token}`);
-    else if (init.method && !["GET", "HEAD"].includes(init.method)) headers.set("X-CSRF-Token", this.token.csrfToken);
+    const bearer = typeof this.token === "string" ? this.token : this.token.kind === "native" ? this.token.token : null;
+    if (bearer !== null) headers.set("Authorization", `Bearer ${bearer}`);
+    else if (typeof this.token !== "string" && this.token.kind === "web" && init.method && !["GET", "HEAD"].includes(init.method)) headers.set("X-CSRF-Token", this.token.csrfToken);
     headers.set("Accept", "application/json, text/event-stream");
-    const response = await globalThis.fetch(this.baseURL + path, { ...init, headers, credentials: typeof this.token === "string" ? "omit" : "same-origin" });
+    const response = await globalThis.fetch(this.baseURL + path, { ...init, signal: init.signal ?? this.lifetime, headers, redirect: bearer !== null ? "error" : "follow", credentials: bearer !== null ? "omit" : "same-origin" });
     if (!response.ok) {
-      if (response.status === 401 && typeof this.token !== "string") this.token.onExpired();
+      if (response.status === 401 && typeof this.token !== "string") { this.expired = true; this.token.onExpired(); }
       let code = `HTTP_${response.status}`;
       try {
         const body = await response.json() as { error?: { code?: string } };
@@ -77,8 +85,8 @@ export class ControlAPI {
     return await response.json() as T;
   }
 
-  bootstrap(): Promise<ControlBootstrap> {
-    return this.json("/v1/control/bootstrap");
+  bootstrap(signal?: AbortSignal): Promise<ControlBootstrap> {
+    return this.json("/v1/control/bootstrap", signal);
   }
 
   submitJob(spec: unknown, idempotencyKey: string): Promise<JobDetail> {

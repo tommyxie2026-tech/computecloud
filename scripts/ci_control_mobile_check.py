@@ -32,6 +32,7 @@ def main():
     for name,cmd in [
         ("npm_ci",["npm","ci","--ignore-scripts"]),
         ("typecheck",["npm","run","typecheck"]),
+        ("mobile_session",["npm","run","test:mobile"]),
         ("expo_config",["npx","expo","config","--type","public","--json"]),
         ("export_ios",["npx","expo","export","--platform","ios","--output-dir","dist-ios"]),
         ("export_android",["npx","expo","export","--platform","android","--output-dir","dist-android"]),
@@ -54,7 +55,7 @@ def main():
     package=json.loads((client/"package.json").read_text(encoding="utf-8"))
     mobile=(client/"src/mobile.ts").read_text(encoding="utf-8")
     ui=(client/"App.tsx").read_text(encoding="utf-8")
-    sources=mobile+"\n"+ui
+    sources=mobile+"\n"+ui+"\n"+(client/"src/MobileGate.tsx").read_text(encoding="utf-8")
 
     violations=[]
     if app.get("scheme") != "computecloud":

@@ -172,7 +172,7 @@ HTTPS 路径要求 TLS 1.3 和正常证书验证。也可单独启用只绑定 l
 
 ### Control Web
 
-Web 控制台随 Server 镜像发布，入口为 `/ui/`，显式启用 `server.web.enabled` 后使用用户名密码登录。默认账号为 `admin/admin`；支持配置密码或受保护的密码文件，公网部署前需修改默认密码。Web 身份绑定现有用户权限，支持任务提交、执行跟踪、Worker 查看、产物审阅、取消和有限重试。配置和验证步骤见 [Control Web 部署与认证](docs/deployment/control-web.md)。客户端后续按 iOS、Android 顺序推进。
+Web 控制台随 Server 镜像发布，入口为 `/ui/`，显式启用 `server.web.enabled` 后使用用户名密码登录。默认账号为 `admin/admin`；支持配置密码或受保护的密码文件，公网部署前需修改默认密码。Web 身份绑定现有用户权限，支持任务提交、执行跟踪、Worker 查看、产物审阅、取消和有限重试。配置和验证步骤见 [Control Web 部署与认证](docs/deployment/control-web.md)。客户端后续按 iOS、Android 顺序推进。iOS 手动连接、凭据隔离与前后台恢复说明见 [iOS Control 首版](docs/clients/ios-control.md)，原生编译与真机验收状态单独跟踪。
 
 ### Agent Control
 
