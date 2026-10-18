@@ -67,6 +67,7 @@ REQUIRED_TESTS = tuple(
        PREFIX + "internal/store::TestMigrationFailureAtomicAndFutureSchema",
        PREFIX + "internal/maintenance::TestOfflineBackupRestoresDatabaseAndArtifacts",
        PREFIX + "cmd/computecloud::TestJobGraphCompileRequiresNoClientConnection",
+       PREFIX + "cmd/computecloud::TestJobGraphCLIProposalAcquiresAndReleasesControlLease",
        PREFIX + "internal/aicloudadapter::TestReadOnlyAICloudBundleFreezesExactVersions",
        PREFIX + "internal/aicloudadapter::TestAICloudUnavailabilityRateLimitBudgetAndRedirectNeverFallback",
        PREFIX + "internal/aicloudadapter::TestAICloudPaginationLoopAndMissingDecisionFailClosed",

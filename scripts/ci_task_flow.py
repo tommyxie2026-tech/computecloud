@@ -332,7 +332,7 @@ def main():
                     "claim_pointer":"/value","record_kinds":["observation"],"timeout_ms":100}}
                 eval_token = write("evaluator.token", secrets.token_hex(32))
                 server_data["server"]["users"].append({"token_file":eval_token,"owner":"ci","projects":["ci-flow"],
-                    "credentials":["fixture"],"scopes":["jobs:read","jobs:submit","goals:evaluate","goals:invalidate","goals:import","goals:verify","goals:propose"]})
+                    "credentials":["fixture"],"scopes":["jobs:read","jobs:submit","goals:evaluate","goals:invalidate","goals:import","goals:verify","goals:propose","jobs:control"]})
                 write("server.json", server_data)
                 eval_config = write("evaluator.json", {"client":{"http_url":"http://"+http_address,"token_file":eval_token,"tls":tls}})
 
@@ -615,7 +615,9 @@ def main():
                             run_command(binary,"job","revoke-import","--id",source_id,"--key","revoked_memory","--config",eval_config)
                             revoked_denied=False
                             try:run_command(binary,"job","propose-graph","--id",source_id,"--file",revoked_proposal,"--config",eval_config)
-                            except RuntimeError as error:revoked_denied="IMPORT_GRANT_NOT_USABLE" in str(error)
+                            except RuntimeError as error:
+                                if "IMPORT_GRANT_NOT_USABLE" not in str(error):raise
+                                revoked_denied=True
                             if not revoked_denied:raise AssertionError("revoked grant published")
                             with sqlite3.connect(f"file:{root/'server'/'state.db'}?mode=ro",uri=True) as db:
                                 if db.execute("SELECT active_graph_generation FROM goals WHERE id=?",(source_status["goal_id"],)).fetchone()[0]!=1:raise AssertionError("rejected import partially published")

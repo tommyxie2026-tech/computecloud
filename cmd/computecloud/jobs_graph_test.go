@@ -83,3 +83,49 @@ func TestJobGraphCompileRequiresNoClientConnection(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestJobGraphCLIProposalAcquiresAndReleasesControlLease(t *testing.T) {
+	for _, rejected := range []bool{false, true} {
+		t.Run(map[bool]string{false: "accepted", true: "rejected"}[rejected], func(t *testing.T) {
+			dir := t.TempDir()
+			token := filepath.Join(dir, "token")
+			input := filepath.Join(dir, "proposal.json")
+			os.WriteFile(token, []byte("test-token-01234567890123456789"), 0600)
+			os.WriteFile(input, []byte(`{"proposal":{}}`), 0600)
+			calls := []string{}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls = append(calls, r.Method+" "+r.URL.Path)
+				switch {
+				case r.Method == "POST" && r.URL.Path == "/v1/jobs/source/control-lease":
+					w.WriteHeader(201)
+					w.Write([]byte(`{"lease_token":"opaque-fixture-token"}`))
+				case r.Method == "DELETE" && r.URL.Path == "/v1/jobs/source/control-lease":
+					if r.Header.Get("X-Control-Lease") != "opaque-fixture-token" {
+						t.Error("missing release token")
+					}
+					w.WriteHeader(204)
+				case r.Method == "POST" && r.URL.Path == "/v1/jobs/source/goal/replans":
+					if r.Header.Get("X-Control-Lease") != "opaque-fixture-token" {
+						t.Error("proposal bypassed lease")
+					}
+					if rejected {
+						http.Error(w, "IMPORT_GRANT_NOT_USABLE", 412)
+					} else {
+						w.Write([]byte(`{"decision":{"allowed":true}}`))
+					}
+				default:
+					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(404)
+				}
+			}))
+			defer server.Close()
+			e := runJob(context.Background(), config.Client{HTTPURL: server.URL, TokenFile: token, TLS: config.TLS{InsecureLoopback: true}}, jobOptions{op: "propose-graph", id: "source", file: input})
+			if (e != nil) != rejected {
+				t.Fatalf("error=%v rejected=%v", e, rejected)
+			}
+			if len(calls) != 3 || calls[0] != "POST /v1/jobs/source/control-lease" || calls[2] != "DELETE /v1/jobs/source/control-lease" {
+				t.Fatalf("lease lifecycle: %v", calls)
+			}
+		})
+	}
+}

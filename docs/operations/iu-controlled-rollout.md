@@ -18,7 +18,7 @@ python3 scripts/iu_host_inventory.py inventory.json
 
 ## 提交与权限
 
-先保持 graphs_enabled=false。只给独立主体授予所需 jobs:read、goals:invalidate/import/verify/evaluate/propose，发布新代还需要 jobs:submit 与相应 credential。模型输出不授予这些权限。原 submitter 不因可提交任务获得自评或记忆授权。
+先保持 graphs_enabled=false。只给独立主体授予所需 jobs:read、goals:invalidate/import/verify/evaluate/propose，发布新代还需要 jobs:submit、jobs:control 与相应 credential；CLI propose-graph 按现有控制协议获取短期写租约、带 X-Control-Lease 提交并释放。模型输出不授予这些权限。原 submitter 不因可提交任务获得自评或记忆授权。
 
 准备目标图时可离线计算规范化摘要：
 

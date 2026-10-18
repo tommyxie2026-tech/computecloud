@@ -79,6 +79,7 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 	if o.op == "download" {
 		client.Timeout = 5 * time.Minute
 	}
+	controlLeaseToken := ""
 	request := func(method, path string, body []byte) (*http.Response, error) {
 		r, e := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.HTTPURL, "/")+path, bytes.NewReader(body))
 		if e != nil {
@@ -86,6 +87,9 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		}
 		r.Header.Set("Authorization", "Bearer "+tok)
 		r.Header.Set("Content-Type", "application/json")
+		if controlLeaseToken != "" {
+			r.Header.Set("X-Control-Lease", controlLeaseToken)
+		}
 		if o.key != "" {
 			r.Header.Set("Idempotency-Key", o.key)
 		}
@@ -154,6 +158,19 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		if e != nil {
 			return e
 		}
+		holderBody, _ := json.Marshal(map[string]string{"holder_id": "cli-proposal-" + store.ID()})
+		leaseRaw, e := read("POST", path+"/control-lease", holderBody)
+		if e != nil {
+			return e
+		}
+		var lease struct {
+			Token string `json:"lease_token"`
+		}
+		if e = json.Unmarshal(leaseRaw, &lease); e != nil || lease.Token == "" {
+			return fmt.Errorf("invalid control lease response")
+		}
+		controlLeaseToken = lease.Token
+		defer func() { _, _ = read("DELETE", path+"/control-lease", holderBody) }()
 		return print("POST", path+"/goal/replans", b)
 	case "graph":
 		return print("GET", path+"/graph", nil)
