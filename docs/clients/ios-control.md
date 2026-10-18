@@ -49,6 +49,7 @@ npx expo export --platform ios --output-dir dist-ios
 - 已通过：TypeScript、地址/Deep Link/配置校验、连接切换和存储竞态测试、真实 React StrictMode 重放、API 失效与卸载取消测试。
 - 已通过：iOS/Android JS bundle 与 Web 导出；共享 Web 的隔离 Server、fixture Worker、真实 Chromium 主流程及密码轮换验收。
 - 已通过：临时 iOS 原生工程生成。
-- 待完成：CocoaPods 原生依赖安装、Xcode 原生编译、模拟器与真机任务闭环。不得据此宣称 iOS Beta 已完成。
+- 阻塞：CocoaPods 下载 React Native 原生预编译包时连接被对端重置，原生依赖安装未完成；Xcode 编译尚未开始。
+- 待完成：重试原生依赖安装、Xcode 原生编译、模拟器与真机任务闭环。不得据此宣称 iOS Beta 已完成。
 
 测试不调用付费 Provider；公共文档不包含实际部署地址、密钥或环境证据。
