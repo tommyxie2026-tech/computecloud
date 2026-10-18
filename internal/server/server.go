@@ -79,6 +79,7 @@ func New(c config.Server) (*Server, error) {
 			d.Close()
 			return nil, e
 		}
+		s.cfg.Web.Auth.Password = "" // Retain only the derived verifier, not configured plaintext.
 		s.webAuth.insecureLoopback = c.TLS.InsecureLoopback
 		s.webStatic, e = newWebStaticHandler(c.Web.AssetsDir)
 		if e != nil {

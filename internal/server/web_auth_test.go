@@ -6,6 +6,8 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -110,5 +112,17 @@ func TestWebAuthLimits(t *testing.T) {
 	w, _, _ = loginWeb(t, a, "admin")
 	if w.Code != 503 {
 		t.Fatal(w.Code)
+	}
+}
+func TestWebAuthServerDoesNotRetainConfiguredPassword(t *testing.T) {
+	assets := t.TempDir()
+	if err := os.WriteFile(filepath.Join(assets, "index.html"), []byte("control"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	h := newJobHarness(t, false, func(c *config.Server) {
+		c.Web = config.Web{Enabled: true, AssetsDir: assets, Auth: config.WebAuth{IdentityOwner: "owner", Password: "configured-fixture-password"}}
+	})
+	if h.s.cfg.Web.Auth.Password != "" {
+		t.Fatal("server retained plaintext web password")
 	}
 }
