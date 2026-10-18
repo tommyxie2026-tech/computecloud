@@ -12,7 +12,7 @@ import {
 } from "react-native";
 
 import { mergeJobSnapshot, jobFromHash, jobHash } from "./src/webSnapshot";
-import { readSnapshotWithRetry } from "./src/readRecovery";
+import { readSnapshotWithRetry, subscribeConnectivity } from "./src/readRecovery";
 import { WebGate } from "./src/Login";
 import type { WebSession } from "./src/webAuth";
 import { ControlAPI, isSnapshotReset } from "./src/api";
@@ -277,6 +277,20 @@ function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSessi
     restore(); globalThis.addEventListener("hashchange", restore);
     return () => globalThis.removeEventListener("hashchange", restore);
   }, [api]);
+
+  useEffect(() => {
+    if (!webSession || !api) return;
+    return subscribeConnectivity(globalThis.window, () => {
+      streamAbort.current?.abort();
+      setWriteLease(null);
+      setBusy(false);
+      setError("网络已断开，任务仍由 Server 执行；恢复后将重新同步。");
+    }, () => {
+      setError("");
+      if (selected) void loadJob(selected);
+      else void refreshCollections(api, bootstrap?.server_epoch).catch(e => setError(e instanceof Error ? e.message : String(e)));
+    });
+  }, [api, selected, webSession?.csrf_token]);
 
   useEffect(() => () => streamAbort.current?.abort(), []);
 

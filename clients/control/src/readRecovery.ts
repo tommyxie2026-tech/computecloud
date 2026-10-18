@@ -24,3 +24,8 @@ export async function readSnapshotWithRetry(client: Pick<ControlAPI, "jobSnapsho
   }
   throw abortError();
 }
+export function subscribeConnectivity(target: EventTarget, offline: () => void, online: () => void): () => void {
+  target.addEventListener("offline", offline);
+  target.addEventListener("online", online);
+  return () => { target.removeEventListener("offline", offline); target.removeEventListener("online", online); };
+}
