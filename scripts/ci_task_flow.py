@@ -651,7 +651,7 @@ def main():
                                 raise AssertionError("inline original record identity did not survive transmission/recovery")
                             if mode=="memory":
                                 task_spec=json.loads(db.execute("SELECT spec FROM tasks WHERE id=?",(node_row[2],)).fetchone()[0])
-                                if "iu_memory_origin_v1" not in task_spec.get("requiredCapabilities",[]):raise AssertionError("new memory wire was not capability fenced")
+                                if "iu_memory_origin_v1" not in task_spec.get("required_capabilities",[]):raise AssertionError("new memory wire was not capability fenced")
 
                         if mode=="node_result" and target_status["nodes"][0]["execution_kind"]!="REUSED":raise AssertionError("reuse not exposed as separate execution fact")
                         output=json.loads(cli("job","result","--id",target_id))
