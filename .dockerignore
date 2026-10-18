@@ -10,3 +10,8 @@ secrets
 coverage*
 .DS_Store
 docs
+
+clients/control/node_modules
+clients/control/dist
+.superpowers
+*.pem

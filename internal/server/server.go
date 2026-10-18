@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
-	"sort"
 	"sync"
 	"time"
 
@@ -34,25 +34,27 @@ type session struct {
 	cancel            context.CancelFunc
 }
 type Server struct {
+	webAuth   *webAuth
+	webStatic http.Handler
 	pb.UnimplementedRuntimeServiceServer
-	cfg                config.Server
-	db                 *store.DB
-	auth               *rpcutil.Auth
+	cfg                 config.Server
+	db                  *store.DB
+	auth                *rpcutil.Auth
 	requestLimiter      *requestLimiter
 	apiKeyLookupLimiter *requestLimiter
-	mu                 sync.Mutex
-	peers              map[string]*session
-	workerReservations map[string]bool
-	notify             chan struct{}
-	grpc               *grpc.Server
-	jobCursor          string
-	workerCursor       string
-	projectCursor      map[int32]string
-	groupCursor        map[string]string
-	modelHandler       http.Handler
-	artifactSweepAt    int64
-	eventSweepAt       int64
-	controlEpoch       string
+	mu                  sync.Mutex
+	peers               map[string]*session
+	workerReservations  map[string]bool
+	notify              chan struct{}
+	grpc                *grpc.Server
+	jobCursor           string
+	workerCursor        string
+	projectCursor       map[int32]string
+	groupCursor         map[string]string
+	modelHandler        http.Handler
+	artifactSweepAt     int64
+	eventSweepAt        int64
+	controlEpoch        string
 }
 
 func New(c config.Server) (*Server, error) {
@@ -71,6 +73,20 @@ func New(c config.Server) (*Server, error) {
 		return nil, e
 	}
 	s := &Server{cfg: c, db: d, auth: a, requestLimiter: newRequestLimiter(c.HTTP.RateLimit), apiKeyLookupLimiter: newRequestLimiter(c.HTTP.RateLimit), peers: map[string]*session{}, workerReservations: map[string]bool{}, notify: make(chan struct{}, 1), projectCursor: map[int32]string{}, groupCursor: map[string]string{}, controlEpoch: store.ID()}
+	if c.Web.Enabled {
+		s.webAuth, e = newWebAuth(c.Web, c.Users)
+		if e != nil {
+			d.Close()
+			return nil, e
+		}
+		s.webAuth.insecureLoopback = c.TLS.InsecureLoopback
+		s.webStatic, e = newWebStaticHandler(c.Web.AssetsDir)
+		if e != nil {
+			s.webAuth.close()
+			d.Close()
+			return nil, e
+		}
+	}
 	a.SetAPIKeyResolver(s.resolveAPIKey)
 	// Recover CLI children even when the gateway is disabled after a crash.
 	if err := (&modelGateway{s: s}).recoverCLI(); err != nil {
@@ -93,6 +109,9 @@ func New(c config.Server) (*Server, error) {
 	return s, nil
 }
 func (s *Server) Close() error {
+	if s.webAuth != nil {
+		s.webAuth.close()
+	}
 	if g, ok := s.modelHandler.(*modelGateway); ok {
 		g.client.CloseIdleConnections()
 	}

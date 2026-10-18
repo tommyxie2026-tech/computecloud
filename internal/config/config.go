@@ -51,6 +51,7 @@ type WorkerAdmission struct {
 	MaxStreams  int `yaml:"max_streams"`
 }
 type Server struct {
+	Web                           Web               `yaml:"web"`
 	Listen                        string            `yaml:"listen"`
 	DataDir                       string            `yaml:"data_dir"`
 	TLS                           TLS               `yaml:"tls"`
@@ -159,6 +160,8 @@ func Load(path string) (Config, error) {
 		t.CAFile = abs(t.CAFile)
 		t.ClientCAFile = abs(t.ClientCAFile)
 	}
+	c.Server.Web.Auth.PasswordFile = abs(c.Server.Web.Auth.PasswordFile)
+	c.Server.Web.AssetsDir = abs(c.Server.Web.AssetsDir)
 	c.Server.DataDir = abs(c.Server.DataDir)
 	c.Worker.DataDir = abs(c.Worker.DataDir)
 	c.Worker.TokenFile = abs(c.Worker.TokenFile)
@@ -246,6 +249,9 @@ func Contains(xs []string, x string) bool {
 	return false
 }
 func (c Server) Validate() error {
+	if err := ValidateWeb(c.Web, c.Users); err != nil {
+		return err
+	}
 	if err := c.Transport.Validate(true, c.TLS); err != nil {
 		return err
 	}

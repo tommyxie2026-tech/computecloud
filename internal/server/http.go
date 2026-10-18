@@ -259,13 +259,34 @@ func (s *Server) HTTPHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Request-ID", store.ID())
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if s.webStatic != nil && (r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/ui/")) {
+			if r.URL.Path == "/" {
+				http.Redirect(w, r, "/ui/", http.StatusTemporaryRedirect)
+			} else {
+				s.webStatic.ServeHTTP(w, r)
+			}
+			return
+		}
 		if len(r.Header.Values("Origin")) > 1 {
 			httpError(w, status.Error(codes.PermissionDenied, "invalid Origin"))
 			return
 		}
-		if origin := r.Header.Get("Origin"); origin != "" && !containsOrigin(s.cfg.HTTP.AllowedOrigins, origin) {
+		if origin := r.Header.Get("Origin"); origin != "" && !containsOrigin(s.cfg.HTTP.AllowedOrigins, origin) && !(s.webAuth != nil && s.webAuth.validOrigin(r, false)) {
 			httpError(w, status.Error(codes.PermissionDenied, "Origin not allowed"))
 			return
+		}
+		if s.webAuth != nil {
+			switch r.Method + " " + r.URL.Path {
+			case "POST /v1/web/auth/login":
+				s.webAuth.login(w, r)
+				return
+			case "GET /v1/web/auth/session":
+				s.webAuth.session(w, r)
+				return
+			case "POST /v1/web/auth/logout":
+				s.webAuth.logout(w, r)
+				return
+			}
 		}
 		if r.URL.Path == "/v1/models" || strings.HasPrefix(r.URL.Path, "/v1/responses") {
 			if s.modelHandler == nil {
@@ -275,17 +296,33 @@ func (s *Server) HTTPHandler() http.Handler {
 			s.modelHandler.ServeHTTP(w, r)
 			return
 		}
-		if len(r.Header.Values("Authorization")) != 1 {
-			httpError(w, status.Error(codes.Unauthenticated, "authentication required"))
-			return
+		var ctx context.Context
+		var e error
+		authorization := r.Header.Values("Authorization")
+		if len(authorization) == 0 {
+			ctx, e = s.webIdentity(r)
+		} else if len(authorization) == 1 {
+			if !s.rateLimitAPIKeyLookup(w, r, authorization[0]) {
+				return
+			}
+			ctx, e = s.auth.Bearer(r.Context(), authorization[0])
+		} else {
+			e = status.Error(codes.Unauthenticated, "authentication required")
 		}
-		if !s.rateLimitAPIKeyLookup(w, r, r.Header.Get("Authorization")) {
-			return
-		}
-		ctx, e := s.auth.Bearer(r.Context(), r.Header.Get("Authorization"))
 		if e != nil {
 			httpError(w, e)
 			return
+		}
+		if len(authorization) == 0 {
+			session, err := s.webAuth.sessionFor(r)
+			if err != nil {
+				httpError(w, status.Error(codes.Unauthenticated, "authentication required"))
+				return
+			}
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithDeadline(ctx, session.expires)
+			stop := context.AfterFunc(session.ctx, cancel)
+			defer func() { stop(); cancel() }()
 		}
 		if _, e = rpcutil.User(ctx); e != nil {
 			httpError(w, e)

@@ -40,7 +40,7 @@ def main():
             raise SystemExit(1)
 
     sources="\n".join(p.read_text(encoding="utf-8") for p in [
-        client/"App.tsx", client/"src/api.ts", client/"src/types.ts", client/"src/mobile.ts"
+        client/"App.tsx", client/"src/api.ts", client/"src/types.ts", client/"src/mobile.ts", client/"src/webAuth.ts", client/"src/Login.tsx"
     ])
     violations=[]
     for forbidden in ["localStorage", "sessionStorage", "EventSource(", "token=", "access_token="]:
@@ -50,7 +50,7 @@ def main():
         violations.append("Bearer authorization header missing")
     if "streamEvents(" not in sources or ".body.getReader()" not in sources:
         violations.append("authenticated fetch-based SSE transport missing")
-    for required in ["acquireWriteLease(", "renewWriteLease(", "releaseWriteLease(", "X-Control-Lease", "cancelJob(", "sendInput(", "decideApproval(", "resumeSession(", "submitJob(", "Idempotency-Key", "manualRetry(", "Retry failed task"]:
+    for required in ["acquireWriteLease(", "renewWriteLease(", "releaseWriteLease(", "X-Control-Lease", "cancelJob(", "sendInput(", "decideApproval(", "resumeSession(", "submitJob(", "Idempotency-Key", "manualRetry(", "重试失败任务"]:
         if required not in sources:
             violations.append("C2 write contract missing: "+required)
     if not (client/"dist"/"index.html").exists():
@@ -62,7 +62,7 @@ def main():
         "status":status,
         "real_model_calls":False,
         "expo_web_export":True,
-        "bearer_token_persistence":"web_memory_only_native_secure_store",
+        "bearer_token_persistence":"web_httponly_cookie_native_secure_store",
         "write_operations":"lease_gated",
         "authenticated_sse":"fetch_stream",
         "steps":steps,

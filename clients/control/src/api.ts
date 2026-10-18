@@ -30,21 +30,25 @@ function trimBaseURL(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
 
+export type WebAuthentication = { kind: "web"; csrfToken: string; onExpired: () => void };
+
 export class ControlAPI {
   readonly baseURL: string;
 
-  constructor(baseURL: string, private readonly token: string) {
+  constructor(baseURL: string, private readonly token: string | WebAuthentication) {
     this.baseURL = trimBaseURL(baseURL);
     if (!this.baseURL) throw new Error("Server URL is required");
-    if (!token.trim()) throw new Error("Bearer token is required");
+    if (typeof token === "string" && !token.trim()) throw new Error("Bearer token is required");
   }
 
   private async fetch(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
-    headers.set("Authorization", `Bearer ${this.token}`);
+    if (typeof this.token === "string") headers.set("Authorization", `Bearer ${this.token}`);
+    else if (init.method && !["GET", "HEAD"].includes(init.method)) headers.set("X-CSRF-Token", this.token.csrfToken);
     headers.set("Accept", "application/json, text/event-stream");
-    const response = await globalThis.fetch(this.baseURL + path, { ...init, headers });
+    const response = await globalThis.fetch(this.baseURL + path, { ...init, headers, credentials: typeof this.token === "string" ? "omit" : "same-origin" });
     if (!response.ok) {
+      if (response.status === 401 && typeof this.token !== "string") this.token.onExpired();
       let code = `HTTP_${response.status}`;
       try {
         const body = await response.json() as { error?: { code?: string } };

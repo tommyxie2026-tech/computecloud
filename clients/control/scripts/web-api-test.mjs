@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+import ts from 'typescript';
+const source = ts.transpileModule(fs.readFileSync(new URL('../src/api.ts', import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
+const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'control-api-test-'));
+const modulePath=path.join(tmp,'api.mjs');fs.writeFileSync(modulePath,source);
+const {ControlAPI}=await import(pathToFileURL(modulePath));
+let expired=false;
+const calls=[];
+globalThis.fetch=async(url,init)=>{calls.push({url,init});return new Response(JSON.stringify({}),{status:200})};
+const api=new ControlAPI('https://control.example',{kind:'web',csrfToken:'test-csrf',onExpired:()=>{expired=true}});
+await api.bootstrap();await api.submitJob({},'stable-key');
+assert.equal(calls[0].init.credentials,'same-origin');assert.equal(calls[0].init.headers.has('Authorization'),false);assert.equal(calls[1].init.headers.get('X-CSRF-Token'),'test-csrf');assert.equal(calls[1].init.headers.get('Idempotency-Key'),'stable-key');
+globalThis.fetch=async()=>new Response('{}',{status:401});await assert.rejects(()=>api.bootstrap());assert.equal(expired,true);
+console.log('Web API Cookie, CSRF, idempotency and expiry checks passed');

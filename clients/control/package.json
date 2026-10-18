@@ -8,7 +8,9 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "export:web": "expo export --platform web --output-dir dist",
-    "check": "npm run typecheck && npm run export:web"
+    "check": "npm run typecheck && npm run export:web",
+    "test:web:api": "node scripts/web-api-test.mjs && node scripts/web-snapshot-test.mjs",
+    "test:web": "node scripts/web-browser-e2e.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
@@ -20,6 +22,7 @@
     "react-native-web": "0.21.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.58.2",
     "@types/react": "~19.2.0",
     "typescript": "~5.9.2"
   }
