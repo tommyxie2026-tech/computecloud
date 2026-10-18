@@ -122,3 +122,61 @@ func (s *Server) httpGraphSourceRead(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResponse(w, 200, out)
 }
+
+type GraphSourceReadEntry struct {
+	Request GraphSourceReadRequest `json:"request"`
+	Receipt GraphSourceReadReceipt `json:"receipt"`
+}
+type GraphSourceReadStatus struct {
+	ReadsUsed int                    `json:"reads_used"`
+	Reads     []GraphSourceReadEntry `json:"reads"`
+}
+
+func (s *Server) GraphSourceReads(ctx context.Context, id, node string) (*GraphSourceReadStatus, error) {
+	j, e := s.jobAuthorized(ctx, id, "jobs:read")
+	if e != nil {
+		return nil, e
+	}
+	if j.graph == nil {
+		return nil, status.Error(codes.NotFound, "NOT_GRAPH_JOB")
+	}
+	if _, ok := graphNode(j.graph, node); !ok {
+		return nil, status.Error(codes.NotFound, "SOURCE_READ_NODE_UNKNOWN")
+	}
+	out := &GraphSourceReadStatus{Reads: []GraphSourceReadEntry{}}
+	e = s.db.Tx(ctx, func(q store.Query) error {
+		if _, e := graphMutationAuthorityTx(ctx, q, j, "jobs:read"); e != nil {
+			return e
+		}
+		rows, e := q.QueryContext(ctx, `SELECT request,body FROM iu_source_reads WHERE goal_id=? AND generation=? AND node_id=? ORDER BY read_id LIMIT 2`, j.graph.GoalID, j.graph.Generation, node)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var req, body []byte
+			if e = rows.Scan(&req, &body); e != nil {
+				return e
+			}
+			var entry GraphSourceReadEntry
+			if e = json.Unmarshal(req, &entry.Request); e != nil {
+				return e
+			}
+			if e = json.Unmarshal(body, &entry.Receipt); e != nil {
+				return e
+			}
+			out.Reads = append(out.Reads, entry)
+		}
+		out.ReadsUsed = len(out.Reads)
+		return rows.Err()
+	})
+	return out, e
+}
+func (s *Server) httpGraphSourceReads(w http.ResponseWriter, r *http.Request) {
+	out, e := s.GraphSourceReads(r.Context(), r.PathValue("id"), r.PathValue("node"))
+	if e != nil {
+		httpError(w, e)
+		return
+	}
+	jsonResponse(w, 200, out)
+}

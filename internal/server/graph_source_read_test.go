@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/tommyxie2026-tech/computecloud/internal/graph"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
+	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"testing"
 )
 
@@ -71,5 +72,28 @@ func TestGraphSourceReadRejectsWrongPlanOrUTF8Boundary(t *testing.T) {
 	in.PlanHash = graph.Hash([]byte("other"))
 	if _, e = h.s.ReadGraphSource(h.ctx, j.ID, in); e == nil {
 		t.Fatal("wrong plan accepted")
+	}
+}
+
+func TestRecoverySourceReadQueryRequiresCurrentAuthorization(t *testing.T) {
+	h, j, _ := recoverySource(t)
+	for range 2 {
+		st, e := h.s.GraphSourceReads(h.ctx, j.ID, "extract")
+		if e != nil || st.ReadsUsed != 1 || len(st.Reads) != 1 {
+			t.Fatal(st, e)
+		}
+	}
+	if _, e := h.s.GraphSourceReads(h.ctx, j.ID, "other"); e == nil {
+		t.Fatal("unknown node")
+	}
+	p, _ := rpcutil.PrincipalFrom(h.ctx)
+	p.Identity.Scopes = nil
+	if _, e := h.s.GraphSourceReads(rpcutil.WithPrincipal(h.ctx, p), j.ID, "extract"); e == nil {
+		t.Fatal("unauthorized read")
+	}
+	p, _ = rpcutil.PrincipalFrom(h.ctx)
+	p.Identity.Owner = "other"
+	if _, e := h.s.GraphSourceReads(rpcutil.WithPrincipal(h.ctx, p), j.ID, "extract"); e == nil {
+		t.Fatal("cross owner")
 	}
 }

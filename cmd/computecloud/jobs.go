@@ -133,6 +133,16 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 	}
 	path := "/v1/jobs/" + url.PathEscape(o.id)
 	switch o.op {
+	case "recover-graph":
+		return runRecoveryCLI(ctx, o.id, o.file, read, func(token string) { controlLeaseToken = token })
+	case "coverage":
+		return print("GET", path+"/graph/coverage-verifications/"+url.PathEscape(o.key), nil)
+	case "verify-coverage":
+		raw, e := os.ReadFile(o.file)
+		if e != nil {
+			return e
+		}
+		return print("POST", path+"/graph/coverage-verifications", raw)
 	case "list":
 		return print("GET", "/v1/jobs?limit="+strconv.Itoa(o.limit)+"&before="+url.QueryEscape(o.cursor), nil)
 	case "submit", "submit-graph":
