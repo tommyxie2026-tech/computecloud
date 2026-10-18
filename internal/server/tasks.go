@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -38,6 +40,13 @@ func dbErr(e error) error {
 	if errors.Is(e, sql.ErrNoRows) {
 		return status.Error(codes.NotFound, "not found")
 	}
+	var sqliteError interface{ Code() int }
+	code := 0
+	if errors.As(e, &sqliteError) {
+		code = sqliteError.Code()
+	}
+	// Never log SQL text, parameters, credential values, or the raw driver error.
+	slog.Warn("storage operation failed", "error_type", fmt.Sprintf("%T", e), "sqlite_code", code)
 	return status.Error(codes.Unavailable, "storage operation failed")
 }
 func readTask(ctx context.Context, q store.Query, id string) (*pb.Task, string, error) {
