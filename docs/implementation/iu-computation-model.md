@@ -1,51 +1,53 @@
-# IU 计算模型：本次实现范围与验收
+# IU 计算模型：实现范围与验收证据
 
-分支 feat/iu-computation-model，从 main 的 006792b0994f7fcc67588684053b8f8e6a965785 建立。对应 [设计规格](../superpowers/specs/2026-10-17-iu-computation-model-design.md)、[实施计划](../superpowers/plans/2026-10-17-iu-computation-model.md)、[运行契约](../contracts/iu-graph-v1.md) 和 [订单示例](../../examples/iu-graph/README.md)。
+本轮执行 [IU 后续迭代计划](../superpowers/plans/2026-10-18-iu-follow-up-iterations.md)，从 main `b38e4c408310464bd1a74d4e82362736bb405d55` 延续。代码已覆盖 IU-2～IU-6 的本轮代码/CI 范围；合并依据是集成 PR 当前 SHA 的 CI 与最终审查，不能只凭本文认定验收。真实 Provider、aicloud 服务、独立主机验收按用户决定保留未完成。
 
-本次交付可运行的实验性闭环：冻结 DAG → 就绪节点绑定 Task → Worker 执行冻结上下文 → Artifact 驱动记忆准入 → 显式 join → 独立业务评估 → 现有 Guard 发布下一代。计算模型由固定 map_reduce 扩展到有限多阶段图；没有建立第二套执行引擎。
+IU 是现有 Task/Attempt 上的算元契约：冻结有限 DAG → 节点就绪 → Task/Attempt → Worker 冻结输入 → Artifact 准入 → Memory/依赖传递 → 独立业务评估 → Guard 发布下一代。复用是单独的持久事实，不创建假 Attempt；没有第二套执行引擎。aicloud 保留 Registry/Evaluation/Router 职责。
 
-## 实际交付
+## 已实现的代码范围
 
-| 范围 | 实现及证据 |
+| 阶段 | 行为与合同 |
 | --- | --- |
-| 算元与图编译 | agent / command / join、具名冻结 Schema、artifact / memory / control 边、三值分支、环与限额拒绝、确定性拓扑 |
-| 输入与 token | 原始 UTF-8 文本、来源 hash、角色/顺序元信息、字节 span；全局规则注入、实际上下文 hash、超限显式失败；token 数未知 |
-| 记忆 | 固定 read-view、来源约束、保守完整 read-set、不可变 record、冲突候选保留与传递失效投影；模型记录保持 unchecked |
-| 执行与恢复 | 原 Task / Attempt fencing、iu_graph_v1 capability、节点激活事务、队列背压等待、停止排空 |
-| 产物准入 | 接受 Artifact 同事务 PENDING + pin，后续有界解析及 ADMITTED / REJECTED；Server 重开恢复不重复 Task |
-| 查询与 CLI | submit-graph / graph / evaluate-graph；节点 Task、receipt、重试时间、有效并行度及评估版本可查 |
-| 评估与修复 | 独立 goals:evaluate 权限、PASS / FAIL / UNKNOWN、CAS、跨代隔离、deadline / cancel、FAIL 经现有 Guard 发布新代 |
-| 费用边界 | 仅受支持 claude_http 估算费用串行模式；明确拒绝 max_tokens、command 混合费用与 Gateway route |
-| 兼容性 | 默认关闭、已接受图继续恢复、旧 single / map_reduce 执行器不切换；Server schema v20，Worker v6 |
+| IU-0/1 基线 | agent/command/join、具名 Schema、三值分支、有界 DAG、Artifact 准入与恢复；原 single/map_reduce 不切换 |
+| IU-2 持久有效性 | [失效规格](../superpowers/specs/iu-durable-invalidation.md)：独立权限、幂等事件、revision/CAS、重启重放、激活/准入/PASS/Replan 同事务复查；已终结 Goal 仅审计，不自动重开 |
+| IU-3 跨代 Memory | [v2 图合同](../contracts/iu-graph-v2.md)：同项目/Goal 一次性授权、完整闭包、目标计划/代绑定、撤权/过期/issuer 复查、不可变快照与来源 Artifact pin；导入仍 unchecked |
+| IU-4 增量结果 | [v3 图合同](../contracts/iu-graph-v3.md)：管理员冻结只读 replay binding，Worker runtime/policy/capability 复核，实际输入/Schema/算元/模板/环境/工作区 key 相同才 REUSE；不确定则普通 Task；当前代仍独立验收 |
+| IU-5A Context/token | [v4 合同](../contracts/iu-graph-v4.md)：必需证据覆盖、UTF-8/字节预算、固定 Counter/receipt 契约、Worker 输入版本/模型/hash 核对、有界回源；生产 CLI 的精确 token 上限仍拒绝/unknown |
+| IU-5B record 验证 | [独立验证合同](../contracts/iu-record-verification-v1.md)：只读管理员 profile、逐命题/scope 回执、来源 pin、保留冲突的受限投影、Goal 显式 proof 引用复查；不改变原始输入或自动 PASS |
+| IU-5C 评测/aicloud | [适配/试运行规格](../superpowers/specs/iu-aicloud-adapter.md)：20 样本四臂协议与消融、全分母/未知成本报告、80 臂 fixture；按核实上游合同提供只读证据 adapter，未开启 Server 生产路由 |
+| IU-6 代码门禁 | [操作手册](../operations/iu-controlled-rollout.md)：v20→v25/备份/回滚快照测试，真实 Server 进程导入/复用恢复、关闭提交后排空、必测缺失/SKIP 即失败、手动慢速包/镜像构建 |
 
-后续迭代以[长期路线图中的 IU 台账](long-term-roadmap.md#iu-计算模型迭代台账)为准：先持久失效事件，再授权跨代 import 和依赖增量重算；真实模型基线单独取证。
+含原始身份链的导入/复用记忆使用 [memory-view-v2](../contracts/iu-memory-view-v2.md)：源 Goal/job/generation/node/Context/View/record 与 previous origin 随 Context 传给 Worker，payload 不改写；元数据依赖映射到新 ID，模型不能伪造 origin。需要 iu_memory_origin_v1；无 origin 的旧 v1 格式/hash 保持。主文保存在冻结 Sources，可按 byte span/hash/角色/顺序回源，不传递模型隐藏思维链或跨 tokenizer token IDs。
 
-## 设计中尚未交付的部分
+当前分支 Server schema v25（原基线 v20，顺序迁移 v21～25），Worker schema v6；新增能力通过明确合同/capability 协商。默认 graphs_enabled=false。图请求 256 KiB、32 节点/128 边/并行 8、Context 64 KiB、delta 64 KiB 等既有上限未扩大。
 
-设计规格保留完整目标，不能把上述切片误认为全部设计已完成：
+## 阶段证据
 
-- 跨代显式授权 Memory import，以及持久规则修订/反证事件在激活和业务评估时统一重查的 API。当前新代全量重算，旧结论不隐式导入。纯 Invalidate / MergeViews 已实现，但不等于运行时动态修订服务。
-- 验证器签名、证据对象存储/独立 record 的 verified 提升服务。当前评估提交受权限约束，hash 绑定调用方证据，真实性由独立评估者负责。
-- 自动上下文检索、tokenizer 计数、附件/二进制快照、模型内部状态拆分；没有语义无损保证。
-- 工作区 patch DAG、不可回滚外部副作用、任意循环、新执行引擎和 aicloud 远程 Registry/Router 集成。
-- 真实 Provider 质量、成本节约、跨主机或不可信隔离运行验收。fixture 只验证协议与状态机。
+| 阶段 PR | 已核实的阶段提交 CI |
+| --- | --- |
+| [IU-2 #159](https://github.com/tommyxie2026-tech/computecloud/pull/159) | b3bef39：[39048549103](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39048549103) 成功 |
+| [IU-3 #160](https://github.com/tommyxie2026-tech/computecloud/pull/160) | 7f44072：[39049321358](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39049321358) 成功 |
+| [IU-4 #161](https://github.com/tommyxie2026-tech/computecloud/pull/161) | 286492e：[39052829931](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39052829931) 成功，含真实双 Worker fixture 的增量/全量对照 |
+| [IU-5A #162](https://github.com/tommyxie2026-tech/computecloud/pull/162) | 0df966e：[39053295586](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39053295586) 成功 |
+| [IU-5B #163](https://github.com/tommyxie2026-tech/computecloud/pull/163) | 9e3e76e：[39053802124](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39053802124) 成功 |
+| [IU-5C #164](https://github.com/tommyxie2026-tech/computecloud/pull/164) | b21a4cb：[39055052816](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39055052816) 成功 |
 
-后续应先实现持久失效事件和授权 import 的事务约束，再开放按依赖范围的增量复用。当前全量重算是明确的功能边界。
+[集成 PR #165](https://github.com/tommyxie2026-tech/computecloud/pull/165) 包含全部七项代码。独立审查发现的冲突深拷贝、Artifact 间接来源、来源 role/order 和 CLI 控制租约问题均有失败复现与回归覆盖；是否可合并仍以最新 SHA 的完整 CI 为准。
 
-## 验证方式与边界
+这些是各阶段对应 SHA 的证据。最终运行代码为 `52f20bb7be885656067b82b48f7a0c20c1d2ec1b`，[完整代码 CI](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39083897816)包含慢速恢复、Linux/macOS 全量回归、镜像和 package 门禁，其结果以该运行记录为准。其 IU 报告已实际通过：93 项必测、278 个测试 PASS，0 FAIL/0 SKIP；18 个语义/故障模拟场景及 80 个 pilot 样本臂通过，真实 Provider 调用为 0。
 
-`make ci-iu-graph` 使用 Go 1.27.2+，包括 JSON Schema/源重建/记忆投影、SQLite v19→v20、Server/Worker/command/CLI，以及两 Worker 订单 fixture 的 race 检查。Python 独立验证器测试另覆盖规则从 1000 修订为 2000 后的 10000 结果；不冒充跨代 import 验收。
+原生恢复报告分别保存 memory/node_result 的实际撤权拒绝、重启前 0 Attempt、来源 pin 和身份链。记忆导入恢复后为 1 Task/1 Attempt，结果复用为 0 Task/0 Attempt；没有将复用伪装成执行。原始命令、SHA、环境、JSONL 与样本存放于 CI artifacts。
 
-本地主机已取得 Go 1.27.2。定向纯逻辑/迁移/图协议测试、全包编译与 vet 的结果记录于本次 PR；本地完整进程测试受到桌面沙箱进程身份检查/进程组操作限制，出现 CLEANUP_UNCONFIRMED，不能称为本地全绿。完整进程与平台回归以 PR 对应 SHA 的 GitHub Actions 为准。
+后续纯文档回填由 PR 最新常规 CI 检查；安装包与镜像证据始终引用实际构建的代码 SHA，不将文档提交误标成已单独打包。
 
-首轮 CI 39018578316 的 iu-graph-contract（含真实两 Worker 进程 fixture）通过；其余失败定位为新增 command Provider 后旧枚举断言和 schema 版本断言未更新，已修正。最新提交的最终结论以 [PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) checks 为准，不将早期 SHA 的结果算作最终验证。
+本机定向 race、全仓编译、vet 和 Python gate 测试已运行。完整 Agent 子进程测试在桌面沙箱出现 CLEANUP_UNCONFIRMED，本机不能宣称全绿，原生进程/平台回归以 CI 为准。fixture Provider 调用为 0；215 次 pilot fixture invocation 不是真实模型用量。
 
-## 效果测试入口
+## 明确保留未完成的验收与后续范围
 
-新增 [本机质量对照实验](../validation/iu-local-quality-experiment.md)：同模型单节点与 IU 结构化拆分，复用实际 context/output/memory 契约。CLI 启动失败和无有效输出单独记录，不虚构真实模型收益；后续原生 Worker 和跨代复用验收仍按上方边界推进。
+- 真实 Provider 的 20 样本、实际模型 revision、usage/费用与独立主机/真实网络/长任务验收；不据 fixture 推导智力、成本节约或分布式加速。
+- aicloud 真实服务与 Task→Goal/project 授权映射、发布点撤权/刷新的一致性合同及生产路由接入。只读快照不是原子许可或费用账本。
+- 生产 Adapter 完整包装的精确 tokenizer、附件/二进制快照与转换器、自动语义依赖发现/检索。未知不记零，摘要不替原文，不保证任意拆分语义无损。
+- 外部签名 verifier/信任 key registry、通用长期记忆、任意循环、模型内部 token/KV 状态拆分、新执行引擎。
+- workspace patch DAG 与不可回滚外部写入的 effect/outbox/补偿/批准合同。Task retry/reuse 不证明外部 exactly-once。
 
-## CI 模拟验收
-
-[CI 模拟与原生执行方案](../validation/iu-ci-simulation.md) 增加 18 个语义/故障场景，以及独立 Server / 双 Worker OS 进程的四图验收、授权评估和 Server 硬重启证据。必测项必须 PASS，报告与 JSONL 日志作为 Actions Artifact 保存；不将模拟通过写成真实模型收益。
-
-代码提交 `32547db` 的 [CI 39035469279](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39035469279) 已完成，35 项运行检查成功（含 Linux/macOS 全量回归）；IU 专项 7 阶段、26 项必测检查及 18 个场景通过。[Artifact](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39035469279/artifacts/12101479992) 保存对应报告和日志。此记录绑定该次代码，后续修改仍须通过最新 CI。
+运行入口与对照见 [订单示例](../../examples/iu-graph/README.md)、[CI 方案](../validation/iu-ci-simulation.md)、[本机模型试运行](../validation/iu-local-quality-experiment.md)。

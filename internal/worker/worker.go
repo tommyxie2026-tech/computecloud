@@ -14,6 +14,7 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
 	"github.com/tommyxie2026-tech/computecloud/internal/control"
 	envreg "github.com/tommyxie2026-tech/computecloud/internal/environment"
+	"github.com/tommyxie2026-tech/computecloud/internal/graph"
 	"github.com/tommyxie2026-tech/computecloud/internal/relay"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
@@ -141,7 +142,7 @@ func advertisedCapabilitySet(provider adapter.Provider, caps adapter.CapabilityS
 	}
 	caps.Environment = compatible
 	out := caps.Advertised()
-	out = append(out, "iu_graph_v1")
+	out = append(out, "iu_graph_v1", graph.MemoryOriginCapability)
 	if desc, ok, err := adapter.ControlDescriptorFor(provider); ok && err == nil {
 		for _, capability := range desc.Capabilities {
 			if err := control.ValidateCapabilities([]control.Capability{capability}); err == nil {
@@ -191,12 +192,19 @@ func (w *Worker) probe(ctx context.Context) error {
 				digests[tmpl.Key()] = tmpl.Digest
 			}
 		}
+		advertised := advertisedCapabilitySet(provider, caps)
+		for _, b := range w.cfg.GraphReplayBindings {
+			if replayRuntimeMatches(b, profile, r) {
+				advertised = append(advertised, b.Capability())
+			}
+		}
+		sort.Strings(advertised)
 		h.Runtimes = append(h.Runtimes, &pb.Runtime{
 			Profile:         profile,
 			Version:         r.Version,
 			Models:          r.Models,
 			Credentials:     r.Credentials,
-			Capabilities:    advertisedCapabilitySet(provider, caps),
+			Capabilities:    advertised,
 			Repositories:    keys(w.cfg.Repositories),
 			Policies:        keys(w.cfg.Policies),
 			Verifiers:       keys(w.cfg.Verifiers),

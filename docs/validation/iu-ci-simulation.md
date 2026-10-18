@@ -60,4 +60,6 @@ Artifact 内包含：
 
 这些测试回答“图契约、信息传递、拒绝错误、调度和恢复是否按预期工作”。它们不能证明真实模型智力、真实正确率、语义普遍无损、分布式加速或费用节约。
 
-规则修订场景使用全新图重算；跨代授权 Memory import、持久动态失效事件仍未实现，不能由模拟通过推定这些能力已交付。后续真实模型效果测试可使用 [本机实验入口](iu-local-quality-experiment.md)，并与本 CI 的确定性证据分开。
+后续集成门禁增加持久失效、跨代授权/复用、逐 record 验证与回源的真实 Server 进程恢复证据，并强制保留原始身份链与 Artifact pin；缺失即失败。后续真实模型效果测试可使用 [本机实验入口](iu-local-quality-experiment.md)，并与本 CI 的确定性证据分开。
+
+新增20样本四臂 pilot 的80个样本臂与215次fixture invocation，真实Provider调用0，token/费用保持unknown。独立主机/Provider/aicloud验收在报告中始终明确NOT_RUN。慢速 workflow_dispatch 包/镜像验证与正式publish分开，详见 [操作手册](../operations/iu-controlled-rollout.md)。

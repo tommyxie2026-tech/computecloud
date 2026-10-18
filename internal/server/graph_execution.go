@@ -72,6 +72,14 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 		return nil
 	}
 	f := j.graph
+	invalidated, validityErr := graphInvalidatedTx(ctx, q, f)
+	if validityErr != nil {
+		return validityErr
+	}
+	if invalidated {
+		j.StopReason = "IU_INPUT_INVALIDATED"
+		j.ErrorCode = j.StopReason
+	}
 	var generation int64
 	var goalState string
 	if e := q.QueryRowContext(ctx, `SELECT active_graph_generation,state FROM goals WHERE id=?`, f.GoalID).Scan(&generation, &goalState); e != nil {
@@ -129,7 +137,10 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 		op := graphOperator(f, n)
 		ready, skip := true, false
 		selected := 0
-		var views []graph.MemoryView
+		views, importErr := importViewsTx(ctx, q, f, n.ID)
+		if importErr != nil {
+			return importErr
+		}
 		var inputs []graph.InputValue
 		joined := map[string]json.RawMessage{}
 		for _, edge := range f.Plan.Spec.Edges {
@@ -219,11 +230,18 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 			return fmt.Errorf("GRAPH_COMMAND_PROFILE_UNAVAILABLE")
 		}
 		instruction := n.Instructions + "\nReturn only JSON with version=iu-node-output-v1, values matching the declared ports, and records=[] or unchecked memory records. Declared output ports: " + string(job.JSON(op.Outputs))
-		manifest, e := graph.CompileContext(graph.ContextRequest{Sources: f.Plan.Spec.Sources, Rules: f.Plan.Spec.Rules, Spans: n.Spans, Instructions: instruction, View: view, Inputs: inputs, Model: ex.Model, Parameters: n.Parameters, OutputSchema: graph.OutputSchema(op.Outputs, f.Plan.Spec.Schemas)})
+		manifest, e := graph.CompileContext(graph.ContextRequest{Policy: n.ContextPolicy, Sources: f.Plan.Spec.Sources, Rules: append(append([]graph.Span{}, f.Plan.Spec.Rules...), n.Rules...), Spans: n.Spans, Instructions: instruction, View: view, Inputs: inputs, Model: ex.Model, Parameters: n.Parameters, OutputSchema: graph.OutputSchema(op.Outputs, f.Plan.Spec.Schemas)})
 		if e != nil {
 			j.StopReason = "CONTEXT_INSUFFICIENT"
 			j.ErrorCode = j.StopReason
 			return s.stopGraphTx(ctx, q, j, nodes)
+		}
+		reused, reuseErr := s.activateReuseTx(ctx, q, j, n, manifest, view, r)
+		if reuseErr != nil {
+			return reuseErr
+		}
+		if reused {
+			continue
 		}
 		if e = s.checkQueueAdmission(ctx, q, j.project, 1); e != nil {
 			// Backpressure delays this activation; committing earlier activations
@@ -245,6 +263,12 @@ func (s *Server) advanceGraphTx(ctx context.Context, q store.Query, j *Job) erro
 		}
 		task := ex.Task(j.frozen.Spec, j.ID+"/node/"+id, manifest.Text)
 		task.RequiredCapabilities = append(task.RequiredCapabilities, "iu_graph_v1")
+		if graph.HasMemoryOrigins(view) {
+			task.RequiredCapabilities = append(task.RequiredCapabilities, graph.MemoryOriginCapability)
+		}
+		if n.ReplayProfile != "" {
+			task.RequiredCapabilities = append(task.RequiredCapabilities, f.ReplayBindings[n.ReplayProfile].Capability())
+		}
 		tid := store.ID()
 		now := store.Now()
 		body := encode(task)

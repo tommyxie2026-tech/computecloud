@@ -56,3 +56,5 @@ computecloud job evaluate-graph --config evaluator-client.yaml --id JOB_ID --fil
 [本机对照实验](../../docs/validation/iu-local-quality-experiment.md) 提供单节点与 IU 组合的小样本入口，最多 8 次 CLI 调用尝试，输出正确性、耗时与已测用量。该实验复用真实图契约，尚不代表分布式调度性能。
 
 优先验证协议与模拟效果可运行 make ci-iu-graph，详见 [CI 验收与报告](../../docs/validation/iu-ci-simulation.md)。该入口不需要真实模型账号。
+
+增量复用示例与限制见 [v3 契约](../../docs/contracts/iu-graph-v3.md)。CI 的 TestGraphIncrementalOrdersMatchesFullRecompute 使用同一订单、规则 1000→2000、实际双 Worker Task/Attempt 与独立 command 验证；打印 IU_INCREMENTAL_EVIDENCE，保留实际来源与未知 token/费用。模型均为 fixture，不能作真实收益结论。未配置 replay binding 的 orders.json 继续全量重算。

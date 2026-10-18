@@ -15,12 +15,15 @@ import (
 )
 
 func seedGraphCandidate(t *testing.T, h *jobHarness, j *Job, raw []byte) string {
+	return seedGraphNodeCandidate(t, h, j, "extract", raw)
+}
+func seedGraphNodeCandidate(t *testing.T, h *jobHarness, j *Job, node string, raw []byte) string {
 	t.Helper()
 	if e := h.s.advanceGraph(h.ctx, j.ID); e != nil {
 		t.Fatal(e)
 	}
 	var tid string
-	if e := h.s.db.SQL.QueryRow(`SELECT task_id FROM iu_nodes WHERE goal_id=? AND generation=? AND node_id='extract'`, j.graph.GoalID, j.graph.Generation).Scan(&tid); e != nil {
+	if e := h.s.db.SQL.QueryRow(`SELECT task_id FROM iu_nodes WHERE goal_id=? AND generation=? AND node_id=?`, j.graph.GoalID, j.graph.Generation, node).Scan(&tid); e != nil {
 		t.Fatal(e)
 	}
 	aid := store.ID()
@@ -70,19 +73,22 @@ func seedGraphCandidate(t *testing.T, h *jobHarness, j *Job, raw []byte) string 
 }
 
 func graphCandidateOutput(t *testing.T, h *jobHarness, j *Job) []byte {
+	return graphNodeCandidateOutput(t, h, j, "extract")
+}
+func graphNodeCandidateOutput(t *testing.T, h *jobHarness, j *Job, node string) []byte {
 	t.Helper()
 	if e := h.s.advanceGraph(h.ctx, j.ID); e != nil {
 		t.Fatal(e)
 	}
 	var ctx, view []byte
-	if e := h.s.db.SQL.QueryRow(`SELECT context_json,input_view FROM iu_nodes WHERE goal_id=? AND generation=? AND node_id='extract'`, j.graph.GoalID, j.graph.Generation).Scan(&ctx, &view); e != nil {
+	if e := h.s.db.SQL.QueryRow(`SELECT context_json,input_view FROM iu_nodes WHERE goal_id=? AND generation=? AND node_id=?`, j.graph.GoalID, j.graph.Generation, node).Scan(&ctx, &view); e != nil {
 		t.Fatal(e)
 	}
 	var m graph.ContextManifest
 	var v graph.MemoryView
 	json.Unmarshal(ctx, &m)
 	json.Unmarshal(view, &v)
-	return job.JSON(graph.ExecutionOutput{Version: "iu-execution-output-v2", GoalID: j.graph.GoalID, Generation: j.graph.Generation, NodeID: "extract", ContextHash: m.SHA256, Values: map[string]json.RawMessage{"result": json.RawMessage(`11000`)}, Delta: graph.Delta{Version: "iu-memory-delta-v1", ContextHash: m.SHA256, ReadViewHash: v.SHA256, Records: []graph.MemoryRecord{}}})
+	return job.JSON(graph.ExecutionOutput{Version: "iu-execution-output-v2", GoalID: j.graph.GoalID, Generation: j.graph.Generation, NodeID: node, ContextHash: m.SHA256, Values: map[string]json.RawMessage{"result": json.RawMessage(`11000`)}, Delta: graph.Delta{Version: "iu-memory-delta-v1", ContextHash: m.SHA256, ReadViewHash: v.SHA256, Records: []graph.MemoryRecord{}}})
 }
 
 func TestGraphMemoryAdmissionRecoversAndDoesNotReplayTask(t *testing.T) {

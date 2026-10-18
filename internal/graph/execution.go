@@ -56,6 +56,10 @@ func BuildOutput(raw []byte, inv Invocation) (ExecutionOutput, error) {
 		return out, e
 	}
 	d := Delta{Version: "iu-memory-delta-v1", ReadViewHash: inv.View.SHA256, ContextHash: inv.Context.SHA256, Records: model.Records}
+	d, e := BindDeltaSources(d, inv.Context.Spans)
+	if e != nil {
+		return out, e
+	}
 	checked, e := ValidateDelta(canonical(d), inv.View)
 	if e != nil {
 		return out, e

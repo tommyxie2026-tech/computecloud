@@ -85,3 +85,7 @@ expected_version 与 supersedes_evaluation_id 实现 CAS；同键同内容重试
 - 原生图当前是只读工作区任务，任何 changes.patch 非空拒绝；没有不可回滚外部副作用的 exactly-once 承诺。固定 command 也必须由运维保证只读可信。
 - Gateway credential route 当前拒绝，必须绑定直接 Worker Runtime。
 - Server schema 升级为 v20，Worker 仍为 v6。升级前按现有备份流程保存 DB 和 Artifacts；旧二进制拒绝 v20，关闭功能不等于可降级数据库。
+
+## 后续失效控制（IU-2，实施中）
+
+POST `/v1/jobs/{id}/graph/invalidations` 要求 `jobs:read` 和独立 `goals:invalidate`，以 Goal/generation/事件 ID 幂等并校验 expected_revision。事件提交后该代不能继续激活、准入或 PASS；后台持久投影不修改旧 View。GraphStatus 返回 validity_revision，评估请求用 expected_validity_revision 绑定该版本。GET `.../graph/validity` 返回事件应用状态，GET `.../graph/memory/{node_id}` 返回已应用投影；未完成时明确返回 pending。CLI 提供 `job invalidate-graph --id ID --file event.json` 和 `job graph-validity --id ID`。详见 [IU-2 规格](../superpowers/specs/iu-durable-invalidation.md)。

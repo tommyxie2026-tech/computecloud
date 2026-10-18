@@ -106,11 +106,25 @@ if prompt.startswith('{'):
             discount = int(re.search(r'fixture-discount:(\d+)', instruction).group(1))
             amounts = json.loads(context['inputs'][0]['value'])
             amount = sum(amounts.values()) - discount
+        if 'fixture-order-object' in instruction:
+            amount = json.loads(context['local'][0]['text'])
+        if 'fixture-customer-total:' in instruction:
+            discount = int(re.search(r'fixture-customer-total:(\d+)', instruction).group(1))
+            orders = json.loads(context['inputs'][0]['value'])
+            unique, customers = {}, {}
+            for order in orders.values():
+                identity = order['order_id']
+                if identity in unique and unique[identity] != order: raise ValueError('conflicting duplicate')
+                unique[identity] = order
+            for order in unique.values():
+                cid = order['customer_id']
+                customers[cid] = customers.get(cid, 0) + order['paid_cents']
+            amount = sum(v-discount if v >= 10000 else v for v in customers.values())
         records = []
         record_id = re.search(r'fixture-record:([a-z_]+)', instruction)
         if record_id:
             sources = [{'id':s['source']['source'],'sha256':s['source']['sha256']} for s in context.get('local',[]) or []]
-            records = [{'id':record_id.group(1),'kind':'observation','payload':{'amount':amount},'sources':sources,'validation':'unchecked','validity':'VALID'}]
+            records = [{'id':record_id.group(1),'kind':'observation','payload':amount if isinstance(amount,dict) else {'amount':amount},'sources':sources,'validation':'unchecked','validity':'VALID'}]
         result = json.dumps({'version':'iu-node-output-v1','values':{p['name']:amount for p in ports},'records':records})
 if 'COMPUTECLOUD JOB CONTRACT:' in prompt:
     meta = json.loads(prompt.splitlines()[-1])

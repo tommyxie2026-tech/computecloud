@@ -18,17 +18,33 @@ import (
 	"time"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/config"
+	"github.com/tommyxie2026-tech/computecloud/internal/graph"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
 )
 
 type jobOptions struct {
-	op, file, id, key, control, artifact, out, cursor string
-	after                                             int64
-	limit                                             int
+	op, file, id, key, control, artifact, out, cursor, node, record string
+	after                                                           int64
+	limit                                                           int
 }
 
 func runJob(ctx context.Context, c config.Client, o jobOptions) error {
+	if o.op == "compile-graph" {
+		raw, e := os.ReadFile(o.file)
+		if e != nil {
+			return e
+		}
+		spec, e := graph.Decode(raw)
+		if e != nil {
+			return e
+		}
+		plan, e := graph.Compile(spec)
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(os.Stdout).Encode(plan)
+	}
 	base, e := url.Parse(c.HTTPURL)
 	if e != nil || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" || base.Path != "" && base.Path != "/" {
 		return fmt.Errorf("client.http_url must be a server origin")
@@ -63,6 +79,7 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 	if o.op == "download" {
 		client.Timeout = 5 * time.Minute
 	}
+	controlLeaseToken := ""
 	request := func(method, path string, body []byte) (*http.Response, error) {
 		r, e := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.HTTPURL, "/")+path, bytes.NewReader(body))
 		if e != nil {
@@ -70,6 +87,9 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		}
 		r.Header.Set("Authorization", "Bearer "+tok)
 		r.Header.Set("Content-Type", "application/json")
+		if controlLeaseToken != "" {
+			r.Header.Set("X-Control-Lease", controlLeaseToken)
+		}
 		if o.key != "" {
 			r.Header.Set("Idempotency-Key", o.key)
 		}
@@ -128,14 +148,66 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		return fmt.Errorf("--id required")
 	}
 	switch o.op {
-	case "graph":
-		return print("GET", path+"/graph", nil)
-	case "evaluate-graph":
+	case "graph-record":
+		if o.node == "" || o.record == "" {
+			return fmt.Errorf("--node and --record required")
+		}
+		return print("GET", path+"/graph/record/"+url.PathEscape(o.node)+"/"+url.PathEscape(o.record), nil)
+	case "propose-graph":
 		b, e := os.ReadFile(o.file)
 		if e != nil {
 			return e
 		}
-		return print("POST", path+"/graph/evaluations", b)
+		holderBody, _ := json.Marshal(map[string]string{"holder_id": "cli-proposal-" + store.ID()})
+		leaseRaw, e := read("POST", path+"/control-lease", holderBody)
+		if e != nil {
+			return e
+		}
+		var lease struct {
+			Token string `json:"lease_token"`
+		}
+		if e = json.Unmarshal(leaseRaw, &lease); e != nil || lease.Token == "" {
+			return fmt.Errorf("invalid control lease response")
+		}
+		controlLeaseToken = lease.Token
+		defer func() { _, _ = read("DELETE", path+"/control-lease", holderBody) }()
+		return print("POST", path+"/goal/replans", b)
+	case "graph":
+		return print("GET", path+"/graph", nil)
+	case "graph-validity":
+		return print("GET", path+"/graph/validity", nil)
+	case "verify-record", "read-source", "issue-import":
+		b, e := os.ReadFile(o.file)
+		if e != nil {
+			return e
+		}
+		endpoint := path + "/graph/import-grants"
+		if o.op == "verify-record" {
+			endpoint = path + "/graph/verifications"
+		}
+		if o.op == "read-source" {
+			endpoint = path + "/graph/source-reads"
+		}
+		return print("POST", endpoint, b)
+	case "get-import", "revoke-import":
+		if o.key == "" {
+			return fmt.Errorf("--key grant ID required")
+		}
+		endpoint := path + "/graph/import-grants/" + url.PathEscape(o.key)
+		if o.op == "revoke-import" {
+			return print("POST", endpoint+"/revoke", []byte(`{}`))
+		}
+		return print("GET", endpoint, nil)
+	case "invalidate-graph", "evaluate-graph":
+		b, e := os.ReadFile(o.file)
+		if e != nil {
+			return e
+		}
+		endpoint := path + "/graph/evaluations"
+		if o.op == "invalidate-graph" {
+			endpoint = path + "/graph/invalidations"
+		}
+		return print("POST", endpoint, b)
 	case "trace":
 		return print("GET", path+"/trace?limit="+strconv.Itoa(o.limit)+"&before="+url.QueryEscape(o.cursor), nil)
 	case "get":

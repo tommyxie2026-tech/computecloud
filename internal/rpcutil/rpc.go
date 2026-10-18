@@ -22,8 +22,9 @@ import (
 )
 
 type Principal struct {
-	Identity config.Identity
-	Worker   bool
+	ManagedKeyDigest string `json:"-"`
+	Identity         config.Identity
+	Worker           bool
 }
 type contextKey struct{}
 type Auth struct {
@@ -140,7 +141,7 @@ func (a *Auth) Bearer(ctx context.Context, header string) (context.Context, erro
 	if a.apiKeyResolver != nil && strings.HasPrefix(token, "cc_live_") {
 		identity, err := a.apiKeyResolver(ctx, hex.EncodeToString(digest[:]))
 		if err == nil {
-			return context.WithValue(ctx, contextKey{}, Principal{Identity: identity}), nil
+			return context.WithValue(ctx, contextKey{}, Principal{Identity: identity, ManagedKeyDigest: hex.EncodeToString(digest[:])}), nil
 		}
 	}
 	return ctx, status.Error(codes.Unauthenticated, "authentication required")

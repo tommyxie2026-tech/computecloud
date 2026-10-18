@@ -58,6 +58,9 @@ func (s *Server) publishGraphReplan(ctx context.Context, prior *Job, in goal.Rep
 	id := store.ID()
 	f.GoalID = in.GoalID
 	decision, e := goal.GuardAndPublishReplan(ctx, s.db, in, approval, func(ctx context.Context, q store.Query, d goal.ReplanDecision) error {
+		if _, e := graphMutationAuthorityTx(ctx, q, prior, "goals:propose"); e != nil {
+			return e
+		}
 		var pointer, hash string
 		var revision, generation, version int64
 		if e := q.QueryRowContext(ctx, `SELECT x.evaluation_id,x.output_hash,b.plan_revision,b.graph_generation,j.version FROM iu_graphs x JOIN jobs j ON j.id=x.job_id JOIN goal_job_bindings b ON b.job_id=j.id WHERE x.job_id=?`, prior.ID).Scan(&pointer, &hash, &revision, &generation, &version); e != nil {
@@ -65,6 +68,13 @@ func (s *Server) publishGraphReplan(ctx context.Context, prior *Job, in goal.Rep
 		}
 		if pointer != in.EvaluationID || hash != ev.OutputHash || revision != in.ExpectedPlanRevision || generation != in.ExpectedGraphGeneration || version != prior.Version {
 			return fmt.Errorf("GRAPH_EVALUATION_STALE")
+		}
+		validityRevision, validityErr := graphValidityRevisionTx(ctx, q, prior.graph)
+		if validityErr != nil {
+			return validityErr
+		}
+		if validityRevision != ev.ExpectedValidityRevision {
+			return fmt.Errorf("GRAPH_VALIDITY_STALE")
 		}
 		var active int
 		if e := q.QueryRowContext(ctx, `SELECT count(*) FROM attempts a JOIN tasks t ON t.id=a.task JOIN goal_job_bindings b ON b.job_id=t.job_id WHERE b.goal_id=? AND a.released=0`, in.GoalID).Scan(&active); e != nil {
@@ -113,6 +123,10 @@ func (s *Server) publishGraphReplan(ctx context.Context, prior *Job, in goal.Rep
 			if _, e := q.ExecContext(ctx, `INSERT INTO iu_nodes(goal_id,generation,node_id) VALUES(?,?,?)`, in.GoalID, d.NextGraphGeneration, n.ID); e != nil {
 				return e
 			}
+		}
+		target := &Job{ID: id, owner: prior.owner, project: prior.project, graph: &f}
+		if e := bindGraphImportsTx(ctx, q, target); e != nil {
+			return e
 		}
 		return appendJobEvent(ctx, q, id, "graph.created", map[string]any{"goal_id": in.GoalID, "graph_generation": d.NextGraphGeneration, "evaluation_id": in.EvaluationID}, "", "")
 	})

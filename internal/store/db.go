@@ -16,6 +16,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+const ServerVersion = 25
+
 type DB struct {
 	SQL  *sql.DB
 	dir  string
@@ -53,7 +55,7 @@ func open(dir, schema string, migrate bool) (*DB, error) {
 	db.SetMaxIdleConns(1)
 	target := 1
 	if schema == ServerSchema {
-		target = 20
+		target = ServerVersion
 	}
 	if schema == WorkerSchema {
 		target = 6

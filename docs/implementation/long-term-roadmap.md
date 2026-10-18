@@ -1511,31 +1511,32 @@ evaluation history / runtime capability / cost / latency
 
 ### IU 计算模型迭代台账
 
-IU 是 Goal-oriented Computing 的受限计算图切片，与 v0.5 Scheduler 主线配合，复用 Task / Attempt、Artifact、Scheduler 和 Guard。computecloud 不新增执行引擎，也不承担 aicloud 的模型 Registry / Evaluation / Router 职责。以下阶段是迭代顺序，不构成版本号或发布日期承诺。
+本轮执行 [IU 后续实施计划](../superpowers/plans/2026-10-18-iu-follow-up-iterations.md)，代码已覆盖下表范围；最终合并依赖集成 PR 当前 SHA 的 CI 与审查。用户选择先完成代码/CI，真实 Provider、远程 aicloud 与独立主机验收继续未完成，不将 fixture 通过当成实际收益。
 
-| 阶段 | 状态 | 交付与退出门槛 |
+IU 复用 Task/Attempt、Artifact、Scheduler、Guard；没有第二套执行引擎。aicloud 继续负责 Registry/Evaluation/Router。
+
+| 阶段 | 当前代码范围 | 验收与后续边界 |
 | --- | --- | --- |
-| IU-0 有限图与执行契约 | 已实现，默认关闭；PR #156 | agent / command / join、冻结 Schema 与原文来源、记忆 read-view、Artifact 事务准入、独立业务评估和 Guard 新代；通过现有 Task / Attempt 恢复与兼容性检查 |
-| IU-1 可重复模拟验收 | 已通过 CI | 18 场景、26 项必测实际 PASS；独立 Server / 两 Worker 四图验收，规则修订与错误输出、授权评估、硬重启前后 Attempt 不增加；保留报告和日志 |
-| IU-2 持久失效事件 | 待设计与实现，下一优先项 | 定义规则修订/反证事件、版本及审计；激活和评估事务统一重查；覆盖事件重放、重启、迟到产物及并发失效，不允许旧证据继续准入 |
-| IU-3 授权跨代 Memory import | 依赖 IU-2，未实现 | 显式授权、来源/依赖/版本约束、不可变导入快照；覆盖失效、冲突、越权与旧代隔离；验证服务独立于模型，模型不能自行提升 verified |
-| IU-4 按依赖增量重算 | 依赖 IU-2/3，未实现 | 与全量重算对照，验证规则变更后的受影响闭包、未失效结果复用、恢复和取消；先证明业务结果一致，再测重算量与端到端成本 |
-| IU-5 真实 Provider 与 aicloud 对接 | 可先做小样本基线；远程集成未实现 | 固定模型/CLI/提示词与任务集，对照单节点、全量 IU 和后续增量 IU；记录有效输出、成功率、调用数、延迟、实际 usage 与费用来源；aicloud 接口按能力及评估契约接入 |
-| IU-6 受控部署验收 | 依赖前序证据，未完成 | 独立主机、升级/回滚、真实 Runtime、隔离和副作用策略；通过目标环境 Gate 后再决定扩大能力范围或改变默认开关 |
+| IU-0/1 | 有限图与可重复模拟基线 | 默认关闭；18 故障/语义场景保留 |
+| IU-2 | 持久事件、revision/CAS、两跳失效与重启、准入/PASS/Replan 事务复查 | 阶段 PR #159 CI 已过；保守按整代封锁，不改历史 |
+| IU-3 | 同 Goal 一次性授权、完整闭包、冻结导入/来源、pin、撤权/过期 | 阶段 PR #160 CI 已过；原始身份链用 memory-view-v2 继续传递，模型不能自授 verified |
+| IU-4 | 精确输入/环境 key、显式结果复用事实、无假 Attempt、全量回退 | 阶段 PR #161 CI 已过；订单规则修订原生 fixture 比较输出与实际 Task/Attempt，未测真实收益 |
+| IU-5A | v4 证据/字节预算、计数契约、输入核对、有界回源 | 阶段 PR #162 CI 已过；当前生产 CLI 精确 token 硬预算仍拒绝，附件仅设计/拒绝未知类型 |
+| IU-5B | 管理员只读 verifier、作用域回执/投影、Goal proof 引用 | 阶段 PR #163 CI 已过；来源失效/profile 修订撤销适用性；经验区间不是确定性证明 |
+| IU-5C | 20 样本四臂协议、消融、全分母/未知成本；核实上游后的只读 aicloud adapter | 阶段 PR #164 CI 已过；真实 Provider、正式功效分析、服务授权一致性和生产路由仍未完成 |
+| IU-6 | 备份/升级/快照回滚、原生导入/复用恢复、严格 CI、慢速包/镜像验证、主机清单预检 | 代码 SHA `52f20bb` 的完整 CI/包镜像门禁见实现范围；IU 93 必测与原生恢复通过。真实独立主机/网络/长任务未验收，不扩大开关或发布范围 |
 
-当前证据：[PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) 的代码提交 `32547db` 已通过 [CI 39035469279](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39035469279)，35 项运行检查成功；18 个模拟场景与 26 项 IU 必测检查通过，详见[报告与日志](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39035469279/artifacts/12101479992)。该记录只证明对应代码与模拟验收，不替代后续 SHA 的 CI 或正式发布证据。
+[实现范围](iu-computation-model.md)记录各阶段精确 SHA/CI 链接；[操作手册](../operations/iu-controlled-rollout.md)给出故障取证与升级回滚步骤。Server schema v25、Worker v6；不预设新发布版本号。
 
-下一轮待办：
+后续必须真实取证的待办：
 
-- [ ] 先冻结失效事件与授权 import 的状态机、事务边界、威胁与失败用例，再修改运行时。
-- [ ] 给跨代复用补齐来源快照、规则版本、授权主体和拒绝原因查询。
-- [ ] 建立全量重算与增量重算的同数据对照，避免旧规则或上下文丢失被最终金额碰巧正确掩盖。
-- [ ] 固定真实模型小样本，保留失败及有效输出分母；未知 token/费用保持未知，不推算收益。
-- [ ] 将通过验收的能力逐项回填本台账及实现范围，保留 `make ci-iu-graph` 回归门禁。
+- [ ] 固定可用模型/CLI/Provider revision，执行冻结试运行，保留失败/未知用量；正式扩样前完成预注册与功效分析。
+- [ ] 确定 aicloud 服务及授权映射/撤权合同，再开启生产适配；不靠只读 hash 代替许可。
+- [ ] 在两台独立 Worker 主机上完成断网、崩溃、长任务、升级/恢复与回滚演练；同 Runner 两个进程不替代。
+- [ ] 经目标环境证据决定是否扩大默认开关/限制，继续保留全量重算。
+- [ ] 精确 tokenizer/附件、外部 verifier 信任链、patch DAG/外部 effect 合同各自独立立项。
 
-当前边界：原始输入采用 UTF-8 字节 span 与快照，不拆分模型内部 token 状态；尚无 tokenizer 精确计数和普遍语义无损保证。跨代现在全量重算；纯 Invalidate / MergeViews 不等于持久运行时失效服务。只读订单 fixture 不证明外部副作用 exactly-once 或真实模型收益。
-
-设计、实现、用法和验收分别见 [IU 实现范围](iu-computation-model.md)、[运行契约](../contracts/iu-graph-v1.md)、[订单示例](../../examples/iu-graph/README.md)、[CI 方案](../validation/iu-ci-simulation.md)及[本机质量实验](../validation/iu-local-quality-experiment.md)。
+原文使用不可变 UTF-8 snapshot/span/hash，可逐字节重建；记忆身份/依赖链传给算元后重新编码目标模型输入。此机制不意味着任意语义拆分无损，也不意味着真实模型优于单节点。
 
 ### 19.1 Re-plan Guard 实施切片
 

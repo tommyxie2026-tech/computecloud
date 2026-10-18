@@ -1,0 +1,8 @@
+{
+  "schema_version": "iu-independent-host-inventory-v1",
+  "computecloud_commit": null,
+  "hosts": [
+    {"worker_id": null, "host_identity_sha256": null, "worker_binary_sha256": null, "runtime_profile": null, "runtime_version": null, "model_configuration_ref": null},
+    {"worker_id": null, "host_identity_sha256": null, "worker_binary_sha256": null, "runtime_profile": null, "runtime_version": null, "model_configuration_ref": null}
+  ]
+}

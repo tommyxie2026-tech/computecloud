@@ -16,6 +16,7 @@ type InputValue struct {
 	Value      string `json:"value"`
 }
 type ContextRequest struct {
+	Policy       *ContextPolicy
 	OutputSchema json.RawMessage
 	Parameters   json.RawMessage
 	Sources      []Source
@@ -66,6 +67,23 @@ func CompileContext(r ContextRequest) (ContextManifest, error) {
 	if e := validateView(r.View); e != nil {
 		return m, e
 	}
+	maxBytes := 64 << 10
+	if r.Policy != nil {
+		if e := r.Policy.Validate(); e != nil {
+			return m, e
+		}
+		if r.Policy.MaxBytes > 0 {
+			maxBytes = r.Policy.MaxBytes
+		}
+		for _, required := range r.Policy.RequiredEvidence {
+			if _, e := readSpan(sources, required); e != nil {
+				return m, fmt.Errorf("CONTEXT_INSUFFICIENT: required evidence: %w", e)
+			}
+			if !requiredEvidenceCovered(required, append(append([]Span{}, r.Rules...), r.Spans...)) {
+				return m, fmt.Errorf("CONTEXT_INSUFFICIENT: required evidence missing")
+			}
+		}
+	}
 	var rules, local []contextSpan
 	for kind, spans := range [][]Span{r.Rules, r.Spans} {
 		for _, span := range spans {
@@ -97,8 +115,8 @@ func CompileContext(r ContextRequest) (ContextManifest, error) {
 		}
 	}
 	raw := canonical(body)
-	if len(raw) > 64<<10 {
-		return m, fmt.Errorf("CONTEXT_INSUFFICIENT: serialized input exceeds 65536 bytes")
+	if len(raw) > maxBytes {
+		return m, fmt.Errorf("CONTEXT_INSUFFICIENT: serialized input exceeds byte policy")
 	}
 	m = ContextManifest{Version: "iu-context-v1", Text: string(raw), SHA256: Hash(raw), ReadViewHash: r.View.SHA256, InputFingerprint: Hash(canonical(struct {
 		Body  any

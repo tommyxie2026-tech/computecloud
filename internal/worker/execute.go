@@ -127,6 +127,10 @@ func (w *Worker) execute(parent context.Context, a *pb.Assignment) {
 		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "CAPABILITY_UNAVAILABLE"})
 		return
 	}
+	if !replayExecutionMatches(w.cfg, a) {
+		complete(&pb.CompleteRequest{CleanupConfirmed: true, ErrorCode: "REPLAY_BINDING_UNAVAILABLE"})
+		return
+	}
 	if te := toolreg.AuthorizeRequired(a.Spec.RequiredCapabilities, provider.Capabilities().Tools, policy.AllowedTools); te != nil {
 		code := "CAPABILITY_UNAVAILABLE"
 		if errors.Is(te, toolreg.ErrPolicyDenied) {
