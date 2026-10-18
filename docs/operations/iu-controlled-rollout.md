@@ -4,7 +4,7 @@
 
 ## 冻结运行输入
 
-记录 computecloud commit/二进制 SHA256、Server schema v25、Worker schema v6、模型/CLI/Runtime/模板/权限/环境摘要、样本来源与业务 verifier。v1～v4 图请求合同、memory-view-v2 的独立 capability 与当前范围见 contracts。IU 仍是现有 Task/Attempt 契约，不新建执行引擎；Registry/Evaluation/Router 属于 aicloud。
+记录 computecloud commit/二进制 SHA256、Server schema v26、Worker schema v6、模型/CLI/Runtime/模板/权限/环境摘要、样本来源与业务 verifier。v1～v4 图请求合同、memory-view-v2 的独立 capability 与当前范围见 contracts。IU 仍是现有 Task/Attempt 契约，不新建执行引擎；Registry/Evaluation/Router 属于 aicloud。
 
 实际独立主机清单使用 [模板](../validation/iu-independent-host-inventory.example.json)：
 

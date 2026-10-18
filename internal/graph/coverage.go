@@ -69,6 +69,10 @@ func CheckCoverage(s Spec) (CoverageReport, error) {
 	if !ok || src.SHA256 != c.GoalSpecHash {
 		return r, invalid("coverage goal source")
 	}
+	executable := map[string]bool{}
+	for _, op := range s.Operators {
+		executable[op.ID] = op.Kind == "agent" || op.Kind == "command"
+	}
 	nodes := map[string]Node{}
 	for _, n := range s.Nodes {
 		nodes[n.ID] = n
@@ -107,7 +111,7 @@ func CheckCoverage(s Spec) (CoverageReport, error) {
 		seen := map[string]bool{}
 		for _, id := range o.NodeIDs {
 			n, ok := nodes[id]
-			if !ok || seen[id] {
+			if !ok || seen[id] || !executable[n.Operator] {
 				return r, invalid("coverage node")
 			}
 			seen[id] = true

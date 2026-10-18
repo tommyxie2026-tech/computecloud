@@ -38,6 +38,8 @@ GoalSource 为严格 iu-orders-goal-v1 JSON：version、currency、unit、order_
 
 固定检查为 source_identity、source_fields、customer_grouping、threshold_once、exception_rules、currency_unit。GoalSpec、catalog 与 checker 的检查集合须完整匹配，来源不能有未分类内容。严格检查字段名和必需字段；重复键、大小写别名覆盖、未知规则、未解指代/单位和不可用证据不能自动通过。最终金额正确也不能掩盖源字段损坏。
 
+负责原文加载的节点必须是实际执行 agent/command 的节点。join 只组装既有输出，不创建执行 Context，因此不能作为加载证据的责任节点；仍可作为最终检查输出。
+
 ## 独立回执与验收
 
 POST `/v1/jobs/{id}/graph/coverage-verifications`，body 至多 4096 bytes：

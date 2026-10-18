@@ -18,7 +18,7 @@ computecloud 的产品本质仍然是 **Agent Job Executor**，不是通用 Work
 - 当前功能基线：Agent Job Executor、Runtime / Tool / Environment、Prepared Workspace、synthetic Goal、Control 与实验性 Relay。
 - 已实现并有 CI 覆盖：Goal 原子 Plan/Job 发布和受限 `claude_http` 估算费用控制、Relay direct-first 运维基础、Worker strict OCI 边界、Codex/Claude Attempt Gateway 合约及敏感值脱敏。
 - 实验性 IU 有限计算图：在既有 Task / Attempt 上支持 agent / command / join、冻结原文上下文、不可变记忆与准入、独立业务评估及 Guard 下一代；默认关闭，代码合入不代表真实模型效果或生产验收完成。
-- Server schema：**v25**；Worker schema：**v6**。
+- Server schema：**v26**；Worker schema：**v6**。
 - 仍待目标环境验收：固定版本真实 Runtime、独立双 Worker 故障/升级恢复、代表性 Linux Worker 缓存性能、真实 NAT Relay、OCI/egress 隔离负向测试、mTLS 轮换/撤销、公网源站保护及供应商账单硬上限。CI 通过不等于这些验收完成，也不代表可接纳任意不可信公网租户。
 - v0.4.9 发布收尾记录见[迭代计划](docs/superpowers/plans/v0.4.9-release-iteration.md)；v0.5.0 主线仍是 Agent-aware Scheduler，保持确定性软评分、默认关闭。
 - 发布状态以 [GitHub Actions](https://github.com/tommyxie2026-tech/computecloud/actions) 与 [GitHub Releases](https://github.com/tommyxie2026-tech/computecloud/releases) 为准；代码合入不等于版本已发布。

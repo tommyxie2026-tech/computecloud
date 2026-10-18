@@ -19,7 +19,7 @@ IU 是现有 Task/Attempt 上的算元契约：冻结有限 DAG → 节点就绪
 
 含原始身份链的导入/复用记忆使用 [memory-view-v2](../contracts/iu-memory-view-v2.md)：源 Goal/job/generation/node/Context/View/record 与 previous origin 随 Context 传给 Worker，payload 不改写；元数据依赖映射到新 ID，模型不能伪造 origin。需要 iu_memory_origin_v1；无 origin 的旧 v1 格式/hash 保持。主文保存在冻结 Sources，可按 byte span/hash/角色/顺序回源，不传递模型隐藏思维链或跨 tokenizer token IDs。
 
-当前分支 Server schema v26（上一轮 v25；本轮追加覆盖回执/恢复提案与发布事实）（原基线 v20，顺序迁移 v21～25），Worker schema v6；新增能力通过明确合同/capability 协商。默认 graphs_enabled=false。图请求 256 KiB、32 节点/128 边/并行 8、Context 64 KiB、delta 64 KiB 等既有上限未扩大。
+当前分支 Server schema v26（上一轮 v25；本轮追加覆盖回执/恢复提案与发布事实）（原基线 v20，顺序迁移 v21～26），Worker schema v6；新增能力通过明确合同/capability 协商。默认 graphs_enabled=false。图请求 256 KiB、32 节点/128 边/并行 8、Context 64 KiB、delta 64 KiB 等既有上限未扩大。
 
 ## 阶段证据
 

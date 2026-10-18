@@ -97,3 +97,13 @@ func TestCoverageContextPolicyDeduplicatesAndRejectsOverflow(t *testing.T) {
 		t.Fatal("unusable runtime policy was published")
 	}
 }
+
+func TestCoverageRejectsJoinEvidenceResponsibility(t *testing.T) {
+	s := coverageFixture()
+	s.Coverage.Obligations[0].NodeIDs = []string{"merge"}
+	s.Nodes[1].Spans = append([]Span{}, s.Coverage.Obligations[0].Sources...)
+	s.Coverage.SHA256 = s.Coverage.Digest()
+	if _, err := Compile(s); err == nil {
+		t.Fatal("join declared evidence it never loads into an execution context")
+	}
+}

@@ -138,7 +138,7 @@ recover-graph 顺序为：获取状态及匹配的 coverage receipt → 检查�
 **Files:** 新建 `internal/server/graph_coverage_flow_test.go`；修改 `scripts/ci_task_flow.py`、`scripts/ci_iu_graph.py`、`scripts/test_ci_iu_graph.py`、`.github/workflows/ci.yml`（仅在现有 gate 不能覆盖新增流程时）、`docs/validation/iu-ci-simulation.md`、`docs/operations/iu-controlled-rollout.md`、`docs/implementation/iu-computation-model.md`、`long-term-roadmap.md`、README；新建 `docs/contracts/iu-graph-v5.md` 与示例操作说明。
 
 - [ ] 写 `TestCoverageNativeFailReadReplanPassAndFrozenHistory`：真实 Server/两 Worker fixture，初代错误 → checker FAIL → 有界回源 → Guard → 新代正确 → 独立 PASS。核对真实 Task/Attempt/代、来源 pin、前后 Context hash，禁止客户端生成假 Attempt。
-- [ ] 写 `TestRecoveryServerRestartDoesNotResetLimits` 与原生进程提交前/提交后故障用例；重启 Server、CLI 丢响应、关闭新图提交后的恢复/排空均保留事实，不放宽禁用新发布的配置。现有 v20 快照验收与新 v25 快照同时保留。
+- [ ] 写 `TestRecoveryServerRestartDoesNotResetLimits` 与原生进程提交前/提交后故障用例；重启 Server、CLI 丢响应、关闭新图提交后的恢复/排空均保留事实，不放宽禁用新发布的配置。现有 v20 快照验收与新 v26 快照同时保留。
 - [ ] gate 必测名单加入所有新增关键测试；缺失/SKIP/空 JSONL 均失败。新 72 条四臂报告与旧 80 条 pilot 分开检验；Provider=0；自然 UNKNOWN 可以是预期结果，不能当被跳过。报告同时保留测试 PASS 与业务 FAIL/UNKNOWN，不能混为一个成功计数。
 - [ ] 本机运行 `go test -race ./internal/graph ./internal/store ./internal/server ./internal/worker ./internal/iuexperiment ./internal/aicloudadapter ./cmd/computecloud ./cmd/iu-experiment -count=1`、Python gate 测试、`go vet ./...`；原生子进程遇桌面环境限制明确记录，以实际 CI 门禁取证，不把局部编译当全绿。
 - [ ] 用失败复现及补丁差异做全分支独立审查；修复已确认问题，重复相关验证。文档更新实际版本、接口、拒绝原因、未测范围与精确 SHA/CI，不提前勾选本计划或标阶段完成。
