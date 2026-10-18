@@ -1524,7 +1524,7 @@ IU 复用 Task/Attempt、Artifact、Scheduler、Guard；没有第二套执行引
 | IU-5A | v4 证据/字节预算、计数契约、输入核对、有界回源 | 阶段 PR #162 CI 已过；当前生产 CLI 精确 token 硬预算仍拒绝，附件仅设计/拒绝未知类型 |
 | IU-5B | 管理员只读 verifier、作用域回执/投影、Goal proof 引用 | 阶段 PR #163 CI 已过；来源失效/profile 修订撤销适用性；经验区间不是确定性证明 |
 | IU-5C | 20 样本四臂协议、消融、全分母/未知成本；核实上游后的只读 aicloud adapter | 阶段 PR #164 CI 已过；真实 Provider、正式功效分析、服务授权一致性和生产路由仍未完成 |
-| IU-6 | 备份/升级/快照回滚、原生导入/复用恢复、严格 CI、慢速包/镜像验证、主机清单预检 | 集成 SHA 以 CI 为准；真实独立主机/网络/长任务未验收，不扩大开关或发布范围 |
+| IU-6 | 备份/升级/快照回滚、原生导入/复用恢复、严格 CI、慢速包/镜像验证、主机清单预检 | 代码 SHA `52f20bb` 的完整 CI/包镜像门禁见实现范围；IU 93 必测与原生恢复通过。真实独立主机/网络/长任务未验收，不扩大开关或发布范围 |
 
 [实现范围](iu-computation-model.md)记录各阶段精确 SHA/CI 链接；[操作手册](../operations/iu-controlled-rollout.md)给出故障取证与升级回滚步骤。Server schema v25、Worker v6；不预设新发布版本号。
 

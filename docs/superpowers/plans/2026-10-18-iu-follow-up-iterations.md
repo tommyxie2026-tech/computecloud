@@ -10,7 +10,7 @@
 
 **Spec:** [首轮完整设计目标](../specs/2026-10-17-iu-computation-model-design.md)、[当前运行契约](../../contracts/iu-graph-v1.md)、[实际交付范围](../../implementation/iu-computation-model.md)。
 
-**状态：七项代码迭代已交付，Task 1–6 阶段 CI 已通过；集成合并门槛为 [PR #165](https://github.com/tommyxie2026-tech/computecloud/pull/165) 最新 SHA 的完整 CI（含慢速、镜像与 package）及独立审查回归。按用户选择，真实模型、远程 aicloud、独立双主机验收保留未完成。** 文档日期为 2026-10-18。代码基线为 main `b38e4c408310464bd1a74d4e82362736bb405d55`；[PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) 交付实验图，[PR #157](https://github.com/tommyxie2026-tech/computecloud/pull/157) 补齐认证门禁与缓存修正。[对应 main CI](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39041998004) 44 项运行检查成功。该证据不表示本计划中的待办已实现，也不表示已发布新版本。
+**状态：七项代码迭代已交付，独立审查的四项 Important 已修正并增加回归；真实模型、远程 aicloud、独立双主机验收按用户选择保留未完成。** 运行代码为 `52f20bb7be885656067b82b48f7a0c20c1d2ec1b`，[完整代码 CI/包镜像门禁](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39083897816)记录该 SHA 的实际结果；后续纯文档回填以 [PR #165](https://github.com/tommyxie2026-tech/computecloud/pull/165) 最新常规检查为准，不把旧 SHA 的构建写成新 SHA 的构建。 文档日期为 2026-10-18。代码基线为 main `b38e4c408310464bd1a74d4e82362736bb405d55`；[PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) 交付实验图，[PR #157](https://github.com/tommyxie2026-tech/computecloud/pull/157) 补齐认证门禁与缓存修正。[对应 main CI](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39041998004) 44 项运行检查成功。该证据不表示本计划中的待办已实现，也不表示已发布新版本。
 
 ## Global Constraints
 
@@ -35,9 +35,9 @@
 | 顺序 | 阶段 | 本轮状态 | 依赖与退出门槛 |
 | --- | --- | --- | --- |
 | 已完成基线 | IU-0 有限图、IU-1 可重复 CI | 实验性已交付 | 继续保留 18 场景、26 项 IU 必测和独立 Server/双 Worker 验收；认证门禁也必须实际运行 |
-| 第 1 迭代 | IU-2 持久失效事件 | CI 已通过，最终审查待完成 | 事件持久化、两跳失效、事务重查、重启重放及权限/CAS 通过 |
-| 第 2 迭代 | IU-3 授权跨代 Memory import | CI 已通过，最终审查待完成 | 依赖 IU-2；同一 Goal 跨代的依赖闭包、授权、版本与 provenance 通过 |
-| 第 3 迭代 | IU-4 按依赖增量重算 | 阶段 CI 已通过，集成审查待完成 | 依赖 IU-2/3；先与全量重算业务结果一致，再评估节省的实际调用与成本 |
+| 第 1 迭代 | IU-2 持久失效事件 | 阶段 CI 已通过；审查修正已纳入集成 PR | 事件持久化、两跳失效、事务重查、重启重放及权限/CAS 通过 |
+| 第 2 迭代 | IU-3 授权跨代 Memory import | 阶段 CI 已通过；审查修正已纳入集成 PR | 依赖 IU-2；同一 Goal 跨代的依赖闭包、授权、版本与 provenance 通过 |
+| 第 3 迭代 | IU-4 按依赖增量重算 | 阶段 CI 已通过；四组集成对照纳入必测 | 依赖 IU-2/3；先与全量重算业务结果一致，再评估节省的实际调用与成本 |
 | 可并行准备 | IU-5A 上下文/token 治理 | 代码与阶段 CI 已通过；外部验收待完成 | 不依赖增量重算；冻结 tokenizer/模板、实际输入核对、超限和回源路径通过 |
 | 第 2～4 迭代 | IU-5B 独立记忆验证 | 代码与阶段 CI 已通过；外部验收待完成 | 可先设计；接入跨代时依赖 IU-2/3；验证作用域、证据与失效联动通过 |
 | 全程取证，后续接入 | IU-5C 真实模型评测与 aicloud | 代码与阶段 CI 已通过；外部验收待完成 | 小样本单节点/全量 IU 可先做；增量对照等 IU-4；远程接入另开契约 PR |
@@ -136,7 +136,7 @@ IU-5A/B/C 是原路线 IU-5 的细分，不改变 IU-2→IU-3→IU-4 的安全�
 - [x] 故障注入覆盖失效提交、导入、复用、Artifact 接受、准入和业务评估边界，核对 Task/Attempt/generation、receipt、Artifact pin 和审计记录，无半提交、重复执行或过期 PASS。
 - [x] 只读/纯计算先验收。工作区 patch DAG 另写冲突、基线 CAS、测试与合并合同；外部写入需先定义 effect ID、幂等键、outbox/补偿或人工批准，不能由恢复/重试推定外部 exactly-once。
 - [x] 升级前备份，关闭新图提交后已接受任务仍恢复/排空；不支持的协议或迁移明确拒绝。经目标环境验收后，才单独决定扩大开关、限制或发布范围。
-- [ ] CI 必测名单缺失/SKIP 即失败；保存 SHA、环境、命令、原始样本及报告。认证、全量回归和打包/镜像门禁全部实际通过后再标记阶段完成。
+- [x] CI 必测名单缺失/SKIP 即失败；保存 SHA、环境、命令、原始样本及报告。认证、全量回归和打包/镜像门禁全部实际通过后再标记阶段完成。
 
 ## 执行与回填规则
 

@@ -34,7 +34,11 @@ IU 是现有 Task/Attempt 上的算元契约：冻结有限 DAG → 节点就绪
 
 [集成 PR #165](https://github.com/tommyxie2026-tech/computecloud/pull/165) 包含全部七项代码。独立审查发现的冲突深拷贝、Artifact 间接来源、来源 role/order 和 CLI 控制租约问题均有失败复现与回归覆盖；是否可合并仍以最新 SHA 的完整 CI 为准。
 
-这些是各阶段对应 SHA 的证据；集成阶段新增 origin wire 与恢复门禁，需以[集成分支 CI](https://github.com/tommyxie2026-tech/computecloud/actions?query=branch%3Afeat%2Fiu-recovery-release-gates)当前 SHA 的结果为准。报告包含命令、SHA、环境、JSONL 与原始样本。
+这些是各阶段对应 SHA 的证据。最终运行代码为 `52f20bb7be885656067b82b48f7a0c20c1d2ec1b`，[完整代码 CI](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39083897816)包含慢速恢复、Linux/macOS 全量回归、镜像和 package 门禁，其结果以该运行记录为准。其 IU 报告已实际通过：93 项必测、278 个测试 PASS，0 FAIL/0 SKIP；18 个语义/故障模拟场景及 80 个 pilot 样本臂通过，真实 Provider 调用为 0。
+
+原生恢复报告分别保存 memory/node_result 的实际撤权拒绝、重启前 0 Attempt、来源 pin 和身份链。记忆导入恢复后为 1 Task/1 Attempt，结果复用为 0 Task/0 Attempt；没有将复用伪装成执行。原始命令、SHA、环境、JSONL 与样本存放于 CI artifacts。
+
+后续纯文档回填由 PR 最新常规 CI 检查；安装包与镜像证据始终引用实际构建的代码 SHA，不将文档提交误标成已单独打包。
 
 本机定向 race、全仓编译、vet 和 Python gate 测试已运行。完整 Agent 子进程测试在桌面沙箱出现 CLEANUP_UNCONFIRMED，本机不能宣称全绿，原生进程/平台回归以 CI 为准。fixture Provider 调用为 0；215 次 pilot fixture invocation 不是真实模型用量。
 
