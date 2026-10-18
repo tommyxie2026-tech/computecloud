@@ -144,21 +144,8 @@ func (s *Server) VerifyGraphCoverage(ctx context.Context, id string, in GraphCov
 		return replay, e
 	}
 	// Verify the immutable accepted bundles are still retrievable before issuing evidence.
-	for _, a := range snap.Artifacts {
-		if e = ctx.Err(); e != nil {
-			return nil, e
-		}
-		var path, hash, state string
-		var size int64
-		if e = s.db.SQL.QueryRowContext(ctx, `SELECT path,hash,size,state FROM artifacts WHERE id=?`, a).Scan(&path, &hash, &size, &state); e != nil {
-			return nil, e
-		}
-		if state != "ACCEPTED" {
-			return nil, importFailure("COVERAGE_ARTIFACT_UNACCEPTED")
-		}
-		if _, e = readGraphBundle(filepath.Join(s.cfg.DataDir, "artifacts", path), size, hash); e != nil {
-			return nil, importFailure("COVERAGE_ARTIFACT_UNAVAILABLE")
-		}
+	if e = s.checkCoverageArtifactFiles(ctx, snap.Artifacts); e != nil {
+		return nil, e
 	}
 	p, ok := s.cfg.Jobs.GraphCoverageVerifiers[in.Profile]
 	if !ok || !p.Valid() || graph.Hash(job.JSON(p)) != graph.Hash(job.JSON(f.CoverageVerifier)) {
@@ -323,4 +310,37 @@ func (s *Server) httpGraphCoverage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, 200, out)
+}
+
+func (s *Server) checkCoverageArtifactFiles(ctx context.Context, ids []string) error {
+	for _, a := range ids {
+		if e := ctx.Err(); e != nil {
+			return e
+		}
+		var path, hash, state string
+		var size int64
+		if e := s.db.SQL.QueryRowContext(ctx, `SELECT path,hash,size,state FROM artifacts WHERE id=?`, a).Scan(&path, &hash, &size, &state); e != nil {
+			return e
+		}
+		if state != "ACCEPTED" {
+			return importFailure("COVERAGE_ARTIFACT_UNACCEPTED")
+		}
+		if _, e := readGraphBundle(filepath.Join(s.cfg.DataDir, "artifacts", path), size, hash); e != nil {
+			return importFailure("COVERAGE_ARTIFACT_UNAVAILABLE")
+		}
+	}
+	return nil
+}
+func (s *Server) checkCoverageEvaluationFiles(ctx context.Context, j *Job, in GraphEvaluation) error {
+	if j.graph == nil || j.graph.Plan.Spec.Version != graph.CoverageVersion || in.Verdict != "PASS" || in.CoverageProof == nil {
+		return nil
+	}
+	r, e := s.GraphCoverageReceipt(ctx, j.ID, in.CoverageProof.ReceiptID)
+	if e != nil {
+		return e
+	}
+	if graph.Hash(job.JSON(r)) != in.CoverageProof.SHA256 {
+		return importFailure("COVERAGE_PROOF_HASH")
+	}
+	return s.checkCoverageArtifactFiles(ctx, r.Artifacts)
 }

@@ -59,3 +59,13 @@ func TestCoverageMigrationAtomicUpgradeAndSnapshotRollback(t *testing.T) {
 		t.Fatal("old snapshot migrated", v, e)
 	}
 }
+
+// Artificial downgrade fixtures must remove tables that do not exist before v26.
+func dropCoverageMigrationFixture(t *testing.T, db *DB) {
+	t.Helper()
+	for _, table := range []string{"iu_recovery_publications", "iu_recovery_proposals", "iu_coverage_receipts"} {
+		if _, e := db.SQL.Exec("DROP TABLE " + table); e != nil {
+			t.Fatal(e)
+		}
+	}
+}

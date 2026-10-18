@@ -135,6 +135,8 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 	switch o.op {
 	case "recover-graph":
 		return runRecoveryCLI(ctx, o.id, o.file, read, func(token string) { controlLeaseToken = token })
+	case "read-source-status":
+		return print("GET", path+"/graph/source-reads/"+url.PathEscape(o.node), nil)
 	case "coverage":
 		return print("GET", path+"/graph/coverage-verifications/"+url.PathEscape(o.key), nil)
 	case "verify-coverage":

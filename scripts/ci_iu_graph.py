@@ -13,6 +13,19 @@ import uuid
 
 PREFIX = "github.com/tommyxie2026-tech/computecloud/"
 SERVER_TESTS = [
+ "TestCoverageReceiptQuotaAndFailedWritesUnpin", "TestCoveragePassRejectsLostArtifactEvidence",
+ 'TestCoverageSubmitCreatesNoExecutionOnGap',
+ 'TestCoverageReceiptRequiresIndependentAuthorityAndPinsEvidence',
+ 'TestCoveragePassRequiresCurrentCompleteReceipt',
+ 'TestCoverageReceiptCannotLaunderUnknownOrCorrectTotal',
+ 'TestCoverageNativeFailReadReplanPassAndFrozenHistory',
+ 'TestRecoveryPublicationAtomicAndIdempotent',
+ 'TestRecoveryRequiresTrustedFailAndMatchingReads',
+ 'TestRecoveryConcurrentProposalAndLostResponse',
+ 'TestRecoveryBudgetsApprovalAndDrain',
+ 'TestRecoveryApprovalAndActiveAttempt',
+ 'TestRecoveryServerRestartDoesNotResetLimits',
+ 'TestRecoverySourceReadQueryRequiresCurrentAuthorization',
     "TestIUBackupRestoresAcceptedImportWithSubmissionsDisabled",
     "TestInvalidationArtifactDependenciesRemainUncertain", "TestImportRejectsSourceRoleAndOrderChange",
     "TestVerificationCannotPromoteUncoveredRecords",
@@ -80,6 +93,13 @@ REQUIRED_TESTS = tuple(
        PREFIX + "internal/iuexperiment::TestSimulationChecksHealthyAndInjectedFailures",
        PREFIX + "internal/iuexperiment::TestCorrectFinalTotalDoesNotHideCorruptedIntermediateIdentity"]
 )
+REQUIRED_TESTS += tuple(PREFIX + package + "::" + name for package,names in {
+ "internal/graph": ["TestCoverageContextPolicyDeduplicatesAndRejectsOverflow","TestCoverageV5RejectsMissingReferencesAndSpans","TestCoveragePreflightReportsExactGap","TestCoverageVersionPreservesLegacyPlanHashes","TestCoverageCheckerRejectsOmittedExceptionAndWrongCatalog","TestCoverageCheckerChecksFieldsDespiteCorrectTotal","TestCoverageCheckerUnknownInputAndOverflow","TestCoverageCheckerCustomerExceptionAndDuplicate","TestCoverageCheckerRejectsCaseAliasFields","TestRecoveryRejectsUnauthorizedDiffAndOrdinaryReplanBypass"],
+ "cmd/computecloud": ["TestCoverageCompileCLIReturnsGapWithoutConnection","TestRecoveryCLIKeepsStableReadsAcrossRestart","TestRecoveryCLIUnknownNeverReadsOrPublishes","TestRecoveryCLIReleasesLeaseAndStopsOnCAS"],
+ "internal/store": ["TestCoverageMigrationAtomicUpgradeAndSnapshotRollback"],
+ "internal/testutil": ["TestCoverageFixtureEmitsStructuredV5FaultAndRepair"],
+ "internal/iuexperiment": ["TestCoverageProtocolPinsCasesAndAllArmDenominators","TestCoverageAblationsExposeFalseAcceptance","TestCoverageReportKeepsUnknownAndFailedRecovery","TestCoverageSimulationDoesNotLeakOracleToCalls","TestCoverageMemoryMatchesActualInvocation"]
+ }.items() for name in names)
 STAGES = {"verifier", "contracts", "native", "cli", "simulation", "build", "processes"}
 
 
@@ -123,11 +143,30 @@ def build_report(stages, events, simulation, process_report=None):
                            "applied", "server_process_restart", "attempts_unchanged", "unauthorized_denied", "stale_pass_denied"))
                        and native.get("invalidation", {}).get("revision") == 1
                        and native.get("invalidation", {}).get("goal_state") == "FAILED")
-    passed = stage_ok and valid_sim and valid_pilot and valid_processes and valid_recovery and all(c["action"] == "pass" for c in critical)
+    coverage=simulation.get("coverage",{})
+    cs=coverage.get("samples",[])
+    valid_coverage=(coverage.get("checks_passed") is True and coverage.get("provider_calls")==0
+        and coverage.get("provider_status")=="NOT_RUN" and len(cs)==72
+        and len(coverage.get("protocol",{}).get("samples",[]))==18
+        and all(sum(s.get("arm")==arm for s in cs)==18 for arm in ("monolithic","iu","iu_no_memory","iu_no_verifier"))
+        and coverage.get("fixture_invocations",0)==sum(s.get("node_invocations",0) for s in cs)>0
+        and any(s.get("false_acceptance") is True and s.get("arm")=="iu_no_verifier" for s in cs)
+        and not any(s.get("false_acceptance") is True and s.get("arm")!="iu_no_verifier" for s in cs)
+        and any(s.get("verdict")=="UNKNOWN" or s.get("error_code") for s in cs)
+        and any(len(s.get("attempts",[]))>1 and s["attempts"][0].get("verdict")=="FAIL" for s in cs)
+        and all(s.get("input_tokens") is None and s.get("reported_cost_usd") is None for s in cs))
+    cr=native.get("coverage_recovery",{})
+    valid_coverage_recovery=(cr.get("generation")==2 and cr.get("initial_verdict")=="FAIL" and cr.get("final_verdict")=="PASS"
+        and cr.get("goal_state")=="SUCCEEDED" and cr.get("server_process_restart") is True
+        and cr.get("publication_idempotent") is True and cr.get("publications")==1
+        and cr.get("attempts_before")==cr.get("attempts_after")==2
+        and cr.get("reads_before")==cr.get("reads_after")==1
+        and cr.get("old_context_unchanged") is True and cr.get("origin_pins",0)>=2)
+    passed = valid_coverage and valid_coverage_recovery and stage_ok and valid_sim and valid_pilot and valid_processes and valid_recovery and all(c["action"] == "pass" for c in critical)
     return {"schema_version": "iu-ci-validation-v1", "status": "PASSED" if passed else "FAILED",
             "real_model_calls": False, "external_acceptance":{"real_provider":"NOT_RUN","aicloud_service":"NOT_RUN","independent_hosts":"NOT_RUN"}, "stages": stages, "required_checks": critical,
             "native_process_flow": native,
-            "pilot":pilot, "simulation": {"healthy_scenarios": healthy, "injected_faults": faults, "passed": valid_sim},
+            "coverage":coverage,"coverage_recovery":cr,"pilot":pilot, "simulation": {"healthy_scenarios": healthy, "injected_faults": faults, "passed": valid_sim},
             "test_totals": {action: sum(v == action for v in events.values()) for action in ("pass", "fail", "skip")},
             "limitations": ["Deterministic fixtures validate contracts and failure handling, not model intelligence or cost savings.",
                             "Separate Server/two Worker OS processes on one Runner use mock agents; this is not independent-host or real-Provider acceptance."]}
@@ -178,7 +217,7 @@ def main():
     commands = [
         ("verifier", [sys.executable, "-m", "unittest", "discover", "-s", "examples/iu-graph", "-p", "test_*.py"], 60),
         ("contracts", [args.go, "test", "-json", "-race", "./internal/graph", "./internal/store", "./internal/config",
-                       "./internal/iuexperiment", "./internal/aicloudadapter", "./internal/maintenance", "./cmd/iu-experiment", "-count=1", "-timeout=5m"], 330),
+                       "./internal/iuexperiment", "./internal/testutil", "./internal/aicloudadapter", "./internal/maintenance", "./cmd/iu-experiment", "-count=1", "-timeout=5m"], 330),
         ("native", [args.go, "test", "-json", "-race", "./internal/server", "./internal/worker", "./internal/adapter",
                     "-run", "TestGraph|TestCommandProvider|TestInvalidation|TestImport|TestReuse|TestIncremental|TestVerification|TestIU", "-count=1", "-timeout=5m"], 330),
         ("cli", [args.go, "test", "-json", "./cmd/computecloud", "-run", "TestJobGraphCLI|TestJobGraphCompile", "-count=1", "-timeout=2m"], 150),

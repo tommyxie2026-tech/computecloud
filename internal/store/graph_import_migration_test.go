@@ -8,6 +8,7 @@ func TestImportMigrationPreservesV21History(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	dropCoverageMigrationFixture(t, db)
 	if _, e = db.SQL.Exec(`DROP TABLE iu_import_snapshots; DROP TABLE iu_import_grant_state; DROP TABLE iu_import_grants; PRAGMA user_version=21;`); e != nil {
 		t.Fatal(e)
 	}

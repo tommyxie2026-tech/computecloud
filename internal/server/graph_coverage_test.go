@@ -8,6 +8,7 @@ import (
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -131,5 +132,42 @@ func TestCoverageReceiptCannotLaunderUnknownOrCorrectTotal(t *testing.T) {
 	ev := GraphEvaluation{ID: "lie", OutputHash: in.OutputHash, Verifier: j.graph.Plan.Spec.Evaluator.Profile, VerifierVersion: j.graph.Plan.Spec.Evaluator.Version, Verdict: "PASS", EvidenceHash: in.OutputHash, CoverageProof: &GraphCoverageProofRef{ReceiptID: in.ID, SHA256: graph.Hash(job.JSON(r))}}
 	if e = h.s.EvaluateGraph(h.ctx, j.ID, ev); e == nil {
 		t.Fatal("wrong total passed")
+	}
+}
+func TestCoverageReceiptQuotaAndFailedWritesUnpin(t *testing.T) {
+	h, j := coverageJob(t, 11000)
+	in := coverageRequest(t, h, j)
+	for i := 0; i < 128; i++ {
+		in.ID = fmt.Sprintf("quota-%d", i)
+		if _, e := h.s.VerifyGraphCoverage(h.ctx, j.ID, in); e != nil {
+			t.Fatal(i, e)
+		}
+	}
+	in.ID = "overflow"
+	if _, e := h.s.VerifyGraphCoverage(h.ctx, j.ID, in); e == nil {
+		t.Fatal("receipt quota bypass")
+	}
+	var refs int
+	if e := h.s.db.SQL.QueryRow(`SELECT count(*) FROM artifact_refs WHERE ref_id LIKE 'coverage/%/overflow'`).Scan(&refs); e != nil || refs != 0 {
+		t.Fatal("failed receipt left pin", refs, e)
+	}
+}
+func TestCoveragePassRejectsLostArtifactEvidence(t *testing.T) {
+	h, j := coverageJob(t, 11000)
+	in := coverageRequest(t, h, j)
+	r, e := h.s.VerifyGraphCoverage(h.ctx, j.ID, in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var path string
+	if e = h.s.db.SQL.QueryRow(`SELECT path FROM artifacts WHERE id=?`, r.Artifacts[0]).Scan(&path); e != nil {
+		t.Fatal(e)
+	}
+	if e = os.Remove(filepath.Join(h.s.cfg.DataDir, "artifacts", path)); e != nil {
+		t.Fatal(e)
+	}
+	ev := GraphEvaluation{ID: "lost", OutputHash: in.OutputHash, Verifier: j.graph.Plan.Spec.Evaluator.Profile, VerifierVersion: j.graph.Plan.Spec.Evaluator.Version, Verdict: "PASS", EvidenceHash: r.EvidenceHash, CoverageProof: &GraphCoverageProofRef{ReceiptID: in.ID, SHA256: graph.Hash(job.JSON(r))}}
+	if e = h.s.EvaluateGraph(h.ctx, j.ID, ev); e == nil {
+		t.Fatal("lost evidence passed")
 	}
 }

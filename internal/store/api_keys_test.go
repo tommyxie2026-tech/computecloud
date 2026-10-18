@@ -143,6 +143,7 @@ func TestServerV18UpgradePreservesJobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	dropCoverageMigrationFixture(t, db)
 	if _, err = db.SQL.Exec(`INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism) VALUES('keep','alice','p','k','h','h','{}','single','SUCCEEDED',1,1,10,1); PRAGMA user_version=18; DROP TABLE api_keys`); err != nil {
 		t.Fatal(err)
 	}

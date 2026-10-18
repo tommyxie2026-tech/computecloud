@@ -47,6 +47,9 @@ func (s *Server) EvaluateGraph(ctx context.Context, id string, in GraphEvaluatio
 	if in.Verifier != j.graph.Plan.Spec.Evaluator.Profile || in.VerifierVersion != j.graph.Plan.Spec.Evaluator.Version {
 		return status.Error(codes.FailedPrecondition, "GRAPH_VERIFIER_MISMATCH")
 	}
+	if e = s.checkCoverageEvaluationFiles(ctx, j, in); e != nil {
+		return e
+	}
 	return s.db.Tx(ctx, func(q store.Query) error {
 		if _, e := graphMutationAuthorityTx(ctx, q, j, "goals:evaluate"); e != nil {
 			return e

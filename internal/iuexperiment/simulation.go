@@ -17,13 +17,14 @@ type Scenario struct {
 	Sample            Sample `json:"sample"`
 }
 type Simulation struct {
-	Pilot          PilotSimulation `json:"pilot"`
-	Version        string          `json:"version"`
-	RealModelCalls bool            `json:"real_model_calls"`
-	Execution      string          `json:"execution"`
-	Passed         bool            `json:"checks_passed"`
-	Scenarios      []Scenario      `json:"scenarios"`
-	Limitations    []string        `json:"limitations"`
+	Coverage       CoverageExperimentReport `json:"coverage"`
+	Pilot          PilotSimulation          `json:"pilot"`
+	Version        string                   `json:"version"`
+	RealModelCalls bool                     `json:"real_model_calls"`
+	Execution      string                   `json:"execution"`
+	Passed         bool                     `json:"checks_passed"`
+	Scenarios      []Scenario               `json:"scenarios"`
+	Limitations    []string                 `json:"limitations"`
 }
 
 // simulationCall is an independent, sorted reference calculator. It does not
@@ -176,6 +177,7 @@ func Simulate(ctx context.Context) Simulation {
 	add(cases[0], "iu", "timeout", "execution_rejected")
 	add(cases[0], "monolithic", "provider_unavailable", "execution_rejected")
 	r.Pilot = SimulatePilot(ctx)
-	r.Passed = r.Passed && r.Pilot.Passed
+	r.Coverage = SimulateCoverage(ctx)
+	r.Passed = r.Passed && r.Pilot.Passed && r.Coverage.Passed
 	return r
 }

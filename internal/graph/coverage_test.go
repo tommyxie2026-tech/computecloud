@@ -2,6 +2,8 @@ package graph
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -63,5 +65,35 @@ func TestCoverageVersionPreservesLegacyPlanHashes(t *testing.T) {
 		if e != nil || p.Digest != h {
 			t.Fatalf("%s %s %v", v, p.Digest, e)
 		}
+	}
+}
+func TestCoverageContextPolicyDeduplicatesAndRejectsOverflow(t *testing.T) {
+	s := coverageFixture()
+	for i := 0; i < 10; i++ {
+		o := s.Coverage.Obligations[0]
+		o.ID = fmt.Sprintf("c%d", i)
+		s.Coverage.Obligations = append(s.Coverage.Obligations, o)
+	}
+	p, e := CoverageContextPolicy(s, s.Nodes[0])
+	if e != nil || len(p.RequiredEvidence) != 1 {
+		t.Fatal("duplicate obligations inflated input policy", p, e)
+	}
+	text := strings.Repeat("a", 200)
+	s.Sources[0].Text = text
+	s.Sources[0].SHA256 = Hash([]byte(text))
+	s.Coverage.GoalSpecHash = s.Sources[0].SHA256
+	s.Coverage.Obligations = nil
+	all := Span{Source: s.Sources[0].ID, End: 200, SHA256: s.Sources[0].SHA256}
+	s.Nodes[0].Spans = []Span{all}
+	for i := 0; i < 5; i++ {
+		o := CoverageObligation{ID: fmt.Sprintf("batch%d", i), NodeIDs: []string{"b"}, CheckID: "source_identity"}
+		for j := i * 32; j < (i+1)*32 && j < 129; j++ {
+			o.Sources = append(o.Sources, Span{Source: all.Source, Start: j, End: j + 1, SHA256: all.SHA256})
+		}
+		s.Coverage.Obligations = append(s.Coverage.Obligations, o)
+	}
+	s.Coverage.SHA256 = s.Coverage.Digest()
+	if _, e = Compile(s); e == nil {
+		t.Fatal("unusable runtime policy was published")
 	}
 }

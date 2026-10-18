@@ -3,6 +3,8 @@
 当前执行台账：[P0–P2 实施与验收](docs/implementation/p0-p2-execution.md)。
 v0.4.x 收尾：[实施计划](docs/implementation/v0.4-closeout-plan.md) / [v0.4.9 迭代计划](docs/superpowers/plans/v0.4.9-release-iteration.md) / [双机预检](docs/validation/dual-host-preflight.md)。
 IU 计算模型迭代：[后续实施计划](docs/superpowers/plans/2026-10-18-iu-follow-up-iterations.md) / [实现范围](docs/implementation/iu-computation-model.md) / [后续路线](docs/implementation/long-term-roadmap.md#iu-计算模型迭代台账) / [CI 模拟验收](docs/validation/iu-ci-simulation.md)。
+
+IU 下一轮代码：[v5 约束覆盖与受限补证](docs/contracts/iu-graph-v5.md) / [实施计划](docs/superpowers/plans/2026-10-18-iu-semantic-recovery.md)。完整验收以集成 PR 的实际 CI 为准，真实模型与独立主机仍未验收。
 v0.5.0 Scheduler 跟踪：[实施计划](docs/superpowers/plans/2026-10-17-v05-agent-aware-scheduler.md) / [缺口矩阵](docs/implementation/v0.5-scheduler-gap-matrix.md) / [受控试运行](docs/validation/agent-aware-scheduler-pilot.md)。
 
 轻量的 **Agent-aware Distributed Job Execution Platform**。使用 Go、gRPC 和本机 SQLite，把 Agent Job 可靠地分配到远程 Worker 执行，并围绕 Runtime、Tool、Environment、Workspace、Artifact、Retry、Control 与 Goal-oriented Computing 建立可恢复、可审计的执行语义。

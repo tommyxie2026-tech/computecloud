@@ -8,7 +8,7 @@
 
 **Tech Stack:** 现有 Go、JSON Schema、SQLite 迁移/事务、Server HTTP、Worker Runtime、Python CI gate；不增加第三方依赖。
 
-**Spec:** [2026-10-18-iu-semantic-recovery-design.md](../specs/2026-10-18-iu-semantic-recovery-design.md)。用户已在规格提交 `6df3b4a` 后确认继续；本计划尚待审阅，所有实现任务保持未勾选。
+**Spec:** [2026-10-18-iu-semantic-recovery-design.md](../specs/2026-10-18-iu-semantic-recovery-design.md)。用户已在规格提交 `6df3b4a` 后确认继续；本计划已由用户确认 Native 执行；Task 1～6 已有提交和定向验证，Task 7 的完整 CI 与独立审查仍待取证。
 
 ## Global Constraints
 
@@ -46,11 +46,11 @@
 
 **Interfaces:** `graph.CheckCoverage(s Spec) (CoverageReport, error)`；`graph.ValidateCoverage(s Spec) error` 在有 gaps 时返回可由 `errors.As` 取回报告的 `*CoverageError`；`graph.CoverageVersion="iu-graph-v5"`。v5 必须有 catalog；其他版本禁止该字段。`Compile` 校验实际 rules/spans 联合覆盖，并把必需来源合并到节点运行时 ContextPolicy 的验证，不默默补入原文。旧 v1～v4 的序列化与摘要不变化。
 
-- [ ] 写 `TestCoverageV5RejectsMissingReferencesAndSpans`、`TestCoveragePreflightReportsExactGap`：缺 source/node/check/输出、重复身份和 UTF-8 半字节拒绝；缺 span 的报告定位到具体 obligation/node；合法重叠覆盖通过，原文 hash/role/order 不变。
-- [ ] 写 `TestCoverageSubmitCreatesNoExecutionOnGap`：实际调用 SubmitGraph，gaps 后 jobs/goals/tasks/attempts 新增数均为 0；客户端 compile-graph 不访问网络，输出结构化报告并返回失败状态。
-- [ ] 写 `TestCoverageVersionPreservesLegacyPlanHashes`：冻结 v1～v4 已有 fixture/hash，不以运行时重新计算的期望掩盖漂移。运行 `go test ./internal/graph ./internal/server ./cmd/computecloud -run 'TestCoverage' -count=1`，先确认因缺少新接口/行为失败。
-- [ ] 实现以上接口与 v5 schema；沿用严格 Decode，避免为报告而允许正式提交绕过 Compile。发布前错误不得创建执行；catalog 中 profile/hash 由 Server freeze 与管理员配置再核对。
-- [ ] 重跑失败测试及 `go test ./internal/graph ./cmd/computecloud -count=1`，通过后提交 `feat(iu): compile versioned semantic coverage obligations`。
+- [x] 写 `TestCoverageV5RejectsMissingReferencesAndSpans`、`TestCoveragePreflightReportsExactGap`：缺 source/node/check/输出、重复身份和 UTF-8 半字节拒绝；缺 span 的报告定位到具体 obligation/node；合法重叠覆盖通过，原文 hash/role/order 不变。
+- [x] 写 `TestCoverageSubmitCreatesNoExecutionOnGap`：实际调用 SubmitGraph，gaps 后 jobs/goals/tasks/attempts 新增数均为 0；客户端 compile-graph 不访问网络，输出结构化报告并返回失败状态。
+- [x] 写 `TestCoverageVersionPreservesLegacyPlanHashes`：冻结 v1～v4 已有 fixture/hash，不以运行时重新计算的期望掩盖漂移。运行 `go test ./internal/graph ./internal/server ./cmd/computecloud -run 'TestCoverage' -count=1`，先确认因缺少新接口/行为失败。
+- [x] 实现以上接口与 v5 schema；沿用严格 Decode，避免为报告而允许正式提交绕过 Compile。发布前错误不得创建执行；catalog 中 profile/hash 由 Server freeze 与管理员配置再核对。
+- [x] 重跑失败测试及 `go test ./internal/graph ./cmd/computecloud -count=1`，通过后提交 `feat(iu): compile versioned semantic coverage obligations`。
 
 ## Task 2: 独立订单域 checker，防止清单自证
 
@@ -62,10 +62,10 @@
 
 **固定 check IDs：** `source_identity`、`source_fields`、`customer_grouping`、`threshold_once`、`exception_rules`、`currency_unit`。catalog、独立 GoalSource 与 checker 实际支持的集合必须完全一致；无法建立原件/提取字段/总额的证据映射时 UNKNOWN。GoalSource 中的未知字段、未知规则类型或自然语言未解条件不能忽略。
 
-- [ ] 写 `TestCoverageCheckerRejectsOmittedExceptionAndWrongCatalog`、`TestCoverageCheckerChecksFieldsDespiteCorrectTotal`：漏 exception check/来源或损坏 customer/order ID 时不能 PASS；两个 6000 的同客户普通订单优惠 1000 后为 11000，客户分开为 12000；一笔特价一笔普通仍为 12000。
-- [ ] 写 `TestCoverageCheckerUnknownInputAndOverflow`：缺币种/单位、未解引用、重复 ID 冲突、未知规则、重复 key、1.0 充当整数、int64 累加溢出、不可用/取消/超时都 UNKNOWN；错误总额且原始输入完整则 FAIL；相同订单重复不重复计费。
-- [ ] 先运行 `go test ./internal/graph ./internal/config -run 'TestCoverage' -count=1` 观察失败，再实现只读 checker 与 profile 校验；不要调用现有实验工具的隐藏 oracle 作为运行时输入。
-- [ ] 重跑测试通过后提交 `feat(iu): verify bounded order coverage from original evidence`。
+- [x] 写 `TestCoverageCheckerRejectsOmittedExceptionAndWrongCatalog`、`TestCoverageCheckerChecksFieldsDespiteCorrectTotal`：漏 exception check/来源或损坏 customer/order ID 时不能 PASS；两个 6000 的同客户普通订单优惠 1000 后为 11000，客户分开为 12000；一笔特价一笔普通仍为 12000。
+- [x] 写 `TestCoverageCheckerUnknownInputAndOverflow`：缺币种/单位、未解引用、重复 ID 冲突、未知规则、重复 key、1.0 充当整数、int64 累加溢出、不可用/取消/超时都 UNKNOWN；错误总额且原始输入完整则 FAIL；相同订单重复不重复计费。
+- [x] 先运行 `go test ./internal/graph ./internal/config -run 'TestCoverage' -count=1` 观察失败，再实现只读 checker 与 profile 校验；不要调用现有实验工具的隐藏 oracle 作为运行时输入。
+- [x] 重跑测试通过后提交 `feat(iu): verify bounded order coverage from original evidence`。
 
 ## Task 3: 持久覆盖回执与 v5 Goal PASS 门禁
 
@@ -79,11 +79,11 @@ HTTP：`POST /v1/jobs/{id}/graph/coverage-verifications` 与 `GET /v1/jobs/{id}/
 
 **迁移：** 当前已核实 Server v25/Worker v6；实现前再核对 main，若仍 v25 则追加 serverV26，不改旧迁移 SQL。新建不可变 `iu_coverage_receipts(goal_id,generation,receipt_id,request_hash,request,body,actor,created)`，复合主键及对 iu_graphs 的命名空间外键；同一迁移为 Task 4 建表，避免修改已经执行的迁移。恢复旧快照是回滚方案，不做有损 down migration。
 
-- [ ] 写 `TestCoverageReceiptRequiresIndependentAuthorityAndPinsEvidence`、`TestCoveragePassRequiresCurrentCompleteReceipt`：伪造 verdict/hash、漏 check、旧代、错误 output、过期/profile 修订/撤权/新失效 revision 均不能 PASS；普通提交者不能出具回执；失败的提交不遗留 pin；128 条后拒绝新 receipt。
-- [ ] 写 `TestCoverageReceiptCannotLaunderUnknownOrCorrectTotal`：Task 2 的原字段损坏不能被最终总额或原 record_proofs 漂白；UNKNOWN 不变成 PASS。系统执行失败的内部 FAIL 仍可记录，不要求不存在的完整输出回执。
-- [ ] 写 `TestCoverageMigrationAtomicUpgradeAndSnapshotRollback`，更新旧 v20/v25 fixture 删除新增表及预期最新 schema；验证失败回滚、重复 Open、未来版本拒绝和 Artifact 保留。先跑 `go test ./internal/store ./internal/server -run 'TestCoverage' -count=1` 观察失败。
-- [ ] 实现事务外有界检查、事务内重查/不可变写入/pin；幂等相同请求回同事实、异内容拒绝；v5 PASS 强制完整可信 coverage proof，v1～v4 不新增强制字段。
-- [ ] 定向测试及 `go test ./internal/store -count=1` 通过后提交 `feat(iu): persist coverage receipts and fence goal acceptance`。
+- [x] 写 `TestCoverageReceiptRequiresIndependentAuthorityAndPinsEvidence`、`TestCoveragePassRequiresCurrentCompleteReceipt`：伪造 verdict/hash、漏 check、旧代、错误 output、过期/profile 修订/撤权/新失效 revision 均不能 PASS；普通提交者不能出具回执；失败的提交不遗留 pin；128 条后拒绝新 receipt。
+- [x] 写 `TestCoverageReceiptCannotLaunderUnknownOrCorrectTotal`：Task 2 的原字段损坏不能被最终总额或原 record_proofs 漂白；UNKNOWN 不变成 PASS。系统执行失败的内部 FAIL 仍可记录，不要求不存在的完整输出回执。
+- [x] 写 `TestCoverageMigrationAtomicUpgradeAndSnapshotRollback`，更新旧 v20/v25 fixture 删除新增表及预期最新 schema；验证失败回滚、重复 Open、未来版本拒绝和 Artifact 保留。先跑 `go test ./internal/store ./internal/server -run 'TestCoverage' -count=1` 观察失败。
+- [x] 实现事务外有界检查、事务内重查/不可变写入/pin；幂等相同请求回同事实、异内容拒绝；v5 PASS 强制完整可信 coverage proof，v1～v4 不新增强制字段。
+- [x] 定向测试及 `go test ./internal/store -count=1` 通过后提交 `feat(iu): persist coverage receipts and fence goal acceptance`。
 
 ## Task 4: 修正提案与 Guard 原子发布
 
@@ -99,11 +99,11 @@ HTTP `POST /v1/jobs/{id}/graph/recovery-proposals`，body 为 proposal 与单独
 
 先持久化请求事实以支持等待审批；新代 Job/Plan/代关系、publication 事实和 Guard 计数在同一 Guard 发布事务提交。旧 publishGraphReplan 的 v5 路径只能由已经校验的内部恢复函数调用；普通 PublishGoalReplan/v5 请求返回 `V5_RECOVERY_PROPOSAL_REQUIRED`，v1～v4 保持原行为。审阅后改变 catalog/Goal 的手工路径不在本轮实现，不默默降级。
 
-- [ ] 写 `TestRecoveryRejectsUnauthorizedDiffAndOrdinaryReplanBypass`、`TestRecoveryRequiresTrustedFailAndMatchingReads`：直接 HTTP、伪造 progress、跨节点/代/计划读回执、模型变更、同 hash 不同 source 身份、删除约束均拒绝；UNKNOWN 无新 Task/代。
-- [ ] 写 `TestRecoveryPublicationAtomicAndIdempotent`、`TestRecoveryConcurrentProposalAndLostResponse`：提交前故障全部回滚；提交后重启并重放返回同 Job；两个并发提案最多一个发布；同 ID 异内容拒绝；授权已撤销时即使重放也不能访问结果。
-- [ ] 写 `TestRecoveryBudgetsApprovalAndDrain`：成功两次后换 ID 也拒绝第三次；更低 max_replans/deadline 先限制；8 回执/64 KiB 上限；活动 Attempt 未排空拒绝；NEEDS_APPROVAL/REJECT 不创建 Job、不消费 publication 次数；审批后同提案仅发布一次。
-- [ ] 先跑 `go test ./internal/graph ./internal/server -run 'TestRecovery' -count=1` 观察失败，再实现最小改动；不复制 Guard 算法，不在 SQL 事务中调用网络或模型。
-- [ ] `go test -race ./internal/graph ./internal/server -run 'Test(Recovery|GraphBusinessFailureCanPublishGuardedNewGeneration)' -count=1` 通过后提交 `feat(iu): publish bounded evidence recovery through existing guard`。
+- [x] 写 `TestRecoveryRejectsUnauthorizedDiffAndOrdinaryReplanBypass`、`TestRecoveryRequiresTrustedFailAndMatchingReads`：直接 HTTP、伪造 progress、跨节点/代/计划读回执、模型变更、同 hash 不同 source 身份、删除约束均拒绝；UNKNOWN 无新 Task/代。
+- [x] 写 `TestRecoveryPublicationAtomicAndIdempotent`、`TestRecoveryConcurrentProposalAndLostResponse`：提交前故障全部回滚；提交后重启并重放返回同 Job；两个并发提案最多一个发布；同 ID 异内容拒绝；授权已撤销时即使重放也不能访问结果。
+- [x] 写 `TestRecoveryBudgetsApprovalAndDrain`：成功两次后换 ID 也拒绝第三次；更低 max_replans/deadline 先限制；8 回执/64 KiB 上限；活动 Attempt 未排空拒绝；NEEDS_APPROVAL/REJECT 不创建 Job、不消费 publication 次数；审批后同提案仅发布一次。
+- [x] 先跑 `go test ./internal/graph ./internal/server -run 'TestRecovery' -count=1` 观察失败，再实现最小改动；不复制 Guard 算法，不在 SQL 事务中调用网络或模型。
+- [x] `go test -race ./internal/graph ./internal/server -run 'Test(Recovery|GraphBusinessFailureCanPublishGuardedNewGeneration)' -count=1` 通过后提交 `feat(iu): publish bounded evidence recovery through existing guard`。
 
 ## Task 5: CLI 取证与可重放的一次性编排
 
@@ -115,9 +115,9 @@ HTTP `POST /v1/jobs/{id}/graph/recovery-proposals`，body 为 proposal 与单独
 
 recover-graph 顺序为：获取状态及匹配的 coverage receipt → 检查可信 FAIL → 查询/执行幂等 source-read → 纯函数构建 next/重新 Compile → 获取既有控制租约 → 发送恢复提案 → 释放租约并返回 job/decision。超时、取消、NEEDS_APPROVAL、UNKNOWN 立即返回；没有隐藏循环、自动评估身份切换或无限重试。最终复验仍需独立评估身份显式 verify-coverage/evaluate-graph。
 
-- [ ] 写 `TestRecoveryCLIKeepsStableReadsAcrossRestart`、`TestRecoveryCLIUnknownNeverReadsOrPublishes`、`TestRecoveryCLIReleasesLeaseAndStopsOnCAS`：httptest 核对请求内容/顺序、读回执复用、CAS 冲突停止、租约释放、取消；不把两轮 shell 演示当原生执行事实。
-- [ ] 写 `TestRecoverySourceReadQueryRequiresCurrentAuthorization`：换 node/项目/代与撤销 managed key 不能取得正文；多次查询不增加 read count。
-- [ ] 先跑 `go test ./cmd/computecloud ./internal/server -run 'TestRecovery(CLI|Source)' -count=1` 观察失败，再实现并重跑；通过后提交 `feat(cli): orchestrate bounded IU evidence recovery`。
+- [x] 写 `TestRecoveryCLIKeepsStableReadsAcrossRestart`、`TestRecoveryCLIUnknownNeverReadsOrPublishes`、`TestRecoveryCLIReleasesLeaseAndStopsOnCAS`：httptest 核对请求内容/顺序、读回执复用、CAS 冲突停止、租约释放、取消；不把两轮 shell 演示当原生执行事实。
+- [x] 写 `TestRecoverySourceReadQueryRequiresCurrentAuthorization`：换 node/项目/代与撤销 managed key 不能取得正文；多次查询不增加 read count。
+- [x] 先跑 `go test ./cmd/computecloud ./internal/server -run 'TestRecovery(CLI|Source)' -count=1` 观察失败，再实现并重跑；通过后提交 `feat(cli): orchestrate bounded IU evidence recovery`。
 
 ## Task 6: 版本化四臂反例与报告
 
@@ -129,9 +129,9 @@ recover-graph 顺序为：获取状态及匹配的 coverage receipt → 检查�
 
 各臂共享原始可见输入、同模型与预算；隐藏 oracle 仅在输出后判分。运行时校验器移除只发生在无验证 Harness 臂，不能调用生产 v5 接口绕过 PASS 门禁。补证前后分别报原字段保留与业务判断；error/not_attempted/UNKNOWN、验证耗时、读取字节及所有调用成本分开。未知 token/费用 null；Provider 调用与 fixture invocation 明确区分。真实 Protocol 入口只交付代码，不自动调用真实 Provider。
 
-- [ ] 写 `TestCoverageProtocolPinsCasesAndAllArmDenominators`、`TestCoverageAblationsExposeFalseAcceptance`、`TestCoverageReportKeepsUnknownAndFailedRecovery`：72 条不缺臂；注入坏客户 ID 但碰巧正确总额仍失败；有/无验证的 pipeline acceptance 与独立 ground truth 区分；取消/预算耗尽仍保留样本，成本未知不判降本达标。
-- [ ] 写 `TestCoverageSimulationDoesNotLeakOracleToCalls`：捕获实际 prompt/上下文，隐藏答案不在调用输入；所有失败模式实际由 fixture 注入并可被相关检查定位，不仅硬编码 report 字段。
-- [ ] 先跑 `go test ./internal/iuexperiment ./cmd/iu-experiment -run 'TestCoverage' -count=1` 观察失败，再实现；与原协议全量回归均通过后提交 `test(iu): compare coverage recovery with four controlled arms`。
+- [x] 写 `TestCoverageProtocolPinsCasesAndAllArmDenominators`、`TestCoverageAblationsExposeFalseAcceptance`、`TestCoverageReportKeepsUnknownAndFailedRecovery`：72 条不缺臂；注入坏客户 ID 但碰巧正确总额仍失败；有/无验证的 pipeline acceptance 与独立 ground truth 区分；取消/预算耗尽仍保留样本，成本未知不判降本达标。
+- [x] 写 `TestCoverageSimulationDoesNotLeakOracleToCalls`：捕获实际 prompt/上下文，隐藏答案不在调用输入；所有失败模式实际由 fixture 注入并可被相关检查定位，不仅硬编码 report 字段。
+- [x] 先跑 `go test ./internal/iuexperiment ./cmd/iu-experiment -run 'TestCoverage' -count=1` 观察失败，再实现；与原协议全量回归均通过后提交 `test(iu): compare coverage recovery with four controlled arms`。
 
 ## Task 7: 原生故障门禁、文档与单 PR 交付
 
@@ -148,4 +148,4 @@ recover-graph 顺序为：获取状态及匹配的 coverage receipt → 检查�
 
 规格 4→Task 1/2，规格 5→Task 2/3，规格 6→Task 4/5，规格 7→Task 6，规格 8/9→Task 7。Review Focus 五类均落入命名测试；旧 hash、审批、幂等、回执 pin、全局次数与 UNKNOWN 路径有独立断言。规格第 10 节的未支持项不以 stub 通过或 fixture 假装完成。
 
-建议 **Native**：由当前会话按任务依次实施，因覆盖类型、回执与发布事务依赖紧密，先保持接口一致；最后由独立审查者检查整个分支。也可选择逐任务子代理实施/复核，但增加上下文交接成本。本计划等待用户审阅和执行方式确认后再进入产品代码。
+建议 **Native**：由当前会话按任务依次实施，因覆盖类型、回执与发布事务依赖紧密，先保持接口一致；最后由独立审查者检查整个分支。也可选择逐任务子代理实施/复核，但增加上下文交接成本。用户已确认继续，采用 Native 执行；完成前仍须取得本计划要求的独立审查和 CI 证据。

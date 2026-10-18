@@ -120,6 +120,11 @@ func CheckCoverage(s Spec) (CoverageReport, error) {
 			}
 		}
 	}
+	for _, node := range s.Nodes {
+		if _, e := CoverageContextPolicy(s, node); e != nil {
+			return r, e
+		}
+	}
 	for id := range checks {
 		if !used[id] {
 			return r, invalid("coverage check has no obligation")
@@ -152,4 +157,27 @@ func CoverageRequiredSpans(s Spec, node string) []Span {
 		}
 	}
 	return out
+}
+
+func CoverageContextPolicy(s Spec, n Node) (*ContextPolicy, error) {
+	if s.Coverage == nil {
+		return n.ContextPolicy, nil
+	}
+	p := ContextPolicy{Version: "iu-context-policy-v1"}
+	if n.ContextPolicy != nil {
+		p = *n.ContextPolicy
+	}
+	all := append(append([]Span{}, p.RequiredEvidence...), CoverageRequiredSpans(s, n.ID)...)
+	p.RequiredEvidence = nil
+	seen := map[Span]bool{}
+	for _, sp := range all {
+		if !seen[sp] {
+			p.RequiredEvidence = append(p.RequiredEvidence, sp)
+			seen[sp] = true
+		}
+	}
+	if e := p.Validate(); e != nil {
+		return nil, e
+	}
+	return &p, nil
 }

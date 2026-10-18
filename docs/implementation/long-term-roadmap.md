@@ -1540,7 +1540,7 @@ IU 复用 Task/Attempt、Artifact、Scheduler、Guard；没有第二套执行引
 
 #### 下一轮：约束覆盖与受限补证
 
-用户在 main `156867b` 的设计回顾后确认继续下一轮，并在规格提交 `6df3b4a` 后确认继续。架构规格见 [约束覆盖、证据补充与受限修正](../superpowers/specs/2026-10-18-iu-semantic-recovery-design.md)，[详细实施计划](../superpowers/plans/2026-10-18-iu-semantic-recovery.md)待审阅，尚未实现，不计入上述已交付范围。
+用户在 main `156867b` 的设计回顾后确认继续下一轮，并在规格提交 `6df3b4a` 后确认继续。架构规格见 [约束覆盖、证据补充与受限修正](../superpowers/specs/2026-10-18-iu-semantic-recovery-design.md)，[详细实施计划](../superpowers/plans/2026-10-18-iu-semantic-recovery.md)已确认，本轮代码与定向测试已落地；完整 CI/独立审查以集成 PR 的实际证据为准，未计作真实环境验收。
 
 - [ ] 独立版本覆盖契约：约束 → 原文 → 负责节点 → 最终检查；发布前检查实际 Context 覆盖。
 - [ ] 管理员只读、有限业务域 checker 与持久回执；新版本 Goal PASS 检查覆盖证据，未知不冒充完整。
