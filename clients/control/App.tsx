@@ -45,8 +45,8 @@ function Button({ title, onPress, disabled = false }: { title: string; onPress: 
   );
 }
 
-function StatePill({ value }: { value: string }) {
-  return <View style={styles.pill}><Text style={styles.pillText}>{value}</Text></View>;
+function StatePill({ value, testID }: { value: string; testID?: string }) {
+  return <View testID={testID} style={styles.pill}><Text style={styles.pillText}>{value}</Text></View>;
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
@@ -529,7 +529,7 @@ function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSessi
                     <Text style={styles.eyebrow}>JOB</Text>
                     <Text style={styles.detailTitle}>{snapshot.job.job_id}</Text>
                   </View>
-                  <StatePill value={snapshot.job.state} />
+                  <StatePill value={snapshot.job.state} testID="selected-job-state" />
                 </View>
                 <Text style={styles.muted}>mode {snapshot.job.mode} · seq {snapshot.job.last_seq} · updated {formatTime(snapshot.job.updated_at_ms)}</Text>
                 {!!snapshot.job.error_code && <Text style={styles.errorText}>{snapshot.job.error_code}</Text>}
@@ -662,7 +662,7 @@ function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSessi
 
 const styles = StyleSheet.create({
   root: { flex: 1, minHeight: "100%" as never, backgroundColor: "#0b0d10" },
-  header: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", borderBottomWidth: 1, borderBottomColor: "#242830" },
+  header: { flexWrap: "wrap", gap: 12, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", borderBottomWidth: 1, borderBottomColor: "#242830" },
   headerMeta: { flexDirection: "row", gap: 8 },
   eyebrow: { color: "#8b94a3", fontSize: 11, letterSpacing: 1.6, fontWeight: "700" },
   title: { color: "#f4f6f8", fontSize: 28, fontWeight: "700", marginTop: 4 },

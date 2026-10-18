@@ -24,11 +24,11 @@ try {
     const submit=async(value)=>{await page.getByLabel('任务 JSON').fill(JSON.stringify(value));await page.getByRole('button',{name:'提交任务',exact:true}).click()};
     const created=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/v1/jobs');
     await submit(spec);const response=await created;expect(response.status()).toBe(202);const job=await response.json();
-    await expect(page.getByText('SUCCEEDED',{exact:true}).first()).toBeVisible({timeout:45000});checks.push('submit_to_terminal');
+    await expect(page.getByTestId('selected-job-state')).toHaveText('SUCCEEDED',{timeout:45000});checks.push('submit_to_terminal');
     const replay=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/v1/jobs');await page.getByRole('button',{name:'提交任务',exact:true}).click();const repeated=await replay;expect(repeated.status()).toBe(200);expect((await repeated.json()).job_id).toBe(job.job_id);checks.push('duplicate_submit_idempotent');
     await expect(page.getByText('执行产物',{exact:true})).toBeVisible();checks.push('artifact_section');
     await page.getByRole('button',{name:'新建提交标识'}).click();spec.input={text:'hold-control'};await submit(spec);await expect(page.getByRole('button',{name:'获取控制权'})).toBeEnabled({timeout:15000});
-    await expect(page.getByText('EXECUTING',{exact:true}).first()).toBeVisible({timeout:15000});
+    await expect(page.getByTestId('selected-job-state')).toHaveText('EXECUTING',{timeout:15000});
     await page.reload();await expect(page.getByRole('button',{name:'获取控制权'})).toBeVisible();expect(new URL(page.url()).hash).toMatch(/^#job=/);checks.push('restore_selected_job');
     await expect.poll(()=>activeStreams.size).toBeGreaterThan(0);
     const streamCount=streams.length;
@@ -36,10 +36,10 @@ try {
     await expect.poll(()=>streams.length,{timeout:15000}).toBeGreaterThan(streamCount);
     expect(Number(new URL(streams.at(-1)).searchParams.get('after_seq'))).toBeGreaterThan(0);
     checks.push('offline_observation_restore');
-    await page.getByRole('button',{name:'获取控制权'}).click();await expect(page.getByRole('button',{name:'取消任务',exact:true})).toBeVisible();page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'取消任务',exact:true}).click();await expect(page.getByText('CANCELED',{exact:true}).first()).toBeVisible({timeout:20000});checks.push('cancel_with_lease');
+    await page.getByRole('button',{name:'获取控制权'}).click();await expect(page.getByRole('button',{name:'取消任务',exact:true})).toBeVisible();page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'取消任务',exact:true}).click();await expect(page.getByTestId('selected-job-state')).toHaveText('CANCELED',{timeout:20000});checks.push('cancel_with_lease');
     await page.getByRole('button',{name:'新建提交标识'}).click();spec.input={text:'fail-verification-control'};spec.limits.max_attempts_per_task=2;spec.execution.replay_safe=true;
-    await submit(spec);await expect(page.getByText('FAILED',{exact:true}).first()).toBeVisible({timeout:45000});
-    await page.getByRole('button',{name:'获取控制权'}).click();await expect(page.getByRole('button',{name:'重试失败任务'})).toBeVisible();page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'重试失败任务'}).click();await expect(page.getByText('SUCCEEDED',{exact:true}).first()).toBeVisible({timeout:45000});checks.push('bounded_manual_retry');
+    await submit(spec);await expect(page.getByTestId('selected-job-state')).toHaveText('FAILED',{timeout:45000});
+    await page.getByRole('button',{name:'获取控制权'}).click();await expect(page.getByRole('button',{name:'重试失败任务'})).toBeVisible();page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'重试失败任务'}).click();await expect(page.getByTestId('selected-job-state')).toHaveText('SUCCEEDED',{timeout:45000});checks.push('bounded_manual_retry');
     await page.setViewportSize({width:390,height:844});await expect(page.getByRole('button',{name:'退出登录'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);checks.push('narrow_view');
   }
   if(mode==='primary') {

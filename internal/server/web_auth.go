@@ -216,6 +216,10 @@ func (a *webAuth) session(w http.ResponseWriter, r *http.Request) {
 	a.writeSession(w, s)
 }
 func (a *webAuth) logout(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.sessionFor(r); err != nil {
+		webFailure(w, 401, "AUTHENTICATION_REQUIRED")
+		return
+	}
 	if err := a.validateWrite(r); err != nil {
 		webFailure(w, 403, "CSRF_INVALID")
 		return

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { getSession, login, logout, type WebSession } from "./webAuth";
+import { getSession, login, logout, WebAuthError, type WebSession } from "./webAuth";
 export function WebGate({ children }: { children: (session: WebSession, expired: () => void, signOut: () => void) => React.ReactNode }) {
   const [session, setSession] = useState<WebSession | null>(null);
   const [checking, setChecking] = useState(true);
@@ -11,7 +11,7 @@ export function WebGate({ children }: { children: (session: WebSession, expired:
   useEffect(() => { let active = true; void getSession().then(s => { if (active) setSession(s); }).catch(() => {}).finally(() => { if (active) setChecking(false); }); return () => { active = false; }; }, []);
   useEffect(() => { if (!session) return; const timer = setTimeout(() => { setSession(null); setError("登录已过期，请重新登录"); }, Math.max(0, session.expires_at_ms - Date.now())); return () => clearTimeout(timer); }, [session]);
   const expired = () => { setSession(null); setPassword(""); setError("登录已失效，请重新登录"); };
-  const signOut = async () => { if (!session || busy) return; setBusy(true); try { await logout(session.csrf_token); setSession(null); setPassword(""); setError(""); } catch (e) { setError(e instanceof Error ? e.message : "退出失败"); } finally { setBusy(false); } };
+  const signOut = async () => { if (!session || busy) return; setBusy(true); try { await logout(session.csrf_token); setSession(null); setPassword(""); setError(""); } catch (e) { if (e instanceof WebAuthError && e.status === 401) { setSession(null); setPassword(""); setError(""); } else setError(e instanceof Error ? e.message : "退出失败"); } finally { setBusy(false); } };
   const submit = async () => { if (busy) return; setBusy(true); setError(""); try { const value = await login(username, password); setPassword(""); setSession(value); } catch (e) { setPassword(""); setError(e instanceof Error ? e.message : "登录失败"); } finally { setBusy(false); } };
   if (checking) return <View style={styles.screen}><ActivityIndicator accessibilityLabel="正在检查登录状态" /></View>;
   if (session) return <View style={{ flex: 1 }}>{!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}{children(session, expired, () => { void signOut(); })}</View>;

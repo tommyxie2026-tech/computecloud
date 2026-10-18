@@ -126,3 +126,17 @@ func TestWebAuthServerDoesNotRetainConfiguredPassword(t *testing.T) {
 		t.Fatal("server retained plaintext web password")
 	}
 }
+func TestWebAuthLogoutExpiredReturnsUnauthenticated(t *testing.T) {
+	a := testWebAuth(t)
+	_, c, csrf := loginWeb(t, a, "admin")
+	a.now = func() time.Time { return time.Now().Add(time.Hour) }
+	r := httptest.NewRequest("POST", "https://control.example/v1/web/auth/logout", nil)
+	r.AddCookie(c)
+	r.Header.Set("Origin", "https://control.example")
+	r.Header.Set("X-CSRF-Token", csrf)
+	w := httptest.NewRecorder()
+	a.logout(w, r)
+	if w.Code != 401 {
+		t.Fatalf("expired logout status=%d", w.Code)
+	}
+}
