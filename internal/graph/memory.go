@@ -303,7 +303,7 @@ func Invalidate(view MemoryView, ids []string) (MemoryView, error) {
 		return MemoryView{}, e
 	}
 	next := NewView(view.Records)
-	next.Conflicts = append([]MemoryConflict{}, view.Conflicts...)
+	next.Conflicts = cloneConflicts(view.Conflicts)
 	invalidIDs := map[string]bool{}
 	for _, id := range ids {
 		found := false

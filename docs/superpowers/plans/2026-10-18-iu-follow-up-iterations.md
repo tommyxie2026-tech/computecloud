@@ -10,13 +10,13 @@
 
 **Spec:** [首轮完整设计目标](../specs/2026-10-17-iu-computation-model-design.md)、[当前运行契约](../../contracts/iu-graph-v1.md)、[实际交付范围](../../implementation/iu-computation-model.md)。
 
-**状态：Task 1–6 代码与阶段 CI 已通过；Task 7 代码就绪，集成 CI/最终独立审查进行中。按用户选择，真实模型、远程 aicloud、独立双主机验收保留未完成。** 文档日期为 2026-10-18。代码基线为 main `b38e4c408310464bd1a74d4e82362736bb405d55`；[PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) 交付实验图，[PR #157](https://github.com/tommyxie2026-tech/computecloud/pull/157) 补齐认证门禁与缓存修正。[对应 main CI](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39041998004) 44 项运行检查成功。该证据不表示本计划中的待办已实现，也不表示已发布新版本。
+**状态：七项代码迭代已交付，Task 1–6 阶段 CI 已通过；集成合并门槛为 [PR #165](https://github.com/tommyxie2026-tech/computecloud/pull/165) 最新 SHA 的完整 CI（含慢速、镜像与 package）及独立审查回归。按用户选择，真实模型、远程 aicloud、独立双主机验收保留未完成。** 文档日期为 2026-10-18。代码基线为 main `b38e4c408310464bd1a74d4e82362736bb405d55`；[PR #156](https://github.com/tommyxie2026-tech/computecloud/pull/156) 交付实验图，[PR #157](https://github.com/tommyxie2026-tech/computecloud/pull/157) 补齐认证门禁与缓存修正。[对应 main CI](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39041998004) 44 项运行检查成功。该证据不表示本计划中的待办已实现，也不表示已发布新版本。
 
 ## Global Constraints
 
 - 当前图默认关闭；旧 single / map_reduce、Task / Attempt fencing、取消、deadline、Guard 与硬调度过滤继续有效。不建立第二套执行引擎。
 - 当前上限：图请求 256 KiB、32 节点、128 边、并行度 8；编译上下文 64 KiB UTF-8 字节。delta 64 KiB、32 条记录、单 payload 8 KiB、每条最多 64 个 source refs。扩大限制必须单独评审和压测。
-- Server 当前 schema v20、Worker v6。后续迁移版本以实施时 main 的下一个可用版本为准，不预占版本号；已冻结图、历史记录及回执不原地改写。
+- 基线 Server schema v20、Worker v6；本轮顺序迁移至 Server v25、Worker 仍 v6。已冻结图、历史记录及回执不原地改写。
 - 身份与授权包含 project、goal_id、graph_generation、plan_revision；内容摘要不是授权。授权撤销必须在事务提交点重查。
 - validity 与 validation 正交；VALID 不等于 verified。模型只能产生 unchecked 候选。记忆保存来源、结论、约束和验证证据，不要求记录模型隐藏思维链。
 - 原文可重建不等于语义完整。token ID 不跨 tokenizer 直接拼接；未知 usage/token/费用保持 unknown/null。未支持的 token/费用硬预算继续拒绝。
@@ -133,9 +133,9 @@ IU-5A/B/C 是原路线 IU-5 的细分，不改变 IU-2→IU-3→IU-4 的安全�
 **Files:** 扩展 `scripts/ci_task_flow.py`、`scripts/ci_iu_graph.py`；新增阶段操作手册，与[多节点验收计划](../../validation/multi-node-poc.md)及备份/升级说明关联。
 
 - [ ] 冻结两台独立 Worker 主机的身份、版本、Runtime 与实验数据，覆盖真实网络、Server/Worker 崩溃、重复/迟到事件、离线后恢复、升级/回滚及目标长任务；同一 Runner 的两个进程不替代独立主机验收。
-- [ ] 故障注入覆盖失效提交、导入、复用、Artifact 接受、准入和业务评估边界，核对 Task/Attempt/generation、receipt、Artifact pin 和审计记录，无半提交、重复执行或过期 PASS。
-- [ ] 只读/纯计算先验收。工作区 patch DAG 另写冲突、基线 CAS、测试与合并合同；外部写入需先定义 effect ID、幂等键、outbox/补偿或人工批准，不能由恢复/重试推定外部 exactly-once。
-- [ ] 升级前备份，关闭新图提交后已接受任务仍恢复/排空；不支持的协议或迁移明确拒绝。经目标环境验收后，才单独决定扩大开关、限制或发布范围。
+- [x] 故障注入覆盖失效提交、导入、复用、Artifact 接受、准入和业务评估边界，核对 Task/Attempt/generation、receipt、Artifact pin 和审计记录，无半提交、重复执行或过期 PASS。
+- [x] 只读/纯计算先验收。工作区 patch DAG 另写冲突、基线 CAS、测试与合并合同；外部写入需先定义 effect ID、幂等键、outbox/补偿或人工批准，不能由恢复/重试推定外部 exactly-once。
+- [x] 升级前备份，关闭新图提交后已接受任务仍恢复/排空；不支持的协议或迁移明确拒绝。经目标环境验收后，才单独决定扩大开关、限制或发布范围。
 - [ ] CI 必测名单缺失/SKIP 即失败；保存 SHA、环境、命令、原始样本及报告。认证、全量回归和打包/镜像门禁全部实际通过后再标记阶段完成。
 
 ## 执行与回填规则

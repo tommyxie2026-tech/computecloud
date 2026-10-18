@@ -14,6 +14,7 @@ import uuid
 PREFIX = "github.com/tommyxie2026-tech/computecloud/"
 SERVER_TESTS = [
     "TestIUBackupRestoresAcceptedImportWithSubmissionsDisabled",
+    "TestInvalidationArtifactDependenciesRemainUncertain", "TestImportRejectsSourceRoleAndOrderChange",
     "TestVerificationCannotPromoteUncoveredRecords",
     "TestVerificationRejectsStaleEvidence",
     "TestVerificationRechecksManagedKeyAndProfileChanges",
@@ -56,7 +57,7 @@ SERVER_TESTS = [
 REQUIRED_TESTS = tuple(
     [PREFIX + "internal/server::" + name for name in SERVER_TESTS]
     + [PREFIX + "internal/graph::" + name for name in (
-        "TestOutputBindsAllFrozenSourcesWithoutTrustingModelClaims", "TestFrozenSourceLimitFailsInsteadOfDroppingProvenance", "TestSourceBindingRejectsMalformedCandidateBeforeUnion", "TestImportedOriginTravelsInsideModelContext", "TestModelCannotMintImportedOrigin", "TestVerifierTimeoutRemainsUnknown", "TestEmpiricalContractDoesNotInventCertainty",
+        "TestInvalidationRetainsConflictHistory", "TestOutputBindsAllFrozenSourcesWithoutTrustingModelClaims", "TestFrozenSourceLimitFailsInsteadOfDroppingProvenance", "TestSourceBindingRejectsMalformedCandidateBeforeUnion", "TestImportedOriginTravelsInsideModelContext", "TestModelCannotMintImportedOrigin", "TestVerifierTimeoutRemainsUnknown", "TestEmpiricalContractDoesNotInventCertainty",
         "TestVerificationProjectionRetainsConflictEvidence", "TestCountUnavailableAndWrapperCoverageStayUnknown", "TestContextPolicyV4RejectsUnsupportedTokensAndAttachments", "TestTokenizerChangeRequiresRecount", "TestRequiredContextCannotBeTruncated",
         "TestCrossChunkReferenceNeedsEvidence", "TestModelSwitchDoesNotReuseTokenIDs", "TestRuleChangeInvalidatesDependentNodes", "TestImportRejectsInvalidOrIncompleteClosure", "TestImportPreservesOriginAndNamespace",
         "TestImportGraphVersionAndCanonicalBindings", "TestCompileContextPreservesSourceAndRequiredRules", "TestContextNeverSilentlyTruncates",

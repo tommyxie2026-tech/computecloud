@@ -342,6 +342,15 @@ func importCompatible(ctx context.Context, q store.Query, source *Job, in GraphI
 	for _, src := range target.Plan.Spec.Sources {
 		sources[src.ID] = src
 	}
+	oldSources := map[string]graph.Source{}
+	for _, src := range source.graph.Plan.Spec.Sources {
+		oldSources[src.ID] = src
+	}
+	compatibleSource := func(id, hash string) bool {
+		old, hadOld := oldSources[id]
+		next, hasNext := sources[id]
+		return hadOld && hasNext && graph.Hash([]byte(old.Text)) == hash && graph.Hash([]byte(next.Text)) == hash && old.Role == next.Role && old.MessageIndex == next.MessageIndex
+	}
 	view, e := graphMemoryTx(ctx, q, source.graph, in.NodeID)
 	if e != nil {
 		return e
@@ -353,16 +362,14 @@ func importCompatible(ctx context.Context, q store.Query, source *Job, in GraphI
 	for _, r := range view.Records {
 		if selected[r.ID] {
 			for _, ref := range r.Sources {
-				src, ok := sources[ref.ID]
-				if !ok || graph.Hash([]byte(src.Text)) != ref.SHA256 {
+				if !compatibleSource(ref.ID, ref.SHA256) {
 					return importFailure("RECORD_SOURCE_CHANGED")
 				}
 			}
 		}
 	}
 	for _, span := range manifest.Spans {
-		src, ok := sources[span.Source]
-		if !ok || graph.Hash([]byte(src.Text)) != span.SHA256 {
+		if !compatibleSource(span.Source, span.SHA256) {
 			return importFailure("SOURCE_CHANGED")
 		}
 	}

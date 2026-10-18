@@ -32,6 +32,8 @@ IU 是现有 Task/Attempt 上的算元契约：冻结有限 DAG → 节点就绪
 | [IU-5B #163](https://github.com/tommyxie2026-tech/computecloud/pull/163) | 9e3e76e：[39053802124](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39053802124) 成功 |
 | [IU-5C #164](https://github.com/tommyxie2026-tech/computecloud/pull/164) | b21a4cb：[39055052816](https://github.com/tommyxie2026-tech/computecloud/actions/runs/39055052816) 成功 |
 
+[集成 PR #165](https://github.com/tommyxie2026-tech/computecloud/pull/165) 包含全部七项代码。独立审查发现的冲突深拷贝、Artifact 间接来源、来源 role/order 和 CLI 控制租约问题均有失败复现与回归覆盖；是否可合并仍以最新 SHA 的完整 CI 为准。
+
 这些是各阶段对应 SHA 的证据；集成阶段新增 origin wire 与恢复门禁，需以[集成分支 CI](https://github.com/tommyxie2026-tech/computecloud/actions?query=branch%3Afeat%2Fiu-recovery-release-gates)当前 SHA 的结果为准。报告包含命令、SHA、环境、JSONL 与原始样本。
 
 本机定向 race、全仓编译、vet 和 Python gate 测试已运行。完整 Agent 子进程测试在桌面沙箱出现 CLEANUP_UNCONFIRMED，本机不能宣称全绿，原生进程/平台回归以 CI 为准。fixture Provider 调用为 0；215 次 pilot fixture invocation 不是真实模型用量。

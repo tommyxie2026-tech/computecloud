@@ -61,7 +61,7 @@ func ProjectInvalidationWithContexts(view MemoryView, in InvalidationEvent, cont
 	}
 	visit := func(r *MemoryRecord) {
 		spans, known := contexts[r.InputHash]
-		if !known && len(in.Sources) > 0 && r.Validity == "VALID" {
+		if !known && len(in.Sources)+len(in.Records) > 0 && r.Validity == "VALID" {
 			r.Validity = "NEEDS_REVALIDATION"
 		}
 		for _, span := range spans {

@@ -295,7 +295,19 @@ func (s *Server) reconcileGraphInvalidations(ctx context.Context) error {
 					contextRows.Close()
 					return fmt.Errorf("VALIDITY_CONTEXT_CORRUPT")
 				}
-				contexts[m.SHA256] = m.Spans
+				// Direct spans do not establish independence when opaque Artifact
+				// values were also read. Until full artifact lineage is represented,
+				// project these records conservatively as NEEDS_REVALIDATION.
+				var body struct {
+					Inputs []graph.InputValue `json:"inputs"`
+				}
+				if e = json.Unmarshal([]byte(m.Text), &body); e != nil {
+					contextRows.Close()
+					return e
+				}
+				if len(body.Inputs) == 0 {
+					contexts[m.SHA256] = m.Spans
+				}
 			}
 			e = contextRows.Err()
 			contextRows.Close()

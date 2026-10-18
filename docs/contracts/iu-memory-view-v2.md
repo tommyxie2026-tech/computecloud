@@ -15,3 +15,5 @@ Server 给实际消费该 view 的 Task 添加 iu_memory_origin_v1；新 Worker 
 ## 来源覆盖与失效
 
 新候选在 Worker 与 Server 两侧绑定冻结 Context 实际包含的全部直接 source refs，不能由模型只选择有利来源。去重前校验候选来源，超过每条 64 个来源则明确失败，不能截断 provenance。间接记忆仍绑定完整 read-view 依赖。升级前漏报来源的记录，在失效投影时额外核对冻结生产 Context；找不到生产上下文时保持 NEEDS_REVALIDATION。该保守处理可能扩大重算范围，不构成任意语义拆分正确性的证明。
+
+Artifact 输入尚无完整可证明的内容依赖链；存在这类输入的生产 Context 不因直接 spans 为空被视作独立。源或 record 失效时，其派生记录保守投影为 NEEDS_REVALIDATION，除非已有直接来源/记忆依赖足以判 INVALID。跨代 import 还必须保持实际所读来源的 Role 与 MessageIndex，一致文本 hash 不能替代角色和顺序匹配。
