@@ -41,7 +41,7 @@ Web 默认关闭。关闭 `server.web.enabled` 并重启可撤销 Web 入口，�
 
 公网使用 HTTPS 并正常验证证书。自签 CA 应由客户端明确配置可信根，不关闭证书验证。
 
-Nginx 等代理需把 `/ui/`、`/v1/web/auth/`、Control `/v1/` API 转发到同一个 Server，保留原始 Host；SSE 路由关闭响应缓冲并配置足够的读取超时。代理外部域名与内部 Host 不一致时明确配置：
+Nginx 等代理需把 `/ui/`、`/v1/web/auth/`、Control `/v1/` API 转发到同一个 Server，保留原始 Host；SSE 路由关闭响应缓冲并配置足够的读取超时。如果 HTTPS 在代理终止、代理到 Server 使用明文 loopback HTTP，必须配置以下外部来源，即使代理保留原始 Host 也需要；外部域名与内部 Host 不一致时同样需要：
 
 ```yaml
 server:

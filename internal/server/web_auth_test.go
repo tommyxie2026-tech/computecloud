@@ -89,6 +89,7 @@ func TestWebAuthCookieTransport(t *testing.T) {
 	r.Header.Set("Origin", "https://control.example")
 	r.Header.Set("X-Forwarded-Proto", "http")
 	a.externalOrigin = "https://control.example"
+	a.insecureLoopback = true
 	w := httptest.NewRecorder()
 	a.login(w, r)
 	if w.Code != 200 || !w.Result().Cookies()[0].Secure {
