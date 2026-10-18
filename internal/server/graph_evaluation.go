@@ -17,16 +17,17 @@ import (
 )
 
 type GraphEvaluation struct {
-	RecordProofs             []GraphRecordProofRef `json:"record_proofs,omitempty"`
-	ExpectedValidityRevision int64                 `json:"expected_validity_revision,omitempty"`
-	ID                       string                `json:"id"`
-	ExpectedVersion          int64                 `json:"expected_version"`
-	Supersedes               string                `json:"supersedes_evaluation_id,omitempty"`
-	OutputHash               string                `json:"output_sha256"`
-	Verifier                 string                `json:"verifier_profile"`
-	VerifierVersion          string                `json:"verifier_version"`
-	Verdict                  string                `json:"verdict"`
-	EvidenceHash             string                `json:"evidence_sha256"`
+	CoverageProof            *GraphCoverageProofRef `json:"coverage_proof,omitempty"`
+	RecordProofs             []GraphRecordProofRef  `json:"record_proofs,omitempty"`
+	ExpectedValidityRevision int64                  `json:"expected_validity_revision,omitempty"`
+	ID                       string                 `json:"id"`
+	ExpectedVersion          int64                  `json:"expected_version"`
+	Supersedes               string                 `json:"supersedes_evaluation_id,omitempty"`
+	OutputHash               string                 `json:"output_sha256"`
+	Verifier                 string                 `json:"verifier_profile"`
+	VerifierVersion          string                 `json:"verifier_version"`
+	Verdict                  string                 `json:"verdict"`
+	EvidenceHash             string                 `json:"evidence_sha256"`
 }
 
 func (s *Server) EvaluateGraph(ctx context.Context, id string, in GraphEvaluation) error {
@@ -101,6 +102,9 @@ func (s *Server) applyGraphEvaluationTx(ctx context.Context, q store.Query, jobI
 	}
 	if in.Verdict == "PASS" && j.State != "SUCCEEDED" {
 		return status.Error(codes.FailedPrecondition, "FAILED_EXECUTION_CANNOT_PASS")
+	}
+	if e = s.validateGraphCoverageProofTx(ctx, q, f, in); e != nil {
+		return e
 	}
 	if e = s.validateRecordProofsTx(ctx, q, f, in); e != nil {
 		return e

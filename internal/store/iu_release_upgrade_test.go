@@ -17,7 +17,7 @@ func TestIUReleaseV20UpgradeAndUntouchedRollbackSnapshot(t *testing.T) {
 	if _, e = db.SQL.Exec(`DROP TRIGGER artifact_refs_delete_guard; CREATE TRIGGER artifact_refs_delete_guard BEFORE DELETE ON artifact_refs BEGIN SELECT RAISE(ABORT,'artifact references are immutable'); END;`); e != nil {
 		t.Fatal(e)
 	}
-	for _, table := range []string{"iu_record_verifications", "iu_source_reads", "iu_node_reuse", "iu_reuse_offers", "iu_import_snapshots", "iu_import_grant_state", "iu_import_grants", "iu_validity_views", "iu_validity_progress", "iu_validity_events", "iu_validity_revisions"} {
+	for _, table := range []string{"iu_recovery_publications", "iu_recovery_proposals", "iu_coverage_receipts", "iu_record_verifications", "iu_source_reads", "iu_node_reuse", "iu_reuse_offers", "iu_import_snapshots", "iu_import_grant_state", "iu_import_grants", "iu_validity_views", "iu_validity_progress", "iu_validity_events", "iu_validity_revisions"} {
 		if _, e = db.SQL.Exec("DROP TABLE " + table); e != nil {
 			t.Fatal(e)
 		}
@@ -48,7 +48,7 @@ func TestIUReleaseV20UpgradeAndUntouchedRollbackSnapshot(t *testing.T) {
 	if e = db.SQL.QueryRow(`SELECT count(*) FROM jobs WHERE id='v20-job' AND state='SUCCEEDED'`).Scan(&count); e != nil || count != 1 {
 		t.Fatal("history changed", e)
 	}
-	for _, table := range []string{"iu_record_verifications", "iu_source_reads", "iu_node_reuse", "iu_reuse_offers", "iu_import_snapshots", "iu_validity_events"} {
+	for _, table := range []string{"iu_recovery_publications", "iu_recovery_proposals", "iu_coverage_receipts", "iu_record_verifications", "iu_source_reads", "iu_node_reuse", "iu_reuse_offers", "iu_import_snapshots", "iu_validity_events"} {
 		if e = db.SQL.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&count); e != nil || count != 1 {
 			t.Fatal(table, e)
 		}

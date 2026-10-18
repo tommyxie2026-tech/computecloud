@@ -18,12 +18,13 @@ import (
 )
 
 type frozenGraph struct {
-	ReplayBindings map[string]graph.ReplayBinding        `json:"replay_bindings,omitempty"`
-	GoalID         string                                `json:"goal_id"`
-	Generation     int64                                 `json:"generation"`
-	Plan           graph.Plan                            `json:"plan"`
-	Digests        map[string]string                     `json:"template_digests"`
-	Commands       map[string]config.GraphCommandProfile `json:"command_bindings,omitempty"`
+	CoverageVerifier *graph.CoverageVerifierProfile        `json:"coverage_verifier,omitempty"`
+	ReplayBindings   map[string]graph.ReplayBinding        `json:"replay_bindings,omitempty"`
+	GoalID           string                                `json:"goal_id"`
+	Generation       int64                                 `json:"generation"`
+	Plan             graph.Plan                            `json:"plan"`
+	Digests          map[string]string                     `json:"template_digests"`
+	Commands         map[string]config.GraphCommandProfile `json:"command_bindings,omitempty"`
 }
 type GraphNodeStatus struct {
 	ExecutionKind string               `json:"execution_kind"`
@@ -372,6 +373,13 @@ func (s *Server) freezeGraph(raw []byte, p rpcutil.Principal) (frozenGraph, erro
 		if f.Digests[key] == "" {
 			return frozenGraph{}, status.Error(codes.FailedPrecondition, "TEMPLATE_NOT_CONFIGURED")
 		}
+	}
+	if spec.Coverage != nil {
+		profile, ok := s.cfg.Jobs.GraphCoverageVerifiers[spec.Coverage.Profile]
+		if !ok || !profile.Valid() || profile.Version != spec.Coverage.ProfileVersion || profile.Scope != spec.Coverage.Scope {
+			return frozenGraph{}, status.Error(codes.FailedPrecondition, "COVERAGE_PROFILE_UNAVAILABLE")
+		}
+		f.CoverageVerifier = &profile
 	}
 	f.ReplayBindings = map[string]graph.ReplayBinding{}
 	for _, n := range spec.Nodes {
