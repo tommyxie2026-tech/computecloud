@@ -175,38 +175,15 @@ func (s *Server) RecoverGraph(ctx context.Context, id string, p graph.RecoveryPr
 	}
 	var replayID string
 	e = s.db.Tx(ctx, func(q store.Query) error {
-		if _, e := graphMutationAuthorityTx(ctx, q, prior, "goals:propose"); e != nil {
-			return e
-		}
-		if _, e := graphMutationAuthorityTx(ctx, q, prior, "jobs:submit"); e != nil {
-			return e
-		}
-		var raw []byte
-		e := q.QueryRowContext(ctx, `SELECT request FROM iu_recovery_proposals WHERE goal_id=? AND proposal_id=?`, p.GoalID, p.ID).Scan(&raw)
-		if e == nil {
-			if !bytes.Equal(raw, job.JSON(p)) {
-				return status.Error(codes.AlreadyExists, "IDEMPOTENCY_CONFLICT")
-			}
-			e = q.QueryRowContext(ctx, `SELECT job_id FROM iu_recovery_publications WHERE goal_id=? AND proposal_id=?`, p.GoalID, p.ID).Scan(&replayID)
-			if e != nil && !errors.Is(e, sql.ErrNoRows) {
-				return e
-			}
-			return nil
-		}
-		if !errors.Is(e, sql.ErrNoRows) {
-			return e
-		}
-		return nil
+		var err error
+		replayID, err = s.recoveryReplayTx(ctx, q, prior, p)
+		return err
 	})
 	if e != nil {
 		return nil, empty, e
 	}
 	if replayID != "" {
-		j, e := readJob(ctx, s.db.SQL, replayID)
-		if j != nil {
-			j.Existing = true
-		}
-		return j, goal.ReplanDecision{Allowed: true, Existing: true, Code: goal.DecisionAllowed, NextGraphGeneration: jGraphGeneration(j), NextPlanRevision: jGraphGeneration(j)}, e
+		return s.recoveryReplayJob(ctx, replayID)
 	}
 	if e = graph.ValidateRecovery(prior.graph.Plan.Spec, p.ProposedSpec); e != nil {
 		return nil, empty, e
@@ -222,6 +199,11 @@ func (s *Server) RecoverGraph(ctx context.Context, id string, p graph.RecoveryPr
 	var receipt GraphCoverageReceipt
 	var revision int64
 	e = s.db.Tx(ctx, func(q store.Query) error {
+		var err error
+		replayID, err = s.recoveryReplayTx(ctx, q, prior, p)
+		if err != nil || replayID != "" {
+			return err
+		}
 		if e := s.checkRecoveryTx(ctx, q, prior, p, false); e != nil {
 			return e
 		}
@@ -269,6 +251,9 @@ func (s *Server) RecoverGraph(ctx context.Context, id string, p graph.RecoveryPr
 	if e != nil {
 		return nil, empty, e
 	}
+	if replayID != "" {
+		return s.recoveryReplayJob(ctx, replayID)
+	}
 	progress := goal.ProgressSnapshot{}
 	for _, ck := range receipt.Checks {
 		switch ck.Verdict {
@@ -287,6 +272,40 @@ func (s *Server) RecoverGraph(ctx context.Context, id string, p graph.RecoveryPr
 	}
 	in := goal.ReplanRequest{ID: p.ID, GoalID: p.GoalID, EvaluationID: p.EvaluationID, ExpectedPlanRevision: revision, ExpectedGraphGeneration: p.PriorGeneration, ReasonCode: "IU_EVIDENCE_RECOVERY", Evidence: goal.ReplanEvidence{FailureClass: goal.FailureTest, Evidence: []goal.Evidence{{Type: "iu_graph_evaluation", Fact: graphEvaluationFact(ev)}}}, ProposedPlan: goal.PlanCanonical{Strategy: "iu-evidence-recovery/" + p.SHA256, StrategyClass: "iu-evidence-recovery", DependencySignature: plan.Digest, EvaluationStrategy: receipt.Profile.Version, SideEffectClass: "read_only", JobSpecHash: plan.Digest}, StrategyDelta: goal.StrategyDelta{ChangedDimensions: []string{"evidence_spans", "instructions"}, Summary: "Supplement bounded frozen evidence and repeat independent coverage evaluation"}, Progress: progress}
 	return s.publishGraphReplanWithRecovery(ctx, prior, in, approval, job.JSON(p.ProposedSpec), principal, &p)
+}
+
+// Check current authority and immutable request identity before returning a replay.
+// Call in the same transaction as unpublished-proposal preconditions.
+func (s *Server) recoveryReplayTx(ctx context.Context, q store.Query, prior *Job, p graph.RecoveryProposal) (string, error) {
+	for _, scope := range []string{"goals:propose", "jobs:submit"} {
+		if _, err := graphMutationAuthorityTx(ctx, q, prior, scope); err != nil {
+			return "", err
+		}
+	}
+	var raw []byte
+	err := q.QueryRowContext(ctx, `SELECT request FROM iu_recovery_proposals WHERE goal_id=? AND proposal_id=?`, p.GoalID, p.ID).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !bytes.Equal(raw, job.JSON(p)) {
+		return "", status.Error(codes.AlreadyExists, "IDEMPOTENCY_CONFLICT")
+	}
+	var id string
+	err = q.QueryRowContext(ctx, `SELECT job_id FROM iu_recovery_publications WHERE goal_id=? AND proposal_id=?`, p.GoalID, p.ID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}
+func (s *Server) recoveryReplayJob(ctx context.Context, id string) (*Job, goal.ReplanDecision, error) {
+	j, err := readJob(ctx, s.db.SQL, id)
+	if j != nil {
+		j.Existing = true
+	}
+	return j, goal.ReplanDecision{Allowed: true, Existing: true, Code: goal.DecisionAllowed, NextGraphGeneration: jGraphGeneration(j), NextPlanRevision: jGraphGeneration(j)}, err
 }
 func jGraphGeneration(j *Job) int64 {
 	if j != nil && j.graph != nil {

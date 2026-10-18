@@ -156,13 +156,11 @@ func runRecoveryCLI(ctx context.Context, id, file string, read recoveryRead, set
 	if e != nil {
 		return e
 	}
-	var lease struct {
-		Token string `json:"lease_token"`
-	}
-	if e = jsonutil.Decode(raw, &lease); e != nil || lease.Token == "" {
+	var lease server.ControlWriteLease
+	if e = jsonutil.Decode(raw, &lease); e != nil || lease.LeaseToken == "" {
 		return fmt.Errorf("INVALID_CONTROL_LEASE")
 	}
-	setLease(lease.Token)
+	setLease(lease.LeaseToken)
 	defer func() { _, _ = read("DELETE", path+"/control-lease", holder); setLease("") }()
 	raw, e = read("POST", path+"/graph/recovery-proposals", job.JSON(struct {
 		Proposal graph.RecoveryProposal `json:"proposal"`

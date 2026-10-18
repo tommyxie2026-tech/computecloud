@@ -19,6 +19,8 @@ SERVER_TESTS = [
  'TestCoveragePassRequiresCurrentCompleteReceipt',
  'TestCoverageReceiptCannotLaunderUnknownOrCorrectTotal',
  'TestCoverageNativeFailReadReplanPassAndFrozenHistory',
+ 'TestRecoveryRechecksAuthorityAndGenerationAfterRead',
+ 'TestRecoveryOrdinaryHTTPRejectsV5Bypass',
  'TestRecoveryPublicationAtomicAndIdempotent',
  'TestRecoveryRequiresTrustedFailAndMatchingReads',
  'TestRecoveryConcurrentProposalAndLostResponse',
@@ -94,7 +96,7 @@ REQUIRED_TESTS = tuple(
        PREFIX + "internal/iuexperiment::TestCorrectFinalTotalDoesNotHideCorruptedIntermediateIdentity"]
 )
 REQUIRED_TESTS += tuple(PREFIX + package + "::" + name for package,names in {
- "internal/graph": ["TestCoverageContextPolicyDeduplicatesAndRejectsOverflow","TestCoverageV5RejectsMissingReferencesAndSpans","TestCoveragePreflightReportsExactGap","TestCoverageVersionPreservesLegacyPlanHashes","TestCoverageCheckerRejectsOmittedExceptionAndWrongCatalog","TestCoverageCheckerChecksFieldsDespiteCorrectTotal","TestCoverageCheckerUnknownInputAndOverflow","TestCoverageCheckerCustomerExceptionAndDuplicate","TestCoverageCheckerRejectsCaseAliasFields","TestRecoveryRejectsUnauthorizedDiffAndOrdinaryReplanBypass"],
+ "internal/graph": ["TestCoverageContextPolicyDeduplicatesAndRejectsOverflow","TestCoverageV5RejectsMissingReferencesAndSpans","TestCoveragePreflightReportsExactGap","TestCoverageVersionPreservesLegacyPlanHashes","TestCoverageCheckerRejectsOmittedExceptionAndWrongCatalog","TestCoverageCheckerChecksFieldsDespiteCorrectTotal","TestCoverageCheckerUnknownInputAndOverflow","TestCoverageCheckerCustomerExceptionAndDuplicate","TestCoverageCheckerRejectsCaseAliasFields","TestCoverageCheckerFailureDominatesLaterBoundOutput","TestCoverageCheckerUnknownFirstDoesNotHideLaterFailure","TestCoverageCheckerNestedAliasCannotPass","TestCoverageCheckerKnownFailureMustDominateUnknown","TestRecoveryRejectsUnauthorizedDiffAndOrdinaryReplanBypass"],
  "cmd/computecloud": ["TestCoverageCompileCLIReturnsGapWithoutConnection","TestRecoveryCLIKeepsStableReadsAcrossRestart","TestRecoveryCLIUnknownNeverReadsOrPublishes","TestRecoveryCLIReleasesLeaseAndStopsOnCAS"],
  "internal/store": ["TestCoverageMigrationAtomicUpgradeAndSnapshotRollback"],
  "internal/testutil": ["TestCoverageFixtureEmitsStructuredV5FaultAndRepair"],
@@ -219,8 +221,8 @@ def main():
         ("contracts", [args.go, "test", "-json", "-race", "./internal/graph", "./internal/store", "./internal/config",
                        "./internal/iuexperiment", "./internal/testutil", "./internal/aicloudadapter", "./internal/maintenance", "./cmd/iu-experiment", "-count=1", "-timeout=5m"], 330),
         ("native", [args.go, "test", "-json", "-race", "./internal/server", "./internal/worker", "./internal/adapter",
-                    "-run", "TestGraph|TestCommandProvider|TestInvalidation|TestImport|TestReuse|TestIncremental|TestVerification|TestIU", "-count=1", "-timeout=5m"], 330),
-        ("cli", [args.go, "test", "-json", "./cmd/computecloud", "-run", "TestJobGraphCLI|TestJobGraphCompile", "-count=1", "-timeout=2m"], 150),
+                    "-run", "TestCoverage|TestRecovery|TestGraph|TestCommandProvider|TestInvalidation|TestImport|TestReuse|TestIncremental|TestVerification|TestIU", "-count=1", "-timeout=5m"], 330),
+        ("cli", [args.go, "test", "-json", "./cmd/computecloud", "-run", "TestCoverage|TestRecovery|TestJobGraphCLI|TestJobGraphCompile", "-count=1", "-timeout=2m"], 150),
         ("simulation", [args.go, "run", "./cmd/iu-experiment", "--simulate", "--output", str(simulation_path)], 120),
         ("build", [args.go, "build", "-o", str(binary), "./cmd/computecloud"], 120),
         ("processes", [sys.executable, "scripts/ci_task_flow.py", "--binary", str(binary), "--iu-graph-check",

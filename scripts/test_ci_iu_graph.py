@@ -1,7 +1,25 @@
 import unittest
+import ast
+import re
+from pathlib import Path
 from ci_iu_graph import build_report, REQUIRED_TESTS
 
 class CIReportTest(unittest.TestCase):
+    def test_required_tests_are_selected_by_stage_commands(self):
+        tree = ast.parse(Path(__file__).with_name("ci_iu_graph.py").read_text())
+        commands = next(n.value for n in ast.walk(tree) if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "commands" for t in n.targets))
+        for stage in commands.elts:
+            args = stage.elts[1].elts
+            literals = [n.value if isinstance(n, ast.Constant) else None for n in args]
+            if "-run" not in literals:
+                continue
+            pattern = literals[literals.index("-run") + 1]
+            packages = [s[2:] for s in literals if isinstance(s, str) and s.startswith("./")]
+            for required in REQUIRED_TESTS:
+                package, test = required.split("::")
+                if any(package.endswith("/" + p) for p in packages):
+                    self.assertTrue(re.search(pattern, test.split("/")[0]), required)
+
     def healthy(self):
         return ([{"name": name, "exit_code": 0} for name in ("verifier", "contracts", "native", "cli", "simulation", "build", "processes")],
                 {key: "pass" for key in REQUIRED_TESTS},

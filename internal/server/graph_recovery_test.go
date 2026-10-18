@@ -1,13 +1,20 @@
 package server
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/tommyxie2026-tech/computecloud/internal/goal"
 	"github.com/tommyxie2026-tech/computecloud/internal/governance"
 	"github.com/tommyxie2026-tech/computecloud/internal/graph"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
+	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -83,11 +90,41 @@ func TestRecoveryRequiresTrustedFailAndMatchingReads(t *testing.T) {
 func TestRecoveryConcurrentProposalAndLostResponse(t *testing.T) {
 	h, j, p := recoverySource(t)
 	var wg sync.WaitGroup
-	wg.Add(2)
-	for range 2 {
-		go func() { defer wg.Done(); h.s.RecoverGraph(h.ctx, j.ID, p, "") }()
+	wg.Add(8)
+	results := make(chan *Job, 8)
+	errors := make(chan error, 8)
+	start := make(chan struct{})
+	for range 8 {
+		go func() {
+			defer wg.Done()
+			<-start
+			next, _, err := h.s.RecoverGraph(h.ctx, j.ID, p, "")
+			results <- next
+			errors <- err
+		}()
 	}
+	close(start)
 	wg.Wait()
+	close(results)
+	close(errors)
+	for err := range errors {
+		if err != nil {
+			t.Errorf("identical concurrent recovery: %v", err)
+		}
+	}
+	var published string
+	for next := range results {
+		if next == nil {
+			t.Error("missing replay Job")
+			continue
+		}
+		if published == "" {
+			published = next.ID
+		}
+		if next.ID != published {
+			t.Errorf("different replay Jobs: %s / %s", published, next.ID)
+		}
+	}
 	var count int
 	if e := h.s.db.SQL.QueryRow(`SELECT count(*) FROM iu_recovery_publications`).Scan(&count); e != nil || count != 1 {
 		t.Fatal(count, e)
@@ -197,4 +234,63 @@ func TestRecoveryApprovalAndActiveAttempt(t *testing.T) {
 			t.Fatal("in-flight attempt ignored")
 		}
 	})
+}
+
+func TestRecoveryRechecksAuthorityAndGenerationAfterRead(t *testing.T) {
+	t.Run("revoked_key", func(t *testing.T) {
+		h, j, p := recoverySource(t) // A durable source read has already succeeded.
+		principal, _ := rpcutil.PrincipalFrom(h.ctx)
+		key := store.APIKey{ID: "recovery-key", Digest: store.Hash([]byte("recovery-test-secret")), Prefix: "cc_live_test", Owner: principal.Identity.Owner, Projects: []string{"project"}, Scopes: []string{"jobs:read", "jobs:submit", "goals:propose"}, CreatedAt: store.Now(), ExpiresAt: store.Now() + 60000}
+		if err := h.s.db.CreateAPIKey(h.ctx, key); err != nil {
+			t.Fatal(err)
+		}
+		principal.ManagedKeyDigest = key.Digest
+		cached := rpcutil.WithPrincipal(context.Background(), principal)
+		if err := h.s.db.RevokeAPIKey(h.ctx, key.Owner, key.ID, store.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := h.s.RecoverGraph(cached, j.ID, p, ""); status.Code(err) != codes.PermissionDenied {
+			t.Fatalf("revoked read authority reused: %v", err)
+		}
+		var count int
+		if err := h.s.db.SQL.QueryRow(`SELECT count(*) FROM iu_recovery_publications`).Scan(&count); err != nil || count != 0 {
+			t.Fatal(count, err)
+		}
+	})
+	t.Run("generation_advanced", func(t *testing.T) {
+		h, j, p := recoverySource(t)
+		stale := p
+		stale.ID = "delayed-reader"
+		stale.SHA256 = stale.Digest()
+		if next, d, err := h.s.RecoverGraph(h.ctx, j.ID, p, ""); err != nil || next == nil || !d.Allowed {
+			t.Fatal(d, err)
+		}
+		if next, _, err := h.s.RecoverGraph(h.ctx, j.ID, stale, ""); err == nil || next != nil {
+			t.Fatal("stale read published a new recovery", err)
+		}
+		var count int
+		if err := h.s.db.SQL.QueryRow(`SELECT count(*) FROM iu_recovery_publications`).Scan(&count); err != nil || count != 1 {
+			t.Fatal(count, err)
+		}
+	})
+}
+func TestRecoveryOrdinaryHTTPRejectsV5Bypass(t *testing.T) {
+	h, j, p := recoverySource(t)
+	principal, _ := rpcutil.PrincipalFrom(h.ctx)
+	principal.Identity.Scopes = append(principal.Identity.Scopes, "jobs:control")
+	ctx := rpcutil.WithPrincipal(h.ctx, principal)
+	lease, err := h.s.acquireControlWriteLease(ctx, j.ID, "bypass-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := goalProposalBody{JobSpec: job.JSON(p.ProposedSpec)}
+	req := httptest.NewRequest("POST", "/v1/jobs/"+j.ID+"/goal/replans", bytes.NewReader(job.JSON(in))).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", j.ID)
+	req.Header.Set("X-Control-Lease", lease.LeaseToken)
+	w := httptest.NewRecorder()
+	h.s.httpGoalProposal(w, req)
+	if w.Code < 400 || !strings.Contains(w.Body.String(), "V5_RECOVERY_PROPOSAL_REQUIRED") {
+		t.Fatalf("HTTP bypass response: %d %s", w.Code, w.Body.String())
+	}
 }

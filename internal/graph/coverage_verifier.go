@@ -197,9 +197,10 @@ func RunCoverageVerifier(ctx context.Context, p CoverageVerifierProfile, s Spec,
 			raw, ok := values[out.Node+"/"+out.Port]
 			var actual CoverageOrderResult
 			if !ok || len(raw) > 64<<10 || decodeCoverageJSON(raw, &actual) != nil || actual.Total == nil || actual.Orders == nil {
-				verdict = "UNKNOWN"
-				reason = "OUTPUT_INCOMPLETE"
-				break
+				if verdict != "FAIL" {
+					verdict, reason = "UNKNOWN", "OUTPUT_INCOMPLETE"
+				}
+				continue
 			}
 			if id == "threshold_once" || id == "customer_grouping" || id == "exception_rules" {
 				if *actual.Total != total {
@@ -213,9 +214,10 @@ func RunCoverageVerifier(ctx context.Context, p CoverageVerifierProfile, s Spec,
 			}
 			for _, o := range actual.Orders {
 				if !validCoverageOrder(o) {
-					verdict = "UNKNOWN"
-					reason = "OUTPUT_FIELDS_INCOMPLETE"
-					break
+					if verdict != "FAIL" {
+						verdict, reason = "UNKNOWN", "OUTPUT_FIELDS_INCOMPLETE"
+					}
+					continue
 				}
 				expected, ok := originals[o.ID]
 				if !ok {
@@ -270,19 +272,49 @@ func decodeCoverageJSON(raw []byte, target any) error {
 	if !utf8.Valid(raw) {
 		return fmt.Errorf("invalid UTF-8")
 	}
-	var fields map[string]json.RawMessage
-	if e := jsonutil.Decode(raw, &fields); e != nil {
-		return e
-	}
-	typ := reflect.TypeOf(target).Elem()
-	if typ.Kind() != reflect.Struct || len(fields) != typ.NumField() {
-		return fmt.Errorf("coverage fields incomplete or unknown")
-	}
-	for i := 0; i < typ.NumField(); i++ {
-		name := typ.Field(i).Tag.Get("json")
-		if _, ok := fields[name]; !ok {
-			return fmt.Errorf("coverage field name mismatch")
-		}
+	if err := coverageJSONShape(raw, reflect.TypeOf(target).Elem()); err != nil {
+		return err
 	}
 	return jsonutil.Decode(raw, target)
+}
+
+// Check exact keys at every struct boundary, including elements in output arrays.
+func coverageJSONShape(raw []byte, typ reflect.Type) error {
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	if string(raw) == "null" {
+		return nil // Required business values are checked after decoding.
+	}
+	switch typ.Kind() {
+	case reflect.Struct:
+		var fields map[string]json.RawMessage
+		if err := jsonutil.Decode(raw, &fields); err != nil {
+			return err
+		}
+		if len(fields) != typ.NumField() {
+			return fmt.Errorf("coverage fields incomplete or unknown")
+		}
+		for i := 0; i < typ.NumField(); i++ {
+			field := typ.Field(i)
+			value, ok := fields[field.Tag.Get("json")]
+			if !ok {
+				return fmt.Errorf("coverage field name mismatch")
+			}
+			if err := coverageJSONShape(value, field.Type); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice:
+		var values []json.RawMessage
+		if err := jsonutil.Decode(raw, &values); err != nil {
+			return err
+		}
+		for _, value := range values {
+			if err := coverageJSONShape(value, typ.Elem()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

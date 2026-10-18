@@ -117,3 +117,54 @@ func TestCoverageCheckerRejectsCaseAliasFields(t *testing.T) {
 		}
 	}
 }
+
+func TestCoverageCheckerNestedAliasCannotPass(t *testing.T) {
+	s, v := orderCoverageFixture()
+	v["merge/result"] = json.RawMessage(`{"orders":[{"order_id":"WRONG","ORDER_ID":"a","customer_id":"c","paid_cents":6000,"is_special":false},{"order_id":"b","customer_id":"c","paid_cents":6000,"is_special":false}],"total_cents":11000,"currency":"CNY","unit":"cent"}`)
+	r := coverageRun(s, v)
+	if r.Verdict == "PASS" {
+		t.Fatalf("ambiguous output accepted: %+v", r)
+	}
+}
+func TestCoverageCheckerKnownFailureMustDominateUnknown(t *testing.T) {
+	s, v := orderCoverageFixture()
+	v["merge/result"] = json.RawMessage(`{"orders":[{"order_id":"a","customer_id":"c","paid_cents":6000,"is_special":false},{"order_id":"b","customer_id":"c","paid_cents":6000,"is_special":null}],"total_cents":99999,"currency":"CNY","unit":"cent"}`)
+	r := coverageRun(s, v)
+	if r.Verdict != "FAIL" {
+		t.Fatalf("known wrong total masked by unknown field: %+v", r)
+	}
+}
+
+func TestCoverageCheckerFailureDominatesLaterBoundOutput(t *testing.T) {
+	s, v := orderCoverageFixture()
+	v["merge/result"] = json.RawMessage(`{"orders":[{"order_id":"a","customer_id":"c","paid_cents":6000,"is_special":false},{"order_id":"b","customer_id":"c","paid_cents":6000,"is_special":false}],"total_cents":99999,"currency":"CNY","unit":"cent"}`)
+	for i := range s.Coverage.Checks {
+		s.Coverage.Checks[i].Outputs = append(s.Coverage.Checks[i].Outputs, Output{Node: "missing", Port: "result"})
+	}
+	s.Coverage.SHA256 = s.Coverage.Digest()
+	if r := coverageRun(s, v); r.Verdict != "FAIL" {
+		t.Fatalf("later unavailable output masked known total failure: %+v", r)
+	}
+}
+
+func TestCoverageCheckerUnknownFirstDoesNotHideLaterFailure(t *testing.T) {
+	t.Run("outputs", func(t *testing.T) {
+		s, v := orderCoverageFixture()
+		v["bad/result"] = json.RawMessage(`{"orders":[{"order_id":"a","customer_id":"c","paid_cents":6000,"is_special":false},{"order_id":"b","customer_id":"c","paid_cents":6000,"is_special":false}],"total_cents":99999,"currency":"CNY","unit":"cent"}`)
+		v["merge/result"] = json.RawMessage(`{}`)
+		for i := range s.Coverage.Checks {
+			s.Coverage.Checks[i].Outputs = append(s.Coverage.Checks[i].Outputs, Output{Node: "bad", Port: "result"})
+		}
+		s.Coverage.SHA256 = s.Coverage.Digest()
+		if r := coverageRun(s, v); r.Verdict != "FAIL" {
+			t.Fatalf("unknown first masked later wrong total: %+v", r)
+		}
+	})
+	t.Run("orders", func(t *testing.T) {
+		s, v := orderCoverageFixture()
+		v["merge/result"] = json.RawMessage(`{"orders":[{"order_id":"a","customer_id":"c","paid_cents":6000,"is_special":null},{"order_id":"wrong","customer_id":"c","paid_cents":6000,"is_special":false}],"total_cents":11000,"currency":"CNY","unit":"cent"}`)
+		if r := coverageRun(s, v); r.Verdict != "FAIL" {
+			t.Fatalf("unknown first masked later wrong identity: %+v", r)
+		}
+	})
+}

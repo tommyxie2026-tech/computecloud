@@ -78,7 +78,7 @@ func runRecoveryCLITest(t *testing.T, stopOnCAS bool) {
 		case r.URL.Path == "/v1/jobs/job/control-lease":
 			if r.Method == "POST" {
 				leases++
-				w.Write([]byte(`{"lease_token":"lease"}`))
+				json.NewEncoder(w).Encode(server.ControlWriteLease{JobID: "job", HolderID: "holder", LeaseToken: "lease", ExpiresAtMS: 123456789})
 			} else {
 				releases++
 				w.Write([]byte(`{}`))
