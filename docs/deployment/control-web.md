@@ -4,10 +4,12 @@ Control Web 是 Agent Job Executor 的任务控制台，与 Server 镜像一起�
 
 ## 启用
 
-复用现有 Server HTTP/HTTPS 监听，不需要新开端口。在 Server 配置增加：
+复用现有 Server HTTP/HTTPS API 监听；Web 不使用 gRPC 监听。已有 `server.http.listen` 时保留其原值，尚未配置时必须明确设置 HTTP/HTTPS API 监听。在 Server 配置增加：
 
 ```yaml
 server:
+  http:
+    listen: 127.0.0.1:8080  # 示例；已有 HTTP/HTTPS API 地址时使用原值
   web:
     enabled: true
     auth:
