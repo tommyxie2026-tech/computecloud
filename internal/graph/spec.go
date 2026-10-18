@@ -16,6 +16,7 @@ import (
 	graphv2 "github.com/tommyxie2026-tech/computecloud/api/graph/v2"
 	graphv3 "github.com/tommyxie2026-tech/computecloud/api/graph/v3"
 	graphv4 "github.com/tommyxie2026-tech/computecloud/api/graph/v4"
+	graphv5 "github.com/tommyxie2026-tech/computecloud/api/graph/v5"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/jsonutil"
 )
@@ -104,6 +105,7 @@ type Limits struct {
 }
 
 type Spec struct {
+	Coverage  *CoverageCatalog           `json:"coverage,omitempty"`
 	Reuse     []ReuseBinding             `json:"reuse,omitempty"`
 	Imports   []ImportBinding            `json:"imports,omitempty"`
 	Schemas   map[string]json.RawMessage `json:"schemas"`
@@ -161,6 +163,9 @@ func Decode(raw []byte) (Spec, error) {
 		return s, e
 	}
 	schema := requestSchema()
+	if s.Version == CoverageVersion {
+		schema = requestSchemaV5()
+	}
 	if s.Version == ImportVersion {
 		schema = requestSchemaV2()
 	}
@@ -228,6 +233,18 @@ var requestSchemaV4 = sync.OnceValue(func() *jsonschema.Resolved {
 	return r
 })
 
+var requestSchemaV5 = sync.OnceValue(func() *jsonschema.Resolved {
+	var s jsonschema.Schema
+	if e := json.Unmarshal(graphv5.Schema, &s); e != nil {
+		panic(e)
+	}
+	r, e := s.Resolve(nil)
+	if e != nil {
+		panic(e)
+	}
+	return r
+})
+
 // Compile clones and normalizes its input, preserving source text byte-for-byte.
 // Sorted declarations and Kahn traversal make the plan independent of array order.
 func Compile(in Spec) (Plan, error) {
@@ -244,7 +261,7 @@ func Compile(in Spec) (Plan, error) {
 		return p, e
 	}
 	fail := func(reason string) (Plan, error) { return Plan{}, invalid(reason) }
-	if (s.Version != Version && s.Version != ImportVersion && s.Version != ReuseVersion && s.Version != ContextVersion) || !job.Ref(s.ProjectID) || !job.Ref(s.Workspace.RepositoryRef) || !commitPattern.MatchString(s.Workspace.BaseCommit) {
+	if (s.Version != Version && s.Version != ImportVersion && s.Version != ReuseVersion && s.Version != ContextVersion && s.Version != CoverageVersion) || !job.Ref(s.ProjectID) || !job.Ref(s.Workspace.RepositoryRef) || !commitPattern.MatchString(s.Workspace.BaseCommit) {
 		return fail("version, project or workspace")
 	}
 	if !job.Ref(s.Evaluator.Profile) || !job.Ref(s.Evaluator.Version) {
@@ -356,7 +373,7 @@ func Compile(in Spec) (Plan, error) {
 	next := map[string][]string{}
 	for _, n := range s.Nodes {
 		if n.ContextPolicy != nil {
-			if s.Version != ContextVersion {
+			if s.Version != ContextVersion && s.Version != CoverageVersion {
 				return fail("context policy version")
 			}
 			if e := n.ContextPolicy.Validate(); e != nil {
@@ -374,10 +391,10 @@ func Compile(in Spec) (Plan, error) {
 		if _, ok := nodes[n.ID]; ok {
 			return fail("duplicate node")
 		}
-		if len(n.Rules) > 0 && s.Version != ReuseVersion && s.Version != ContextVersion {
+		if len(n.Rules) > 0 && s.Version != ReuseVersion && s.Version != ContextVersion && s.Version != CoverageVersion {
 			return fail("node rules version")
 		}
-		if n.ReplayProfile != "" && (s.Version != ReuseVersion && s.Version != ContextVersion || !keyPattern.MatchString(n.ReplayProfile)) {
+		if n.ReplayProfile != "" && (s.Version != ReuseVersion && s.Version != ContextVersion && s.Version != CoverageVersion || !keyPattern.MatchString(n.ReplayProfile)) {
 			return fail("replay profile version")
 		}
 		op, ok := ops[n.Operator]
@@ -407,7 +424,7 @@ func Compile(in Spec) (Plan, error) {
 	if len(s.Imports) > 8 || s.Version == Version && len(s.Imports) > 0 {
 		return fail("import version or bounds")
 	}
-	if len(s.Reuse) > 32 || len(s.Reuse) > 0 && s.Version != ReuseVersion && s.Version != ContextVersion {
+	if len(s.Reuse) > 32 || len(s.Reuse) > 0 && s.Version != ReuseVersion && s.Version != ContextVersion && s.Version != CoverageVersion {
 		return fail("reuse version or bounds")
 	}
 	reusedNodes := map[string]bool{}
@@ -540,6 +557,10 @@ func Compile(in Spec) (Plan, error) {
 		}
 		outputSeen[key] = true
 	}
+	if e := ValidateCoverage(s); e != nil {
+		return p, e
+	}
+
 	sort.Slice(s.Sources, func(i, j int) bool { return s.Sources[i].ID < s.Sources[j].ID })
 	sort.Slice(s.Operators, func(i, j int) bool { return s.Operators[i].ID < s.Operators[j].ID })
 	sort.Slice(s.Nodes, func(i, j int) bool { return s.Nodes[i].ID < s.Nodes[j].ID })

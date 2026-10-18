@@ -109,6 +109,8 @@ func main() {
 func run() error {
 	runCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
+	coveragePlan := flag.Bool("coverage-plan", false, "write frozen coverage protocol; with --simulate run 72 fixture arms")
+	coveragePath := flag.String("coverage-protocol", "", "execute frozen semantic coverage protocol")
 	pilotPlan := flag.Bool("pilot-plan", false, "write a frozen 20-sample workflow pilot protocol without model calls")
 	protocolPath := flag.String("protocol", "", "execute a frozen pilot protocol")
 	expectedCLI := flag.String("expected-cli-version", "", "pinned CLI version required for pilot plan")
@@ -126,6 +128,48 @@ func run() error {
 	flag.Parse()
 	explicit := map[string]bool{}
 	flag.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
+	var coverageProtocol *iuexperiment.CoverageProtocol
+	if (*coveragePlan || *coveragePath != "") && (*pilotPlan || *protocolPath != "") {
+		return errors.New("coverage and pilot modes are mutually exclusive")
+	}
+	if *coveragePlan {
+		if *coveragePath != "" || *output == "" {
+			return errors.New("coverage plan requires output and no live protocol")
+		}
+		if *simulate {
+			return writeNewReport(*output, iuexperiment.SimulateCoverage(runCtx))
+		}
+		p, e := iuexperiment.NewCoverageProtocol(*model, *runtime, *expectedCLI, *effort)
+		if e != nil {
+			return e
+		}
+		return writeNewReport(*output, p)
+	}
+	if *coveragePath != "" {
+		if *simulate {
+			return errors.New("use --coverage-plan --simulate for fixtures")
+		}
+		raw, e := os.ReadFile(*coveragePath)
+		if e != nil {
+			return e
+		}
+		var p iuexperiment.CoverageProtocol
+		if e = jsonutil.Decode(raw, &p); e != nil {
+			return e
+		}
+		if e = p.Validate(); e != nil {
+			return e
+		}
+		if explicit["model"] && *model != p.Model || explicit["runtime"] && *runtime != p.Runtime || explicit["effort"] && *effort != p.Effort || explicit["max-model-calls"] && *maxCalls != p.MaxCalls || explicit["timeout"] && *timeout != time.Duration(p.CallTimeoutSeconds)*time.Second || explicit["arms"] || explicit["cases"] || explicit["repeats"] {
+			return errors.New("COVERAGE_PROTOCOL_OVERRIDE_REJECTED")
+		}
+		*model = p.Model
+		*runtime = p.Runtime
+		*effort = p.Effort
+		*maxCalls = p.MaxCalls
+		*timeout = time.Duration(p.CallTimeoutSeconds) * time.Second
+		coverageProtocol = &p
+	}
 	var protocol *iuexperiment.PilotProtocol
 	if *simulate && (*pilotPlan || *protocolPath != "") {
 		return errors.New("simulation and live protocol modes are mutually exclusive")
@@ -280,6 +324,10 @@ func run() error {
 		_ = json.NewEncoder(file).Encode(map[string]any{"version": "iu-preflight-v1", "status": "FAILED", "stage": "cli_version_probe", "model_calls": 0, "protocol": protocol, "error_code": "CLI_VERSION_DRIFT"})
 		return errors.New("CLI_VERSION_DRIFT")
 	}
+	if coverageProtocol != nil && strings.TrimSpace(string(version)) != coverageProtocol.CLIVersion {
+		_ = json.NewEncoder(file).Encode(map[string]any{"version": "iu-preflight-v1", "status": "FAILED", "error_code": "CLI_VERSION_DRIFT", "coverage_protocol": coverageProtocol})
+		return errors.New("CLI_VERSION_DRIFT")
+	}
 	var mu sync.Mutex
 	attempts := 0
 	errorsSeen := []string{}
@@ -322,6 +370,13 @@ func run() error {
 			return iuexperiment.Reply{}, errors.New(code)
 		}
 		return reply, nil
+	}
+	if coverageProtocol != nil {
+		report, e := iuexperiment.RunCoverageProtocol(runCtx, *coverageProtocol, call)
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(file).Encode(report)
 	}
 	samples := []iuexperiment.Sample{}
 	for repeat := 0; repeat < *repeats; repeat++ {

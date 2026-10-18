@@ -2,6 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"github.com/tommyxie2026-tech/computecloud/internal/graph"
+	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -127,5 +131,40 @@ func TestJobGraphCLIProposalAcquiresAndReleasesControlLease(t *testing.T) {
 				t.Fatalf("lease lifecycle: %v", calls)
 			}
 		})
+	}
+}
+func TestCoverageCompileCLIReturnsGapWithoutConnection(t *testing.T) {
+	raw, e := os.ReadFile("../../examples/iu-graph/coverage-v5/orders.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	s, e := graph.Decode(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.Nodes[0].Spans = nil
+	path := filepath.Join(t.TempDir(), "gap.json")
+	os.WriteFile(path, job.JSON(s), 0600)
+	old := os.Stdout
+	r, w, e := os.Pipe()
+	if e != nil {
+		t.Fatal(e)
+	}
+	os.Stdout = w
+	err := runJob(context.Background(), config.Client{}, jobOptions{op: "compile-graph", file: path})
+	w.Close()
+	os.Stdout = old
+	defer r.Close()
+	var ce *graph.CoverageError
+	if !errors.As(err, &ce) {
+		t.Fatal("not coverage preflight", err)
+	}
+	out, e := io.ReadAll(r)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var report graph.CoverageError
+	if e = json.Unmarshal(out, &report); e != nil || report.Report.Complete || len(report.Report.Gaps) == 0 {
+		t.Fatal(string(out), e)
 	}
 }

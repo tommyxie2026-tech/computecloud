@@ -37,25 +37,26 @@ type JobTemplate struct {
 	Digest            string `yaml:"digest" json:"digest"`
 }
 type Jobs struct {
-	GraphRecordVerifiers     map[string]graph.RecordVerifierProfile `yaml:"graph_record_verifiers"`
-	GraphReplayBindings      map[string]graph.ReplayBinding         `yaml:"graph_replay_bindings"`
-	Enabled                  bool                                   `yaml:"enabled"`
-	GraphsEnabled            bool                                   `yaml:"graphs_enabled"`
-	GraphCommands            map[string]GraphCommandProfile         `yaml:"graph_commands"`
-	MaxPartitions            int                                    `yaml:"max_partitions"`
-	MaxParallelism           int                                    `yaml:"max_parallelism"`
-	RecommendedParallelism   int                                    `yaml:"recommended_parallelism"`
-	MaxRequestBytes          int64                                  `yaml:"max_request_bytes"`
-	MaxManifestBytes         int64                                  `yaml:"max_manifest_bytes"`
-	MaxReduceInputBytes      int64                                  `yaml:"max_reduce_input_bytes"`
-	MaxAttemptsPerTask       int                                    `yaml:"max_attempts_per_task"`
-	MaxTotalRuntimeSeconds   int64                                  `yaml:"max_total_runtime_seconds"`
-	MaxDeadlineExtendSeconds int64                                  `yaml:"max_deadline_extend_seconds"`
-	MaxTaskEvents            int                                    `yaml:"max_task_events"`
-	SchedulerAgingSeconds    int64                                  `yaml:"scheduler_aging_seconds"`
-	MaxQueuedTasks           int                                    `yaml:"max_queued_tasks"`
-	MaxQueuedTasksPerProject int                                    `yaml:"max_queued_tasks_per_project"`
-	Templates                []JobTemplate                          `yaml:"templates"`
+	GraphCoverageVerifiers   map[string]graph.CoverageVerifierProfile `yaml:"graph_coverage_verifiers"`
+	GraphRecordVerifiers     map[string]graph.RecordVerifierProfile   `yaml:"graph_record_verifiers"`
+	GraphReplayBindings      map[string]graph.ReplayBinding           `yaml:"graph_replay_bindings"`
+	Enabled                  bool                                     `yaml:"enabled"`
+	GraphsEnabled            bool                                     `yaml:"graphs_enabled"`
+	GraphCommands            map[string]GraphCommandProfile           `yaml:"graph_commands"`
+	MaxPartitions            int                                      `yaml:"max_partitions"`
+	MaxParallelism           int                                      `yaml:"max_parallelism"`
+	RecommendedParallelism   int                                      `yaml:"recommended_parallelism"`
+	MaxRequestBytes          int64                                    `yaml:"max_request_bytes"`
+	MaxManifestBytes         int64                                    `yaml:"max_manifest_bytes"`
+	MaxReduceInputBytes      int64                                    `yaml:"max_reduce_input_bytes"`
+	MaxAttemptsPerTask       int                                      `yaml:"max_attempts_per_task"`
+	MaxTotalRuntimeSeconds   int64                                    `yaml:"max_total_runtime_seconds"`
+	MaxDeadlineExtendSeconds int64                                    `yaml:"max_deadline_extend_seconds"`
+	MaxTaskEvents            int                                      `yaml:"max_task_events"`
+	SchedulerAgingSeconds    int64                                    `yaml:"scheduler_aging_seconds"`
+	MaxQueuedTasks           int                                      `yaml:"max_queued_tasks"`
+	MaxQueuedTasksPerProject int                                      `yaml:"max_queued_tasks_per_project"`
+	Templates                []JobTemplate                            `yaml:"templates"`
 }
 
 type GraphCommandProfile struct {

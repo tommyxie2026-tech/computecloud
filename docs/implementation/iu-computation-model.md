@@ -19,7 +19,7 @@ IU 是现有 Task/Attempt 上的算元契约：冻结有限 DAG → 节点就绪
 
 含原始身份链的导入/复用记忆使用 [memory-view-v2](../contracts/iu-memory-view-v2.md)：源 Goal/job/generation/node/Context/View/record 与 previous origin 随 Context 传给 Worker，payload 不改写；元数据依赖映射到新 ID，模型不能伪造 origin。需要 iu_memory_origin_v1；无 origin 的旧 v1 格式/hash 保持。主文保存在冻结 Sources，可按 byte span/hash/角色/顺序回源，不传递模型隐藏思维链或跨 tokenizer token IDs。
 
-当前分支 Server schema v25（原基线 v20，顺序迁移 v21～25），Worker schema v6；新增能力通过明确合同/capability 协商。默认 graphs_enabled=false。图请求 256 KiB、32 节点/128 边/并行 8、Context 64 KiB、delta 64 KiB 等既有上限未扩大。
+当前分支 Server schema v26（上一轮 v25；本轮追加覆盖回执/恢复提案与发布事实）（原基线 v20，顺序迁移 v21～26），Worker schema v6；新增能力通过明确合同/capability 协商。默认 graphs_enabled=false。图请求 256 KiB、32 节点/128 边/并行 8、Context 64 KiB、delta 64 KiB 等既有上限未扩大。
 
 ## 阶段证据
 
@@ -51,3 +51,14 @@ IU 是现有 Task/Attempt 上的算元契约：冻结有限 DAG → 节点就绪
 - workspace patch DAG 与不可回滚外部写入的 effect/outbox/补偿/批准合同。Task retry/reuse 不证明外部 exactly-once。
 
 运行入口与对照见 [订单示例](../../examples/iu-graph/README.md)、[CI 方案](../validation/iu-ci-simulation.md)、[本机模型试运行](../validation/iu-local-quality-experiment.md)。
+
+
+## 下一轮 v5：约束覆盖与受限修正
+
+本轮实现 [v5 合同](../contracts/iu-graph-v5.md)：声明约束到来源/节点/最终检查，缺少已声明原文时发布前阻断；管理员有限订单域 checker 独立检查，生成可追溯回执；v5 Goal PASS 强制引用当前完整覆盖证据，验证实际 Artifact 可取回。不能由最终金额碰巧正确掩盖身份字段损坏，也不把未知语义自动判成完整。
+
+可信业务 FAIL 后，上层 CLI 使用幂等回源回执构建受限提案，经原 Guard 发布新代。每 Goal 最多两次，原有更严格预算、相同证据拒绝和审批合同继续有效；成功次数持久化，旧输入不改写，普通重规划入口不能绕过 v5 限制。
+
+新实验协议是六场景 × 三种变体 × 四臂，共 72 条结果，与旧 20/80 pilot 分开。当前本机确定性模拟实际执行 210 次 fixture invocation，保留 90 条轮次结果及失败/未知，Provider 调用 0、token/费用 unknown；这些不是质量或节约结果。CI 门禁另核对实际 Server/双 Worker 的恢复、重启和重放事实。验收状态须查看本轮集成 PR 当前 SHA，不引用上一轮 CI 冒充本轮已过。
+
+真实 Provider、生产 aicloud 与独立主机继续未完成。本机原生 Worker 探测仍受 CLEANUP_UNCONFIRMED 约束；未绕过进程安全检查，完整平台门禁由 CI 取证。

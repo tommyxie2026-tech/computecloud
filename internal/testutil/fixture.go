@@ -120,6 +120,26 @@ if prompt.startswith('{'):
                 cid = order['customer_id']
                 customers[cid] = customers.get(cid, 0) + order['paid_cents']
             amount = sum(v-discount if v >= 10000 else v for v in customers.values())
+        if 'fixture-coverage-v5' in instruction:
+            seen, customers, orders = {}, {}, []
+            rule = {'threshold_cents':10000,'discount_cents':1000}
+            exclude = False
+            for segment in (context.get('local') or [])+(context.get('rules') or []):
+                value = json.loads(segment['text'])
+                if 'order_id' in value:
+                    identity = value['order_id']
+                    if identity in seen and seen[identity] != value: raise ValueError('conflicting original order')
+                    seen[identity] = value
+                if 'threshold_cents' in value: rule = value
+                if value.get('type') == 'special_no_discount': exclude = True
+            total = sum(order['paid_cents'] for order in seen.values())
+            for order in seen.values():
+                if not exclude or not order['is_special']:
+                    customers[order['customer_id']] = customers.get(order['customer_id'],0)+order['paid_cents']
+            for value in customers.values():
+                if value >= rule['threshold_cents']: total -= min(value,rule['discount_cents'])
+            if 'fixture-coverage-repaired' not in context['instructions']: total += 1000
+            amount = {'orders':list(seen.values()),'total_cents':total,'currency':'CNY','unit':'cent'}
         records = []
         record_id = re.search(r'fixture-record:([a-z_]+)', instruction)
         if record_id:

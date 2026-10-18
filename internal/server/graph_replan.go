@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/tommyxie2026-tech/computecloud/internal/goal"
+	"github.com/tommyxie2026-tech/computecloud/internal/graph"
 	"github.com/tommyxie2026-tech/computecloud/internal/job"
 	"github.com/tommyxie2026-tech/computecloud/internal/rpcutil"
 	"github.com/tommyxie2026-tech/computecloud/internal/store"
@@ -18,6 +19,12 @@ func graphEvaluationFact(ev GraphEvaluation) string {
 }
 
 func (s *Server) publishGraphReplan(ctx context.Context, prior *Job, in goal.ReplanRequest, approval string, raw []byte, p rpcutil.Principal) (*Job, goal.ReplanDecision, error) {
+	if prior.graph.Plan.Spec.Version == graph.CoverageVersion {
+		return nil, goal.ReplanDecision{}, status.Error(codes.FailedPrecondition, "V5_RECOVERY_PROPOSAL_REQUIRED")
+	}
+	return s.publishGraphReplanWithRecovery(ctx, prior, in, approval, raw, p, nil)
+}
+func (s *Server) publishGraphReplanWithRecovery(ctx context.Context, prior *Job, in goal.ReplanRequest, approval string, raw []byte, p rpcutil.Principal, recovery *graph.RecoveryProposal) (*Job, goal.ReplanDecision, error) {
 	var empty goal.ReplanDecision
 	if !s.cfg.Jobs.Enabled || !s.cfg.Jobs.GraphsEnabled || s.cfg.Maintenance {
 		return nil, empty, status.Error(codes.FailedPrecondition, "GRAPH_PUBLICATION_UNAVAILABLE")
@@ -58,6 +65,11 @@ func (s *Server) publishGraphReplan(ctx context.Context, prior *Job, in goal.Rep
 	id := store.ID()
 	f.GoalID = in.GoalID
 	decision, e := goal.GuardAndPublishReplan(ctx, s.db, in, approval, func(ctx context.Context, q store.Query, d goal.ReplanDecision) error {
+		if recovery != nil {
+			if e := s.checkRecoveryTx(ctx, q, prior, *recovery, true); e != nil {
+				return e
+			}
+		}
 		if _, e := graphMutationAuthorityTx(ctx, q, prior, "goals:propose"); e != nil {
 			return e
 		}
@@ -127,6 +139,11 @@ func (s *Server) publishGraphReplan(ctx context.Context, prior *Job, in goal.Rep
 		target := &Job{ID: id, owner: prior.owner, project: prior.project, graph: &f}
 		if e := bindGraphImportsTx(ctx, q, target); e != nil {
 			return e
+		}
+		if recovery != nil {
+			if _, e := q.ExecContext(ctx, `INSERT INTO iu_recovery_publications VALUES(?,?,?,?,?,?)`, recovery.GoalID, recovery.ID, prior.graph.Generation, f.Generation, id, store.Now()); e != nil {
+				return e
+			}
 		}
 		return appendJobEvent(ctx, q, id, "graph.created", map[string]any{"goal_id": in.GoalID, "graph_generation": d.NextGraphGeneration, "evaluation_id": in.EvaluationID}, "", "")
 	})

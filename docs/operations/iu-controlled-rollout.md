@@ -4,7 +4,7 @@
 
 ## 冻结运行输入
 
-记录 computecloud commit/二进制 SHA256、Server schema v25、Worker schema v6、模型/CLI/Runtime/模板/权限/环境摘要、样本来源与业务 verifier。v1～v4 图请求合同、memory-view-v2 的独立 capability 与当前范围见 contracts。IU 仍是现有 Task/Attempt 契约，不新建执行引擎；Registry/Evaluation/Router 属于 aicloud。
+记录 computecloud commit/二进制 SHA256、Server schema v26、Worker schema v6、模型/CLI/Runtime/模板/权限/环境摘要、样本来源与业务 verifier。v1～v4 图请求合同、memory-view-v2 的独立 capability 与当前范围见 contracts。IU 仍是现有 Task/Attempt 契约，不新建执行引擎；Registry/Evaluation/Router 属于 aicloud。
 
 实际独立主机清单使用 [模板](../validation/iu-independent-host-inventory.example.json)：
 
@@ -54,3 +54,12 @@ Task/Attempt 恢复不保证外部 exactly-once。当前只验证只读/纯计�
 `make ci-iu-graph` 保存 SHA、环境、原命令、原始样本/JSONL、原生进程证据；任何必测缺失/SKIP/失败或缺原生导入/复用恢复证据都失败。fixture Provider 调用为 0，80 样本臂的调用数不是实际模型用量。
 
 GitHub Actions workflow_dispatch 的 run_slow=true 运行慢速恢复/长任务/多架构镜像和 package 构建；手动验证强制 release=false，publish 仍仅限原 main/tag 发布路径。包和镜像 gate 通过只证明该 SHA 可构建，不等于目标环境已验收或已获扩大开关的决定。真实验收未完成前保持实验性/default-off。
+
+
+## v5 的受控接入
+
+v5 追加 Server schema v26；升级前备份 v25 DB 与 Artifact，回滚使用未被新进程打开的原快照，不把改写 user_version 当产品降级。Worker v6/输入 v2 保持，只有 Server 接受新合同后才按现有 capability 调度。
+
+按 [v5 合同](../contracts/iu-graph-v5.md)注册只读 coverage checker，并为独立评估身份配置 jobs:read/goals:evaluate；提案身份还需 jobs:submit/goals:propose 及现有控制租约权限。提交者不能自写 verdict。默认图开关不扩大，真实服务与主机验收仍独立开展。
+
+UNKNOWN、证据文件丢失、profile 漂移、CAS 冲突、需要审批或 Guard 拒绝时停止；禁止手改 DB、重复新建 Goal、改模型或放宽 budget 绕过限制。重启或丢响应后复用原 recipe/proposal ID；Server 的持久发布事实决定是否已经发布，CLI 重启不重置次数。

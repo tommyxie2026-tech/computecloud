@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,6 +38,12 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 		}
 		spec, e := graph.Decode(raw)
 		if e != nil {
+			var ce *graph.CoverageError
+			if errors.As(e, &ce) {
+				if outErr := json.NewEncoder(os.Stdout).Encode(ce); outErr != nil {
+					return outErr
+				}
+			}
 			return e
 		}
 		plan, e := graph.Compile(spec)
@@ -126,6 +133,18 @@ func runJob(ctx context.Context, c config.Client, o jobOptions) error {
 	}
 	path := "/v1/jobs/" + url.PathEscape(o.id)
 	switch o.op {
+	case "recover-graph":
+		return runRecoveryCLI(ctx, o.id, o.file, read, func(token string) { controlLeaseToken = token })
+	case "read-source-status":
+		return print("GET", path+"/graph/source-reads/"+url.PathEscape(o.node), nil)
+	case "coverage":
+		return print("GET", path+"/graph/coverage-verifications/"+url.PathEscape(o.key), nil)
+	case "verify-coverage":
+		raw, e := os.ReadFile(o.file)
+		if e != nil {
+			return e
+		}
+		return print("POST", path+"/graph/coverage-verifications", raw)
 	case "list":
 		return print("GET", "/v1/jobs?limit="+strconv.Itoa(o.limit)+"&before="+url.QueryEscape(o.cursor), nil)
 	case "submit", "submit-graph":

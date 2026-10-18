@@ -63,3 +63,14 @@ Artifact 内包含：
 后续集成门禁增加持久失效、跨代授权/复用、逐 record 验证与回源的真实 Server 进程恢复证据，并强制保留原始身份链与 Artifact pin；缺失即失败。后续真实模型效果测试可使用 [本机实验入口](iu-local-quality-experiment.md)，并与本 CI 的确定性证据分开。
 
 新增20样本四臂 pilot 的80个样本臂与215次fixture invocation，真实Provider调用0，token/费用保持unknown。独立主机/Provider/aicloud验收在报告中始终明确NOT_RUN。慢速 workflow_dispatch 包/镜像验证与正式publish分开，详见 [操作手册](../operations/iu-controlled-rollout.md)。
+
+
+## v5 覆盖与补证门禁
+
+旧 80 臂 pilot 保持。新增 iu-coverage-protocol-v1 的 18 个固定变体、72 个样本臂，分别保留初次与修正后结果、每轮失败/未知、原字段保留、错放、实际调用与验证/字节开销；缺失用量不记零。通过样本不能掩盖未运行样本，旧报告不重标。
+
+本机可运行 `go run ./cmd/iu-experiment --coverage-plan --simulate --output /tmp/iu-coverage-new.json`，输出路径必须不存在。该模式不联系 Provider。无 --simulate 时，--coverage-plan 配合 --model/--runtime/--expected-cli-version/--effort 仅冻结协议；--coverage-protocol FILE 是真实 CLI 入口，本轮未执行。原始失败保存在 samples.attempts/invocations，实际模型 revision 未核实不能推导 H0～H9。
+
+ci-iu-graph 的 required_checks 包含覆盖编译、严格源字段、独立回执、物理证据丢失、配额、事务回滚、审批、排空、并发/重放、CLI CAS/租约和 v25→v26 恢复。缺失或 SKIP 仍失败；业务 UNKNOWN 是可以被正确检测的结果，不是跳过测试。
+
+进程报告 native_iu_graphs.coverage_recovery 必须保存初次 FAIL、修正 PASS、真实 Task/Attempt、generation=2、单次 publication、读次数不变、旧 Context 不变、来源 pin 和 Server 进程重启后 CLI 重放。仅保存内存对象、手写报告、单元 fixture 或文档不满足该门禁。普通 Runner 的两个 Worker 不替代独立主机验收。

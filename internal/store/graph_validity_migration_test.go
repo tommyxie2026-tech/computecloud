@@ -8,6 +8,7 @@ func TestGraphValidityMigrationPreservesV20Jobs(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	dropCoverageMigrationFixture(t, db)
 	if _, e = db.SQL.Exec(`DROP TABLE iu_validity_views; DROP TABLE iu_validity_progress; DROP TABLE iu_validity_events; DROP TABLE iu_validity_revisions; PRAGMA user_version=20;
  INSERT INTO jobs(id,owner,project,idem,request_hash,spec_hash,spec,mode,state,created,updated,deadline,parallelism)
  VALUES('old-job','owner','p','old','h','h','{}','single','SUCCEEDED',1,1,9999999999999,1)`); e != nil {

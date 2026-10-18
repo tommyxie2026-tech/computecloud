@@ -13,6 +13,7 @@ func TestGoalV15MigrationRestartAndImmutableRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Reconstruct an empty v14 database by removing the v15-v17 migration tables.
+	dropCoverageMigrationFixture(t, db)
 	if _, err = db.SQL.Exec(`DROP TABLE api_keys;DROP TABLE conversation_requests;DROP TABLE goal_replan_permissions;DROP TABLE goal_governance_decisions;DROP TABLE goal_usage;DROP TABLE goal_budget_policy;DROP TABLE goal_attempt_reservations;DROP TABLE goal_evaluations;DROP TABLE goal_plans;DROP TABLE goal_job_bindings;PRAGMA user_version=14`); err != nil {
 		t.Fatal(err)
 	}

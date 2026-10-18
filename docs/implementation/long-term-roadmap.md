@@ -1526,7 +1526,7 @@ IU 复用 Task/Attempt、Artifact、Scheduler、Guard；没有第二套执行引
 | IU-5C | 20 样本四臂协议、消融、全分母/未知成本；核实上游后的只读 aicloud adapter | 阶段 PR #164 CI 已过；真实 Provider、正式功效分析、服务授权一致性和生产路由仍未完成 |
 | IU-6 | 备份/升级/快照回滚、原生导入/复用恢复、严格 CI、慢速包/镜像验证、主机清单预检 | 代码 SHA `52f20bb` 的完整 CI/包镜像门禁见实现范围；IU 93 必测与原生恢复通过。真实独立主机/网络/长任务未验收，不扩大开关或发布范围 |
 
-[实现范围](iu-computation-model.md)记录各阶段精确 SHA/CI 链接；[操作手册](../operations/iu-controlled-rollout.md)给出故障取证与升级回滚步骤。Server schema v25、Worker v6；不预设新发布版本号。
+[实现范围](iu-computation-model.md)记录各阶段精确 SHA/CI 链接；[操作手册](../operations/iu-controlled-rollout.md)给出故障取证与升级回滚步骤。Server schema v26、Worker v6；不预设新发布版本号。
 
 后续必须真实取证的待办：
 
@@ -1537,6 +1537,18 @@ IU 复用 Task/Attempt、Artifact、Scheduler、Guard；没有第二套执行引
 - [ ] 精确 tokenizer/附件、外部 verifier 信任链、patch DAG/外部 effect 合同各自独立立项。
 
 原文使用不可变 UTF-8 snapshot/span/hash，可逐字节重建；记忆身份/依赖链传给算元后重新编码目标模型输入。此机制不意味着任意语义拆分无损，也不意味着真实模型优于单节点。
+
+#### 下一轮：约束覆盖与受限补证
+
+用户在 main `156867b` 的设计回顾后确认继续下一轮，并在规格提交 `6df3b4a` 后确认继续。架构规格见 [约束覆盖、证据补充与受限修正](../superpowers/specs/2026-10-18-iu-semantic-recovery-design.md)，[详细实施计划](../superpowers/plans/2026-10-18-iu-semantic-recovery.md)已确认，本轮代码与定向测试已落地；独立审查与修正复审已通过，完整 CI 以 [PR #166](https://github.com/tommyxie2026-tech/computecloud/pull/166) 当前提交的检查为准，未计作真实环境验收。
+
+- [x] 独立版本覆盖契约：约束 → 原文 → 负责节点 → 最终检查；发布前检查实际 Context 覆盖。
+- [x] 管理员只读、有限业务域 checker 与持久回执；新版本 Goal PASS 检查覆盖证据，未知不冒充完整。
+- [x] 可信 FAIL 后的有界补证、受限计划修改和现有 Guard 发布；次数/幂等由 Server 持久化，UNKNOWN 不自动重规划。
+- [x] 跨片段例外、客户引用、单位与冲突的四臂反例，以及原生 Server/Worker 的修正/重启门禁。
+- [x] 更新版本合同、示例与操作入口；单个集成分支/PR 收敛，最终以实际执行 SHA 的 CI 和审查验收。
+
+真实 Provider、aicloud 生产联调、独立主机、精确 tokenizer、记忆压缩及外部副作用不在本轮工程通过声明中；上述勾选仅表示工程实现已交付，不能推导真实模型效果结论。
 
 ### 19.1 Re-plan Guard 实施切片
 

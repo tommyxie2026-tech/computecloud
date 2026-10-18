@@ -37,7 +37,28 @@ except ValueError:
 if isinstance(context, dict) and context.get('version') == 'iu-context-v1':
     import re
     ports = json.loads(context['instructions'].split('Declared output ports: ')[-1])
-    if context['inputs']:
+    if 'fixture-coverage-v5' in context['instructions']:
+        seen, customers, orders = {}, {}, []
+        rule = {'threshold_cents':10000,'discount_cents':1000}
+        exclude = False
+        for segment in (context.get('local') or [])+(context.get('rules') or []):
+            value = json.loads(segment['text'])
+            if 'order_id' in value:
+                identity = value['order_id']
+                if identity in seen and seen[identity] != value: raise ValueError('conflicting original order')
+                seen[identity] = value
+            if 'threshold_cents' in value: rule = value
+            if value.get('type') == 'special_no_discount': exclude = True
+        total = sum(order['paid_cents'] for order in seen.values())
+        for order in seen.values():
+            if not exclude or not order['is_special']:
+                customers[order['customer_id']] = customers.get(order['customer_id'],0)+order['paid_cents']
+        for value in customers.values():
+            if value >= rule['threshold_cents']: total -= min(value,rule['discount_cents'])
+        if 'fixture-coverage-repaired' not in context['instructions']: total += 1000
+        amount = {'orders':list(seen.values()),'total_cents':total,'currency':'CNY','unit':'cent'}
+        source = context['local'][0]['source']
+    elif context['inputs']:
         amounts = json.loads(context['inputs'][0]['value'])
         rule = json.loads(context['rules'][0]['text'])
         applied = rule['discount_cents']
@@ -675,8 +696,62 @@ def main():
                             "origin_pins":pins,"attempts_before_restart":len(before_restart),"revoked_denial":revoked_denial,"attempts":len(attempts),"tasks":len(job_tasks(target_id)),"revoked_denied":revoked_denied,
                             "verification_authorized":True,"submitter_verification_denied":verify_denied,"source_read_receipt_preserved":True,
                             "origin_forwarded":True,"source_output":6000,"recovered_output":output["outputs"]["a/result"]})
+                    # v5 acceptance and bounded recovery through real CLI / Server / Workers.
+                    server_data["server"]["jobs"]["graphs_enabled"]=True
+                    server_data["server"]["jobs"]["graph_coverage_verifiers"]={"orders":{"version":"1","kind":"orders-v1","scope":"orders","timeout_ms":1000}}
+                    Path(server_config).write_text(json.dumps(server_data))
+                    stop("server",hard=True);start("server","server",server_config)
+                    wait_for(lambda: json.loads(cli("workers")))
+                    coverage_spec=json.loads((Path(__file__).resolve().parents[1]/"examples/iu-graph/coverage-v5/orders.json").read_text())
+                    coverage_spec.update(project_id="ci-flow",workspace={"repository_ref":"repo","base_commit":commit})
+                    coverage_spec["operators"][0]["execution"]=execution("codex")
+                    coverage_spec["nodes"][0]["instructions"]+=" fixture-coverage-v5"
+                    coverage_file=write("coverage-v5.json",coverage_spec)
+                    coverage_source=json.loads(cli("job","submit-graph","--key","coverage-v5","--file",coverage_file))["job_id"]
+                    if wait_job(coverage_source)["state"]!="SUCCEEDED":raise AssertionError("v5 initial execution failed")
+                    status_v5=json.loads(cli("job","graph","--id",coverage_source))
+                    def compact_hash(value):return hashlib.sha256(json.dumps(value,separators=(",",":"),ensure_ascii=False).encode()).hexdigest()
+                    def coverage_proof(job_id,status_v5,name):
+                        request=write(name+"-request.json",{"id":name,"expected_validity_revision":status_v5["validity_revision"],"output_sha256":status_v5["output_sha256"],"profile":"orders","profile_version":"1"})
+                        return json.loads(run_command(binary,"job","verify-coverage","--id",job_id,"--file",request,"--config",eval_config))
+                    first_proof=coverage_proof(coverage_source,status_v5,"initial-proof")
+                    if first_proof["verdict"]!="FAIL":raise AssertionError("fixture violation was not detected")
+                    evaluation={"id":"v5-initial-fail","expected_version":status_v5["evaluation_version"],"output_sha256":status_v5["output_sha256"],"verifier_profile":coverage_spec["evaluator"]["profile"],"verifier_version":coverage_spec["evaluator"]["version"],"verdict":"FAIL","evidence_sha256":first_proof["evidence_sha256"],"coverage_proof":{"receipt_id":"initial-proof","sha256":compact_hash(first_proof)}}
+                    run_command(binary,"job","evaluate-graph","--id",coverage_source,"--file",write("v5-initial-fail.json",evaluation),"--config",eval_config)
+                    status_v5=json.loads(cli("job","graph","--id",coverage_source))
+                    span=status_v5["plan"]["spec"]["nodes"][0]["spans"][0]
+                    recipe={"version":"iu-recovery-recipe-v1","id":"ci-v5-recovery","prior_plan_sha256":status_v5["plan"]["sha256"],"evaluation_id":status_v5["evaluation_id"],"evaluation_sha256":compact_hash(status_v5["evaluation"]),"reads":[{"node_id":"extract","span":span}],"instructions":{"extract":"\nfixture-coverage-repaired: recheck frozen original orders and global rules."}}
+                    recipe_file=write("v5-recovery-recipe.json",recipe)
+                    with sqlite3.connect(f"file:{root/'server'/'state.db'}?mode=ro",uri=True) as db:
+                        frozen_before=db.execute("SELECT context_json FROM iu_nodes WHERE goal_id=? AND generation=1 AND node_id='extract'",(status_v5["goal_id"],)).fetchone()[0]
+                    publication=json.loads(run_command(binary,"job","recover-graph","--id",coverage_source,"--file",recipe_file,"--config",eval_config))
+                    coverage_target=publication["job"]["job_id"]
+                    if wait_job(coverage_target)["state"]!="SUCCEEDED":raise AssertionError("v5 corrected execution failed")
+                    target_v5=json.loads(cli("job","graph","--id",coverage_target))
+                    if target_v5["graph_generation"]!=2:raise AssertionError("v5 recovery generation mismatch")
+                    final_proof=coverage_proof(coverage_target,target_v5,"current-proof")
+                    if final_proof["verdict"]!="PASS":raise AssertionError("corrected output did not pass independent verification")
+                    attempts_before=attempt_snapshot(coverage_source)+attempt_snapshot(coverage_target)
+                    reads_before=json.loads(run_command(binary,"job","read-source-status","--id",coverage_source,"--node","extract","--config",eval_config))
+                    old_pid=processes["server"].pid
+                    stop("server",hard=True);start("server","server",server_config)
+                    wait_for(lambda: json.loads(cli("workers")))
+                    replay=json.loads(run_command(binary,"job","recover-graph","--id",coverage_source,"--file",recipe_file,"--config",eval_config))
+                    if replay["job"]["job_id"]!=coverage_target or not replay["decision"]["existing"]:raise AssertionError("v5 recovery replay changed publication")
+                    reads_after=json.loads(run_command(binary,"job","read-source-status","--id",coverage_source,"--node","extract","--config",eval_config))
+                    attempts_after=attempt_snapshot(coverage_source)+attempt_snapshot(coverage_target)
+                    with sqlite3.connect(f"file:{root/'server'/'state.db'}?mode=ro",uri=True) as db:
+                        frozen_after=db.execute("SELECT context_json FROM iu_nodes WHERE goal_id=? AND generation=1 AND node_id='extract'",(status_v5["goal_id"],)).fetchone()[0]
+                        publications=db.execute("SELECT count(*) FROM iu_recovery_publications WHERE goal_id=?",(status_v5["goal_id"],)).fetchone()[0]
+                        pins=db.execute("SELECT count(*) FROM artifact_refs WHERE ref_id LIKE ?",("coverage/"+status_v5["goal_id"]+"/%",)).fetchone()[0]
+                    if attempts_before!=attempts_after or len(attempts_after)!=2 or frozen_before!=frozen_after or publications!=1 or pins<2 or reads_before!=reads_after or reads_after["reads_used"]!=1:raise AssertionError("v5 restart lost provenance, counts or frozen inputs")
+                    evaluation.update(id="v5-current-pass",expected_version=target_v5["evaluation_version"],output_sha256=target_v5["output_sha256"],verdict="PASS",evidence_sha256=final_proof["evidence_sha256"],coverage_proof={"receipt_id":"current-proof","sha256":compact_hash(final_proof)})
+                    run_command(binary,"job","evaluate-graph","--id",coverage_target,"--file",write("v5-current-pass.json",evaluation),"--config",eval_config)
+                    final_v5=json.loads(cli("job","graph","--id",coverage_target))
+                    if final_v5["goal_state"]!="SUCCEEDED":raise AssertionError("v5 Goal did not independently pass")
+                    coverage_recovery={"source_job":coverage_source,"target_job":coverage_target,"generation":2,"initial_verdict":"FAIL","final_verdict":"PASS","goal_state":final_v5["goal_state"],"server_process_restart":processes["server"].pid!=old_pid,"publication_idempotent":True,"publications":publications,"attempts_before":len(attempts_before),"attempts_after":len(attempts_after),"reads_before":reads_before["reads_used"],"reads_after":reads_after["reads_used"],"old_context_unchanged":frozen_before==frozen_after,"origin_pins":pins}
                     return {"real_model_calls":False,"cases":results,"server_processes":1,"worker_processes":2,
-                            "invalidation":invalidation,"import_recovery":import_recovery,
+                            "invalidation":invalidation,"import_recovery":import_recovery,"coverage_recovery":coverage_recovery,
                             "restart_scope":"completed execution waiting for authorized business evaluation"}
                 record("native_iu_graphs", native_graph_flow)
 
@@ -774,14 +849,15 @@ def main():
                     tasks = dict(database.execute("SELECT state,count(*) FROM tasks GROUP BY state"))
                 if integrity != "ok":
                     raise AssertionError("SQLite integrity check failed")
-                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": (12 if args.workspace_benchmark else 2) + (9 if args.iu_graph_check else 0)}
+                # IU: four canonical + one invalidation + four import/reuse + two coverage generations.
+                expected_jobs = {"CANCELED": 1, "FAILED": 1, "SUCCEEDED": (12 if args.workspace_benchmark else 2) + (11 if args.iu_graph_check else 0)}
                 if jobs != expected_jobs:
                     raise AssertionError(f"unexpected Job state totals: {jobs}")
                 return {"sqlite_integrity": integrity, "job_states": jobs, "task_states": tasks}
 
             record("shutdown_and_integrity", shutdown_and_integrity)
             report["summary"] = {"status": "PASSED", "steps_passed": len(report["steps"]),
-                                 "successful_jobs": (12 if args.workspace_benchmark else 2) + (9 if args.iu_graph_check else 0), "canceled_jobs": 1, "failed_jobs": 1}
+                                 "successful_jobs": report["steps"][-1]["evidence"]["job_states"]["SUCCEEDED"], "canceled_jobs": 1, "failed_jobs": 1}
     except BaseException as error:
         failure = error
         report["summary"] = {"status": "FAILED", "error": f"{type(error).__name__}: {error}"}
