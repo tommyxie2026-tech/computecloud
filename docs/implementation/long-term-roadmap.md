@@ -215,6 +215,9 @@ v0.4.x 的兼容与发布约束是：`direct` 仍为默认模式，`direct_then_
 
 ### 3.1 Control 客户端横向能力线
 
+客户端当前实施顺序调整为 **Web → iOS → Android**。Web 首版与 Server 同镜像、同域发布，采用用户名密码与 HttpOnly Cookie，会话映射现有身份和权限；实现及验收跟踪见 [Control Web 实施计划](../superpowers/plans/control-web-auth-implementation.md)。移动端配对、Push 与平台验收继续按独立切片推进。
+
+
 当前 Control Protocol 进度（2026-09-30）：
 
 - ACP-0～ACP-5 仓库级主线已完成；

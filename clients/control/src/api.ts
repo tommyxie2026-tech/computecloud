@@ -30,21 +30,25 @@ function trimBaseURL(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
 
+export type WebAuthentication = { kind: "web"; csrfToken: string; onExpired: () => void };
+
 export class ControlAPI {
   readonly baseURL: string;
 
-  constructor(baseURL: string, private readonly token: string) {
+  constructor(baseURL: string, private readonly token: string | WebAuthentication) {
     this.baseURL = trimBaseURL(baseURL);
     if (!this.baseURL) throw new Error("Server URL is required");
-    if (!token.trim()) throw new Error("Bearer token is required");
+    if (typeof token === "string" && !token.trim()) throw new Error("Bearer token is required");
   }
 
   private async fetch(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
-    headers.set("Authorization", `Bearer ${this.token}`);
+    if (typeof this.token === "string") headers.set("Authorization", `Bearer ${this.token}`);
+    else if (init.method && !["GET", "HEAD"].includes(init.method)) headers.set("X-CSRF-Token", this.token.csrfToken);
     headers.set("Accept", "application/json, text/event-stream");
-    const response = await globalThis.fetch(this.baseURL + path, { ...init, headers });
+    const response = await globalThis.fetch(this.baseURL + path, { ...init, headers, credentials: typeof this.token === "string" ? "omit" : "same-origin" });
     if (!response.ok) {
+      if (response.status === 401 && typeof this.token !== "string") this.token.onExpired();
       let code = `HTTP_${response.status}`;
       try {
         const body = await response.json() as { error?: { code?: string } };
@@ -57,8 +61,8 @@ export class ControlAPI {
     return response;
   }
 
-  private async json<T>(path: string): Promise<T> {
-    return await (await this.fetch(path)).json() as T;
+  private async json<T>(path: string, signal?: AbortSignal): Promise<T> {
+    return await (await this.fetch(path, { signal })).json() as T;
   }
 
   private async writeJSON<T>(path: string, method: string, body: unknown, leaseToken?: string): Promise<T> {
@@ -109,17 +113,17 @@ export class ControlAPI {
     return this.json("/v1/workers" + suffix);
   }
 
-  async jobSnapshot(jobID: string): Promise<JobSnapshot> {
+  async jobSnapshot(jobID: string, signal?: AbortSignal): Promise<JobSnapshot> {
     const id = encodeURIComponent(jobID);
     const [job, tasks, sessions, approvals, artifacts, events] = await Promise.all([
-      this.json<JobDetail>(`/v1/jobs/${id}`),
-      this.json<{ tasks: TaskView[] }>(`/v1/jobs/${id}/tasks?limit=100`),
-      this.json<{ sessions: SessionView[] }>(`/v1/jobs/${id}/sessions`),
-      this.json<{ approvals: ApprovalView[] }>(`/v1/jobs/${id}/approvals`),
-      this.json<{ artifacts: ArtifactView[] }>(`/v1/jobs/${id}/artifacts?limit=100`),
-      this.json<{ events: JobEvent[] }>(`/v1/jobs/${id}/events?after_seq=0&limit=500`),
+      this.json<JobDetail>(`/v1/jobs/${id}`, signal),
+      this.json<{ tasks: TaskView[] }>(`/v1/jobs/${id}/tasks?limit=100`, signal),
+      this.json<{ sessions: SessionView[] }>(`/v1/jobs/${id}/sessions`, signal),
+      this.json<{ approvals: ApprovalView[] }>(`/v1/jobs/${id}/approvals`, signal),
+      this.json<{ artifacts: ArtifactView[] }>(`/v1/jobs/${id}/artifacts?limit=100`, signal),
+      this.json<{ events: JobEvent[] }>(`/v1/jobs/${id}/events?after_seq=0&limit=500`, signal),
     ]);
-    const goal = job.links?.goal ? await this.json<GoalView>(`/v1/jobs/${id}/goal`) : undefined;
+    const goal = job.links?.goal ? await this.json<GoalView>(`/v1/jobs/${id}/goal`, signal) : undefined;
     return {
       goal,
       job,

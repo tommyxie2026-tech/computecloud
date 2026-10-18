@@ -3,6 +3,14 @@
 ARG GO_IMAGE=golang:1.27.2-alpine
 ARG CERTS_IMAGE=alpine:3.22
 ARG WORKER_IMAGE=debian:bookworm-slim
+ARG NODE_IMAGE=node:22.14.0-alpine
+
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS control-web
+WORKDIR /control
+COPY clients/control/package.json clients/control/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
+COPY clients/control/ ./
+RUN npm run export:web
 
 FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS build
 ARG TARGETOS
@@ -40,6 +48,7 @@ LABEL org.opencontainers.image.title="computecloud-server" \
 COPY --from=server-rootfs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=server-rootfs /rootfs/ /
 COPY --from=build --chown=65532:65532 /out/computecloud /computecloud
+COPY --from=control-web --chown=65532:65532 /control/dist/ /usr/share/computecloud/control/
 USER 65532:65532
 ENV HOME=/var/lib/computecloud \
     SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt

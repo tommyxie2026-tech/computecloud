@@ -75,6 +75,12 @@ ci-control-client-check:
 	python3 scripts/ci_control_client_check.py --output dist/control-client-check/report.json
 ci-control-client-e2e: build
 	python3 scripts/ci_control_client_e2e.py --binary bin/computecloud --output dist/control-client-e2e/report.json
+	$(GO) test -race ./internal/config ./internal/server -run '^TestWeb' -count=1 -timeout=120s
+	npm ci --prefix clients/control --ignore-scripts
+	npm run check --prefix clients/control
+	npm run test:web:api --prefix clients/control
+	cd clients/control && npx playwright install --with-deps chromium
+	python3 scripts/ci_control_web_auth_e2e.py --binary bin/computecloud --output dist/control-client-e2e/web/report.json
 ci-control-mobile-check:
 	python3 scripts/ci_control_mobile_check.py --output dist/control-mobile-check/report.json
 ci-manual-retry-negative:

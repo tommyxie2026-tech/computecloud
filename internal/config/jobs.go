@@ -118,6 +118,7 @@ type ModelGateway struct {
 }
 
 func (c *Server) DefaultV02() {
+	c.Web.defaults()
 	if c.TLS.WorkerMTLSMode == "" {
 		c.TLS.WorkerMTLSMode = "disabled"
 	}

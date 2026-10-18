@@ -1,5 +1,13 @@
 # Local development. For remote workers, configure TLS as shown in the runbook.
 server:
+  # Web 与 Server 一起部署；公网启用前配置独立密码和 HTTPS。
+  web:
+    enabled: false
+    auth:
+      username: admin
+      identity_owner: operator
+      session_ttl_seconds: 28800
+      # password_file: ../secrets/web_admin_password
   # Public execution policy: trusted_only preserves existing deployments.
   # isolated_only admits only container tasks using a configured Attempt Gateway route.
   public_execution_mode: trusted_only

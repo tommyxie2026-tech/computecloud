@@ -11,6 +11,10 @@ import {
   View,
 } from "react-native";
 
+import { mergeJobSnapshot, jobFromHash, jobHash } from "./src/webSnapshot";
+import { readSnapshotWithRetry, subscribeConnectivity } from "./src/readRecovery";
+import { WebGate } from "./src/Login";
+import type { WebSession } from "./src/webAuth";
 import { ControlAPI, isSnapshotReset } from "./src/api";
 import { clearMobileProfile, initialConnectURL, isNativeMobile, loadMobileProfile, loadOrCreateDeviceID, saveMobileProfile, serverFromConnectURL, subscribeConnectURLs } from "./src/mobile";
 import type {
@@ -42,8 +46,8 @@ function Button({ title, onPress, disabled = false }: { title: string; onPress: 
   );
 }
 
-function StatePill({ value }: { value: string }) {
-  return <View style={styles.pill}><Text style={styles.pillText}>{value}</Text></View>;
+function StatePill({ value, testID }: { value: string; testID?: string }) {
+  return <View testID={testID} style={styles.pill}><Text style={styles.pillText}>{value}</Text></View>;
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
@@ -66,12 +70,16 @@ function Events({ items }: { items: JobEvent[] }) {
           <Text style={styles.eventTime}>{formatTime(event.recorded_at_ms)}</Text>
         </View>
       ))}
-      {!items.length && <Empty>No events yet.</Empty>}
+      {!items.length && <Empty>暂无事件。</Empty>}
     </View>
   );
 }
 
 export default function App() {
+  if (isNativeMobile()) return <ControlApp />;
+  return <WebGate>{(session, expired, signOut) => <ControlApp key={session.csrf_token} webSession={session} onExpired={expired} onLogout={signOut} />}</WebGate>;
+}
+function ControlApp({ webSession, onExpired, onLogout }: { webSession?: WebSession; onExpired?: () => void; onLogout?: () => void }) {
   const { width } = useWindowDimensions();
   const compact = width < 960;
   const [serverURL, setServerURL] = useState(process.env.EXPO_PUBLIC_COMPUTECLOUD_URL ?? "http://127.0.0.1:8080");
@@ -146,7 +154,7 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      const client = new ControlAPI(serverURL, token);
+      const client = new ControlAPI(webSession ? globalThis.location.origin : serverURL, webSession ? { kind: "web", csrfToken: webSession.csrf_token, onExpired: onExpired! } : token);
       const boot = await client.bootstrap();
       await refreshCollections(client, boot.server_epoch);
       setAPI(client);
@@ -164,7 +172,8 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [nativeMobile, refreshCollections, serverURL, token]);
+  }, [nativeMobile, refreshCollections, serverURL, token, webSession?.csrf_token]);
+  useEffect(() => { if (webSession) void connect(); }, [webSession?.csrf_token]);
 
   const forgetMobileProfile = useCallback(async () => {
     if (!nativeMobile) return;
@@ -217,25 +226,43 @@ export default function App() {
     const controller = new AbortController();
     streamAbort.current = controller;
     setSelected(jobID);
+    if (webSession) globalThis.history.replaceState(null, "", globalThis.location.pathname + globalThis.location.search + jobHash(jobID));
     setSnapshot(null);
     setBusy(true);
     setError("");
     try {
-      const initial = await api.jobSnapshot(jobID);
+      const initial = await readSnapshotWithRetry(api, jobID, controller.signal, () => { if (!controller.signal.aborted) { setBusy(false); setError("连接暂时中断，正在重新获取任务状态…"); } });
+      if (controller.signal.aborted) return;
+      setError("");
       setSnapshot(initial);
       setBusy(false);
       let cursor = initial.events.at(-1)?.seq ?? "0";
       if (terminal.has(initial.job.state)) return;
-      await api.streamEvents(jobID, cursor, controller.signal, (event) => {
-        cursor = event.seq;
-        setSnapshot((current) => current ? {
-          ...current,
-          events: current.events.some((item) => item.seq === event.seq) ? current.events : [...current.events, event],
-        } : current);
-      });
-      if (!controller.signal.aborted) {
-        const latest = await api.jobSnapshot(jobID);
-        setSnapshot(latest);
+      let retryMS = 1000;
+      while (!controller.signal.aborted) {
+        try {
+          await api.streamEvents(jobID, cursor, controller.signal, (event) => {
+            cursor = event.seq;
+            setSnapshot((current) => current ? { ...current, events: current.events.some(item => item.seq === event.seq) ? current.events : [...current.events.slice(-499), event] } : current);
+          });
+          retryMS = 1000;
+        } catch (e) {
+          if (controller.signal.aborted) return;
+          if (e instanceof Error && e.name === "ControlAPIError" && "status" in e && e.status === 401) return;
+          if (isSnapshotReset(e) || (e instanceof Error && e.message === "EVENT_CURSOR_EXPIRED")) {
+            const reset = await api.jobSnapshot(jobID); setSnapshot(reset); cursor = reset.events.at(-1)?.seq ?? "0";
+          }
+        }
+        if (controller.signal.aborted) return;
+        try {
+          const latest = await readSnapshotWithRetry(api, jobID, controller.signal, () => { if (!controller.signal.aborted) setError("连接暂时中断，正在恢复任务观察…"); });
+          setError("");
+          if (controller.signal.aborted) return;
+          setSnapshot(current => mergeJobSnapshot(current, latest));
+          if (terminal.has(latest.job.state)) return;
+        } catch { if (controller.signal.aborted) return; }
+        await new Promise<void>(resolve => { const stop = () => { clearTimeout(timer); resolve(); }; const timer = setTimeout(() => { controller.signal.removeEventListener("abort", stop); resolve(); }, retryMS); controller.signal.addEventListener("abort", stop, { once: true }); });
+        retryMS = Math.min(retryMS * 2, 10000);
       }
     } catch (e) {
       if (!controller.signal.aborted) setError(e instanceof Error ? e.message : String(e));
@@ -243,6 +270,27 @@ export default function App() {
       if (!controller.signal.aborted) setBusy(false);
     }
   }, [api, selected, writeLease]);
+
+  useEffect(() => {
+    if (!webSession || !api) return;
+    const restore = () => { const id = jobFromHash(globalThis.location.hash); if (id) void loadJob(id); };
+    restore(); globalThis.addEventListener("hashchange", restore);
+    return () => globalThis.removeEventListener("hashchange", restore);
+  }, [api]);
+
+  useEffect(() => {
+    if (!webSession || !api) return;
+    return subscribeConnectivity(globalThis.window, () => {
+      streamAbort.current?.abort();
+      setWriteLease(null);
+      setBusy(false);
+      setError("网络已断开，任务仍由 Server 执行；恢复后将重新同步。");
+    }, () => {
+      setError("");
+      if (selected) void loadJob(selected);
+      else void refreshCollections(api, bootstrap?.server_epoch).catch(e => setError(e instanceof Error ? e.message : String(e)));
+    });
+  }, [api, selected, webSession?.csrf_token]);
 
   useEffect(() => () => streamAbort.current?.abort(), []);
 
@@ -290,6 +338,18 @@ export default function App() {
     setSnapshot(await api.jobSnapshot(selected));
   }, [api, selected]);
 
+  useEffect(() => {
+    if (!api || !selected || !snapshot || terminal.has(snapshot.job.state)) return;
+    let active = true; let pending = false;
+    const timer = setInterval(async () => {
+      if (pending) return; pending = true;
+      try { const latest = await api.jobSnapshot(selected); if (active) setSnapshot(current => mergeJobSnapshot(current, latest)); }
+      catch { /* event reconnection reports persistent failures */ }
+      finally { pending = false; }
+    }, 3000);
+    return () => { active = false; clearInterval(timer); };
+  }, [api, selected, snapshot?.job.state]);
+
   const submitNewJob = useCallback(async () => {
     if (!api) return;
     setBusy(true);
@@ -297,7 +357,6 @@ export default function App() {
     try {
       const spec = JSON.parse(newJobSpec) as unknown;
       const created = await api.submitJob(spec, newJobKey);
-      setNewJobKey(operationID("job"));
       const boot = bootstrap ?? await api.bootstrap();
       if (!bootstrap) setBootstrap(boot);
       await refreshCollections(api, boot.server_epoch);
@@ -312,6 +371,7 @@ export default function App() {
 
   const cancelSelected = useCallback(async () => {
     if (!api || !selected || !writeLease) return;
+    if (webSession && !globalThis.confirm(`确认取消任务 ${selected}？`)) return;
     setBusy(true);
     try {
       await api.cancelJob(selected, writeLease.lease_token, operationID("cancel"), "Canceled from Control client");
@@ -328,6 +388,7 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
+      if (webSession && !globalThis.confirm(`确认重试任务 ${task.task_id}？`)) return;
       await api.manualRetry(selected, task, writeLease.lease_token, operationID("retry"));
       await refreshSelected();
       if (bootstrap) await refreshCollections(api, bootstrap.server_epoch);
@@ -399,12 +460,14 @@ export default function App() {
           <Text style={styles.title}>computecloud Control</Text>
         </View>
         <View style={styles.headerMeta}>
-          {bootstrap ? <StatePill value={`ACP ${bootstrap.protocol_max}`} /> : <StatePill value="Disconnected" />}
+          {webSession && !api && <Button title="重试连接" onPress={connect} disabled={busy} />}
+          {webSession && <Button title="退出登录" onPress={onLogout!} />}
+          {bootstrap ? <StatePill value={`ACP ${bootstrap.protocol_max}`} /> : <StatePill value="未连接" />}
           {!!attention && <StatePill value={`${attention} attention`} />}
         </View>
       </View>
 
-      <View style={styles.connection}>
+      {!webSession && <View style={styles.connection}>
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Server</Text>
           <TextInput autoCapitalize="none" value={serverURL} onChangeText={setServerURL} style={styles.input} placeholder="https://control.example.com" />
@@ -417,13 +480,15 @@ export default function App() {
         {nativeMobile && <Button title="Forget profile" disabled={busy || !token} onPress={() => { void forgetMobileProfile(); }} />}
       </View>
 
+      }
       {!!error && <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View>}
 
       <View style={[styles.body, compact && styles.bodyCompact]}>
         <View style={[styles.sidebar, compact && styles.sidebarCompact]}>
-          <Text style={styles.sectionTitle}>New Job</Text>
-          <Text style={styles.muted}>Submit the canonical Job JSON. The Server validates project, Runtime, credential, template and policy.</Text>
+          <Text style={styles.sectionTitle}>新建任务</Text>
+          <Text style={styles.muted}>填写任务 JSON。Server 将校验项目、运行时、凭据、模板与策略。</Text>
           <TextInput
+            accessibilityLabel="任务 JSON"
             multiline
             value={newJobSpec}
             onChangeText={setNewJobSpec}
@@ -433,11 +498,11 @@ export default function App() {
           />
           <Text style={styles.mono}>Idempotency-Key {newJobKey}</Text>
           <View style={styles.actionRow}>
-            <Button title="Submit Job" onPress={submitNewJob} disabled={busy || !api} />
-            <Button title="New key" onPress={() => setNewJobKey(operationID("job"))} disabled={busy} />
+            <Button title="提交任务" onPress={submitNewJob} disabled={busy || !api} />
+            <Button title="新建提交标识" onPress={() => setNewJobKey(operationID("job"))} disabled={busy} />
           </View>
 
-          <Text style={[styles.sectionTitle, styles.topGap]}>Jobs</Text>
+          <Text style={[styles.sectionTitle, styles.topGap]}>任务列表</Text>
           <ScrollView style={styles.list}>
             {jobPage?.jobs.map((job: JobSummary) => (
               <Pressable key={job.job_id} onPress={() => loadJob(job.job_id)}
@@ -450,17 +515,17 @@ export default function App() {
                 <Text style={styles.muted}>{formatTime(job.updated_at_ms)}</Text>
               </Pressable>
             ))}
-            {!jobPage?.jobs.length && <Empty>Connect to load jobs.</Empty>}
+            {!jobPage?.jobs.length && <Empty>暂无任务，请提交任务或刷新列表。</Empty>}
           </ScrollView>
-          {jobPage?.has_more && <Button title="Load more" onPress={loadMoreJobs} disabled={busy} />}
+          {jobPage?.has_more && <Button title="加载更多" onPress={loadMoreJobs} disabled={busy} />}
 
-          <Text style={[styles.sectionTitle, styles.topGap]}>Workers</Text>
+          <Text style={[styles.sectionTitle, styles.topGap]}>Worker 节点</Text>
           <ScrollView style={styles.workerList}>
             {workers?.workers.map((worker) => (
               <View key={worker.worker_id} style={styles.workerRow}>
                 <View style={styles.rowBetween}>
                   <Text style={styles.jobID}>{worker.worker_id}</Text>
-                  <StatePill value={worker.online ? "ONLINE" : "OFFLINE"} />
+                  <StatePill value={worker.online ? "在线" : "离线"} />
                 </View>
                 <Text style={styles.muted}>{worker.active}/{worker.slots} active</Text>
                 {worker.runtimes.map((runtime) => (
@@ -472,7 +537,7 @@ export default function App() {
         </View>
 
         <ScrollView style={styles.detail} contentContainerStyle={styles.detailContent}>
-          {!selected && <View style={styles.hero}><Text style={styles.heroTitle}>Operate durable Agent execution</Text><Text style={styles.heroText}>Submit a Job or select an existing Job to inspect and control its durable Tasks, Attempts, Sessions, Approvals, Artifacts and event stream.</Text></View>}
+          {!selected && <View style={styles.hero}><Text style={styles.heroTitle}>管理 Agent 任务执行</Text><Text style={styles.heroText}>提交新任务，或选择已有任务，查看执行节点、尝试记录、会话、审批、产物与实时事件。</Text></View>}
           {busy && selected && !snapshot && <ActivityIndicator />}
           {snapshot && (
             <>
@@ -482,33 +547,33 @@ export default function App() {
                     <Text style={styles.eyebrow}>JOB</Text>
                     <Text style={styles.detailTitle}>{snapshot.job.job_id}</Text>
                   </View>
-                  <StatePill value={snapshot.job.state} />
+                  <StatePill value={snapshot.job.state} testID="selected-job-state" />
                 </View>
                 <Text style={styles.muted}>mode {snapshot.job.mode} · seq {snapshot.job.last_seq} · updated {formatTime(snapshot.job.updated_at_ms)}</Text>
                 {!!snapshot.job.error_code && <Text style={styles.errorText}>{snapshot.job.error_code}</Text>}
                 <View style={styles.actionRow}>
                   {writeLease
-                    ? <Button title="Release control" onPress={releaseControl} disabled={busy} />
-                    : <Button title="Take control" onPress={takeControl} disabled={busy || bootstrap?.read_only || terminal.has(snapshot.job.state)} />}
-                  {writeLease && !terminal.has(snapshot.job.state) && <Button title="Cancel job" onPress={cancelSelected} disabled={busy} />}
+                    ? <Button title="释放控制权" onPress={releaseControl} disabled={busy} />
+                    : <Button title="获取控制权" onPress={takeControl} disabled={busy || bootstrap?.read_only || (terminal.has(snapshot.job.state) && snapshot.job.state !== "FAILED")} />}
+                  {writeLease && !terminal.has(snapshot.job.state) && <Button title="取消任务" onPress={cancelSelected} disabled={busy} />}
                   {writeLease && <StatePill value="WRITE LEASE" />}
                 </View>
               </View>
 
               <View style={[styles.grid, compact && styles.gridCompact]}>
                 <View style={styles.panel}>
-                  <Text style={styles.sectionTitle}>Tasks / Attempts</Text>
+                  <Text style={styles.sectionTitle}>任务 / 执行尝试</Text>
                   {snapshot.tasks.map((task) => (
                     <View key={task.task_id} style={styles.item}>
                       <View style={styles.rowBetween}><Text style={styles.jobID}>{task.stage || "single"} · {task.partition_key}</Text><StatePill value={task.state} /></View>
                       <Text style={styles.mono}>task {task.task_id}</Text>
                       <Text style={styles.mono}>attempt {task.attempt_id || "—"} · gen {task.generation || "0"}</Text>
-                      <Text style={styles.muted}>{task.worker_id || "unassigned"} {task.scheduling_blocker ? `· ${task.scheduling_blocker}` : ""}</Text>
+                      <Text style={styles.muted}>{task.worker_id || "尚未分配"} {task.scheduling_blocker ? `· ${task.scheduling_blocker}` : ""}</Text>
                       {!!task.error_code && <Text style={styles.errorText}>{task.error_code}</Text>}
                       {writeLease && snapshot.job.mode === "single" && snapshot.job.state === "FAILED" && task.state === "FAILED" && !!task.attempt_id && (
                         <View style={styles.controlStack}>
-                          <Button title="Retry failed task" onPress={() => retryTask(task)} disabled={busy} />
-                          <Text style={styles.muted}>Server revalidates replay safety, cleanup proof, deadline, attempt budget and generation.</Text>
+                          <Button title="重试失败任务" onPress={() => retryTask(task)} disabled={busy} />
+                          <Text style={styles.muted}>Server 将重新校验重放安全、清理证明、截止期限、尝试预算与执行代次。</Text>
                         </View>
                       )}
                     </View>
@@ -516,28 +581,28 @@ export default function App() {
                 </View>
 
                 <View style={styles.panel}>
-                  <Text style={styles.sectionTitle}>Sessions</Text>
+                  <Text style={styles.sectionTitle}>运行会话</Text>
                   {snapshot.sessions.map((session) => (
                     <View key={session.session_id} style={styles.item}>
                       <View style={styles.rowBetween}><Text style={styles.jobID}>{session.runtime}</Text><StatePill value={session.state} /></View>
-                      <Text style={styles.muted}>{session.runtime_version ?? "version unknown"} · gen {session.generation}</Text>
-                      <Text style={styles.capabilities}>{session.capabilities.join(" · ") || "no interactive capabilities"}</Text>
+                      <Text style={styles.muted}>{session.runtime_version ?? "版本未知"} · gen {session.generation}</Text>
+                      <Text style={styles.capabilities}>{session.capabilities.join(" · ") || "暂无交互能力"}</Text>
                       {writeLease && session.capabilities.includes("interactive_input") && (
                         <View style={styles.controlStack}>
-                          <TextInput value={sessionInput} onChangeText={setSessionInput} style={styles.input} placeholder="Send input to this session" placeholderTextColor="#66717f" />
-                          <Button title="Send input" onPress={() => sendSessionInput(session)} disabled={busy || !sessionInput.trim()} />
+                          <TextInput value={sessionInput} onChangeText={setSessionInput} style={styles.input} placeholder="向当前会话发送输入" placeholderTextColor="#66717f" />
+                          <Button title="发送输入" onPress={() => sendSessionInput(session)} disabled={busy || !sessionInput.trim()} />
                         </View>
                       )}
                       {writeLease && session.capabilities.includes("session_resume") && (
-                        <View style={styles.controlStack}><Button title="Resume session" onPress={() => resumeSession(session)} disabled={busy} /></View>
+                        <View style={styles.controlStack}><Button title="恢复会话" onPress={() => resumeSession(session)} disabled={busy} /></View>
                       )}
                     </View>
                   ))}
-                  {!snapshot.sessions.length && <Empty>No sessions.</Empty>}
+                  {!snapshot.sessions.length && <Empty>暂无会话。</Empty>}
                 </View>
 
                 <View style={styles.panel}>
-                  <Text style={styles.sectionTitle}>Attention / Approvals</Text>
+                  <Text style={styles.sectionTitle}>待处理 / 审批</Text>
                   {snapshot.approvals.map((approval) => (
                     <View key={approval.approval_id} style={styles.item}>
                       <View style={styles.rowBetween}><Text style={styles.jobID}>{approval.tool}</Text><StatePill value={approval.state} /></View>
@@ -546,13 +611,13 @@ export default function App() {
                       {!!approval.arguments_summary && <Text style={styles.mono}>{approval.arguments_summary}</Text>}
                       {writeLease && approval.state === "PENDING" && (
                         <View style={styles.actionRow}>
-                          <Button title="Approve" onPress={() => decideApproval(approval, "ACCEPT")} disabled={busy} />
-                          <Button title="Reject" onPress={() => decideApproval(approval, "REJECT")} disabled={busy} />
+                          <Button title="批准" onPress={() => decideApproval(approval, "ACCEPT")} disabled={busy} />
+                          <Button title="拒绝" onPress={() => decideApproval(approval, "REJECT")} disabled={busy} />
                         </View>
                       )}
                     </View>
                   ))}
-                  {!snapshot.approvals.length && <Empty>No pending or historical approvals.</Empty>}
+                  {!snapshot.approvals.length && <Empty>暂无审批记录。</Empty>}
                 </View>
 
                 {snapshot.goal && <View style={styles.panel}>
@@ -573,7 +638,7 @@ export default function App() {
                 </View>}
 
                 <View style={styles.panel}>
-                  <Text style={styles.sectionTitle}>Artifacts</Text>
+                  <Text style={styles.sectionTitle}>执行产物</Text>
                   {snapshot.artifacts.map((artifact) => (
                     <Pressable key={artifact.artifact_id} onPress={() => openArtifact(artifact.artifact_id)} style={styles.item}>
                       <Text style={styles.jobID}>{artifact.kind}</Text>
@@ -581,25 +646,25 @@ export default function App() {
                       <Text style={styles.muted}>{artifact.size} bytes · sha256 {artifact.sha256.slice(0, 12)}…</Text>
                     </Pressable>
                   ))}
-                  {!snapshot.artifacts.length && <Empty>No accepted artifacts.</Empty>}
+                  {!snapshot.artifacts.length && <Empty>暂无已接收产物。</Empty>}
                   {artifactPreview?.client === api && artifactPreview?.jobID === selected && <View style={styles.stack}>
-                    <Text style={styles.sectionTitle}>Artifact preview</Text>
+                    <Text style={styles.sectionTitle}>产物预览</Text>
                     <Text style={styles.mono}>Attempt {artifactPreview.review.attempt_id} · generation {artifactPreview.review.generation}</Text>
                     <Text style={styles.muted}>{artifactPreview.review.current_generation ? "Current execution result when fetched" : "Historical execution result"}</Text>
                     <Text selectable style={styles.mono}>SHA256 {artifactPreview.review.sha256}</Text>
                     {artifactPreview.review.members.map((member) => <View key={member.name} style={styles.item}>
                       <Text style={styles.jobID}>{member.name} · {member.size} bytes</Text>
-                      {member.text === null ? <Empty>Binary or unsupported preview format.</Empty> : <Text selectable style={styles.mono}>{member.text}</Text>}
-                      {member.truncated && <Text style={styles.muted}>Preview truncated.</Text>}
+                      {member.text === null ? <Empty>二进制或暂不支持预览的格式。</Empty> : <Text selectable style={styles.mono}>{member.text}</Text>}
+                      {member.truncated && <Text style={styles.muted}>预览已截断。</Text>}
                     </View>)}
-                    <Button title="Close preview" onPress={() => setArtifactPreview(null)} />
+                    <Button title="关闭预览" onPress={() => setArtifactPreview(null)} />
                   </View>}
                 </View>
               </View>
 
               <View style={styles.panel}>
                 <View style={styles.rowBetween}>
-                  <Text style={styles.sectionTitle}>Durable event stream</Text>
+                  <Text style={styles.sectionTitle}>执行事件</Text>
                   {!terminal.has(snapshot.job.state) && <StatePill value="LIVE" />}
                 </View>
                 <Events items={snapshot.events} />
@@ -608,14 +673,14 @@ export default function App() {
           )}
         </ScrollView>
       </View>
-      <Text style={styles.footer}>C2 Operate · Existing Job writes require a short-lived single-writer lease · Job submit is idempotency-keyed · Bearer and lease tokens stay memory-only.</Text>
+      <Text style={styles.footer}>任务操作受服务端权限与控制租约约束；重复提交通过幂等标识防止重复创建。</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, minHeight: "100%" as never, backgroundColor: "#0b0d10" },
-  header: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", borderBottomWidth: 1, borderBottomColor: "#242830" },
+  header: { flexWrap: "wrap", gap: 12, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", borderBottomWidth: 1, borderBottomColor: "#242830" },
   headerMeta: { flexDirection: "row", gap: 8 },
   eyebrow: { color: "#8b94a3", fontSize: 11, letterSpacing: 1.6, fontWeight: "700" },
   title: { color: "#f4f6f8", fontSize: 28, fontWeight: "700", marginTop: 4 },

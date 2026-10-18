@@ -57,7 +57,7 @@ def main():
     for value in ["submitJob(", "Idempotency-Key", "manualRetry("]:
         if value not in api:
             violations.append("Control API contract missing: " + value)
-    for value in ["Submit Job", "Retry failed task", "newJobKey"]:
+    for value in ["onPress={submitNewJob}", "onPress={() => retryTask(task)}", "newJobKey"]:
         if value not in app:
             violations.append("C2 UI-03b surface missing: " + value)
 

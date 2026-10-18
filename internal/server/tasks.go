@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -38,6 +40,24 @@ func dbErr(e error) error {
 	if errors.Is(e, sql.ErrNoRows) {
 		return status.Error(codes.NotFound, "not found")
 	}
+	var sqliteError interface{ Code() int }
+	code := 0
+	if errors.As(e, &sqliteError) {
+		code = sqliteError.Code()
+	}
+	// Never log SQL text, parameters, credential values, or the raw driver error.
+	errorClass := "OTHER"
+	switch {
+	case errors.Is(e, context.Canceled):
+		errorClass = "REQUEST_CANCELED"
+	case errors.Is(e, context.DeadlineExceeded):
+		errorClass = "REQUEST_DEADLINE"
+	case errors.Is(e, sql.ErrTxDone):
+		errorClass = "TRANSACTION_CLOSED"
+	case errors.Is(e, sql.ErrConnDone):
+		errorClass = "CONNECTION_CLOSED"
+	}
+	slog.Warn("storage operation failed", "error_type", fmt.Sprintf("%T", e), "sqlite_code", code, "error_class", errorClass)
 	return status.Error(codes.Unavailable, "storage operation failed")
 }
 func readTask(ctx context.Context, q store.Query, id string) (*pb.Task, string, error) {

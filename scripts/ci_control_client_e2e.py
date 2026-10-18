@@ -7,6 +7,7 @@ from pathlib import Path
 import secrets
 import signal
 import socket
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -18,7 +19,15 @@ if sys.argv[1:] == ['--version']:
 prompt = sys.stdin.read()
 if 'hold-control' in prompt:
     time.sleep(15)
-pathlib.Path('README.md').touch()
+if 'fail-verification-control' in prompt:
+    marker = pathlib.Path(__file__).with_suffix('.first-failure')
+    if not marker.exists():
+        marker.touch()
+        pathlib.Path('README.md').unlink(missing_ok=True)
+    else:
+        pathlib.Path('README.md').touch()
+else:
+    pathlib.Path('README.md').touch()
 if sys.argv[1] == 'exec':
     print(json.dumps({'type':'thread.started','thread_id':'control-client'}))
     print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':'control client fixture done'}}))
@@ -38,6 +47,7 @@ def main():
     ap.add_argument("--binary", default="bin/computecloud")
     ap.add_argument("--output", default="dist/control-client-e2e/report.json")
     ap.add_argument("--timeout", type=int, default=45)
+    ap.add_argument("--web-auth", action="store_true")
     args = ap.parse_args()
 
     binary = str(Path(args.binary).resolve())
@@ -90,7 +100,7 @@ def main():
                 except subprocess.TimeoutExpired: process.kill()
         for handle in handles: handle.close()
 
-    report = {"schema_version":"control-client-e2e.v1","status":"FAILED","real_model_calls":False}
+    report = {"schema_version":("control-web-auth-e2e.v1" if args.web_auth else "control-client-e2e.v1"),"status":"FAILED","real_model_calls":False}
     try:
         with tempfile.TemporaryDirectory(prefix="computecloud-control-client-") as td:
             root = Path(td)
@@ -134,6 +144,10 @@ def main():
                           "scopes":["jobs:submit","jobs:read","jobs:cancel","jobs:control","jobs:retry"]}],
                 "workers":[{"token_file":str(worker_token),"worker_id":"worker-control","projects":["control"],"credentials":["fixture"]}]
             }})
+            if args.web_auth:
+                value = json.loads(server_cfg.read_text())
+                value["server"]["web"] = {"enabled": True, "assets_dir": str(e2e.parent.parent / "dist"), "auth": {"identity_owner": "ui"}}
+                server_cfg.write_text(json.dumps(value))
             client_cfg = write("client.json", {"client":{"address":grpc_addr,"http_url":"http://"+http_addr,"token_file":str(user_token),"tls":tls}})
             start("server","server",server_cfg)
             start("worker","worker",worker_cfg)
@@ -147,6 +161,46 @@ def main():
                     "execution":{"engine":"codex","runtime_profile":"codex_exec","model":"fixture","credential_ref":"fixture",
                                  "policy_ref":"review","acceptance_profile":"check"},
                     "limits":{"timeout_seconds":30,"max_attempts_per_task":1}}
+            if args.web_auth:
+                spec_path = write("web-job.json", spec)
+                browser_script = e2e.parent / "web-browser-e2e.mjs"
+                try:
+                    browser_output = run("node", str(browser_script), "http://"+http_addr, str(spec_path), str(output.parent), timeout=120)
+                except BaseException:
+                    # Fixture-only diagnostics: no prompts, keys, cookies or configuration.
+                    try:
+                        connection = sqlite3.connect(f"file:{root / 'server' / 'state.db'}?mode=ro", uri=True, timeout=2)
+                        snapshots = {}
+                        for table, query in {
+                            "jobs": "SELECT state,count(*) FROM jobs GROUP BY state",
+                            "tasks": "SELECT state,count(*) FROM tasks GROUP BY state",
+                            "attempts": "SELECT released,count(*) FROM attempts GROUP BY released",
+                            "commands": "SELECT kind,acked,count(*) FROM commands GROUP BY kind,acked",
+                        }.items(): snapshots[table] = connection.execute(query).fetchall()
+                        connection.close()
+                        (output.parent / "fixture-state.json").write_text(json.dumps(snapshots, indent=2))
+                    except Exception: pass
+                    # Dump only our isolated fixture Server to diagnose blocked goroutines.
+                    if processes["server"].poll() is None:
+                        processes["server"].send_signal(signal.SIGQUIT)
+                        processes["server"].wait(timeout=10)
+                    raise
+                evidence = json.loads(browser_output.splitlines()[-1])
+                # Re-start with configured secret-file password; default password must stop working.
+                process = processes["server"]
+                process.send_signal(signal.SIGTERM); process.wait(timeout=15)
+                value = json.loads(server_cfg.read_text())
+                password_file = write("web-password", "rotated-fixture-password")
+                value["server"]["web"]["auth"]["password_file"] = str(password_file)
+                server_cfg.write_text(json.dumps(value)); start("server", "server", server_cfg)
+                wait_for(lambda: len([w for w in json.loads(cli("workers")).get("workers",[]) if w.get("online")]) == 1)
+                # Password goes through environment only; neither command line nor reports contain it.
+                env = os.environ.copy(); env["TEST_WEB_PASSWORD"] = password_file.read_text()
+                result = subprocess.run(["node",str(browser_script),"http://"+http_addr,str(spec_path),str(output.parent),"rotated"],capture_output=True,text=True,timeout=60,env=env)
+                if result.returncode: raise RuntimeError(result.stderr[-3000:])
+                rotation = json.loads(result.stdout.splitlines()[-1])
+                report.update(status="PASSED", evidence=evidence, rotation=rotation, real_model_calls=False)
+                return
             for i in range(3):
                 spec_path = write(f"job-{i}.json", spec)
                 result = json.loads(cli("job","submit","--key",f"control-e2e-{i}","--file",str(spec_path)))
